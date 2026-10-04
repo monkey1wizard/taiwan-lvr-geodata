@@ -2,7 +2,11 @@
 
 本專案保留台灣實價登錄資料的解析與地址處理程式，作為新版地理資料管線的起點。
 
-新版企劃仍是[草稿](docs/drafts/taiwan-lvr-geodata-新版資料處理流程.md)。Parquet／DuckDB 工作流程、全歷史地址池、TGOS 結果匯入與 GIS 輸出尚未實作。
+新版方案見[完整企劃草案](docs/drafts/taiwan-lvr-geodata-完整企劃.md)，內含六個 phases、24 個 tasks 與 26 個 test points，可直接作為 cloud agent 的工作依據。修訂後的執行設計已通過獨立審查。各 task 依自己的前置條件與驗收執行，不要求完整 GAL 流程。
+
+P1 建立內部 Parse／Normalize 階段快照。P2 完成離線地址處理後，先公開交付 output，後續 TGOS 再回補。下載以交易月份 `tx_yyyymm` 為最小時間單位，保留 `YYYYMM_category` 檔名，另提供依格式打包的年度 ZIP。使用者可只下載需要的月份／類別／格式，也可下載整年。
+
+保存方向已確定為 GitHub 公開，實測大小後安排小型固定檔案進 Git、一般月輸出／年度包及維護狀態進 Releases。cloud agent 可從已驗證離線快照接續。TGOS 沿用舊版 addrCompare 人工批次，每日／每片最多 10,000 筆、WGS84。新版 Parquet／DuckDB、地址池、TGOS、GIS 與月／年打包仍未實作或量測。
 
 ## 目前內容
 
@@ -43,6 +47,9 @@ python -m lvr_pipeline.1_normalize
 
 ## 文件狀態
 
+- [完整企劃草案](docs/drafts/taiwan-lvr-geodata-完整企劃.md)：離線首版 output、月／年下載、GitHub 公開交接及完整 phases／tasks／test points。
+- [task 結果範本](docs/task-result-template.md)：agent 記錄前置版本、命令、測試、輸出雜湊及交接位置。
+- [完整資料處理流程](docs/data-processing-flow.md)：從 raw 到離線定位、月／年輸出、TGOS 回補、地址 patch 與快照復原的九個子流程；新版模組仍待實作。
 - [新版資料處理流程草稿](docs/drafts/taiwan-lvr-geodata-新版資料處理流程.md)：Google Drive 文件的完整內容快照，後續將重寫。
 - [舊文件參考索引](docs/legacy/README.md)：保留可再利用的舊文件原文，列出已知過時內容。
 - [資料來源](docs/DATA_SOURCES.md)：本次搬移所需的來源與本機資料放置方式。
