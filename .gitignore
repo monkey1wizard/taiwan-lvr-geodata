@@ -1,0 +1,34 @@
+# Local inputs, intermediate files, caches, and generated datasets
+/data/raw/
+/data/work/
+/data/cache/
+/data/output/
+/data/registry/land.csv
+/data/registry/parking.csv
+/data/registry/no_doorplate.csv
+/data/registry/unresolvable.csv
+*.sqlite
+*.sqlite-*
+*.duckdb
+*.duckdb.wal
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+
+# Python environments and test artifacts
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local agent state and generated graphs
+.claude/
+.dev/
+graphify-out/
+.DS_Store
+Thumbs.db

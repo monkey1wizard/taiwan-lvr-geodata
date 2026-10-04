@@ -1,0 +1,3 @@
+# The retained runtime modules use only the Python standard library.
+# This dependency is used to run the retained test suite.
+pytest>=8,<10

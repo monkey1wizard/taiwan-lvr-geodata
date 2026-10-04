@@ -1,0 +1,14 @@
+Dataset:       全國路名資料
+Source:        政府資料開放平臺 data.gov.tw
+Dataset ID:    35321
+Resource UUID: 5C8D35CC-7C56-4D34-A21E-3EACEC0907B6
+Dataset UUID:  E2EDC47D-2D3F-4EB1-878A-4DEB6160FD4C
+Publisher:     內政部戶政司
+Year:          民國113年（2024）
+Records:       35,225（含標頭列）
+Columns:       city,site_id,road
+License:       政府資料開放授權條款—第1版（OGDL 1.0）
+Downloaded:    2026-06-18
+Local file:    data/reference/roadnames_35321_20260618.csv
+Update note:   每年更新一次；如需更新，至 data.gov.tw 搜尋「全國路名資料」下載最新版，
+               更名為 roadnames_35321_YYYYMMDD.csv 並更新本 provenance 檔。
