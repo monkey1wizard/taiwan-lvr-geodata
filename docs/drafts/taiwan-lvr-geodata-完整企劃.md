@@ -444,32 +444,127 @@ P0 → P1 → P2 交付使用者要求的首版公開離線 output，不等待 T
 
 T-01～T-04 已實作，見 P0 紀錄及草稿 PR #1；其餘 tasks 為 Planned。前置條件指已驗收的交付成果，不只代表程式已寫完。可先驗收樣本實作，再處理真實資料部署。以下路徑是責任範圍。P0 檔案已建立，其餘路徑仍屬規劃。
 
-| Task／phase | 前置條件與適用門檻 | 工作與檔案責任 | 交付／test points |
-| --- | --- | --- | --- |
-| T-01／P0 | 無 task 前置，只用樣本。 | 安裝／環境試作與 cloud 指引。負責 AGENTS.md、pyproject.toml、uv.lock、scripts/setup.sh、tests/fixtures 及 CI 安裝；保留既有函式／測試。 | 固定 Linux 安裝、合成 CSV／ZIP／地址樣本、無憑證測試命令。TP-01。 |
-| T-02／P0 | 無 task 前置；盤點允許使用的本機／公開來源，不上傳資料。 | 負責 data/sources/raw_manifest.json 與 address_source.json。列出 58 批來源、成員、雜湊、已知空批次與固定地址來源；無證據的 URI／權利明確留待確認。 | 機器可驗證來源清單與條件／來源紀錄，不編造雲端 URI。TP-02。 |
-| T-03／P0 | T-01；T-02 可用時核對來源語意，未證明識別仍採觀測層。 | 負責 schemas/、config/pipeline.example.toml、address.py／tx_date.py 的版本規則。定義觀測／成員／排除契約、record grain、來源識別／修訂政策及 v2 鍵。 | 有版本的結構與碰撞樣本，未知正式識別維持可空值。TP-03、TP-04。 |
-| T-04／P0 | T-01、T-03；只用本機或一次性單寫入工作環境。 | 負責 snapshots.py 與 manifest 驗證。建立不可變暫存、雜湊／筆數核對及已提交指標讀取；遠端平台／CAS 介面由 T-22 負責。 | 轉換與地址狀態共用的本機快照提交／復原功能。TP-10。 |
-| T-05／P1 | T-01、T-02、T-03；先用樣本，真實來源需可取得且允許使用。 | 負責 ingest.py 及 ingest 命令。用逐列／Arrow 批次替換 ZIP 成員清單；保留來源／成員／列關聯及未知欄位。 | 指定範圍的型別化輸入分割區與筆數／結構診斷。TP-02、TP-05。 |
-| T-06／P1 | T-05、T-03。 | 負責 normalize.py 與補字／日期／地址規則整合。觀測金額與展開成員分開，保留排除項及未解證據。 | observations／address_components／exclusions／diagnostics，來源關聯穩定。TP-03、TP-04、TP-06。 |
-| T-07 / P1 | T-06、T-04。 | 負責 export-converted 與型別化階段驗證。觀測／成員／排除／診斷 Parquet、品質／manifest 存於 data/work/converted/，用於離線處理前的內部工作。 | 已驗證轉換階段快照，不稱第一版使用者 output。TP-07、TP-10。 |
-| T-08 / P2 | T-13；GitHub 公開已確定。 | 負責 measure-output 與 Git／Release 檔案安排。量測月檔、年度包、維護狀態、工作／暫存，考慮小型 bootstrap 進 Git 時另量測歷史成長。 | size_report.json、公開 Release 附件清單及明確小型 Git 檔案。TP-08、TP-26。 |
-| T-09 / P2 | T-13、T-08、T-22；樣本使用模擬或公開合成快照。 | 負責 fetch-output／verify 及全新 cloud 離線交接整合。取得公開固定 manifest、離線 output、未定位池、來源關聯及狀態；驗證雜湊／版本、離線記錄對應、未定位選取及必要保留狀態，不重跑 raw。P2 驗收不執行 TGOS／回補，該整合等 P3 tasks 驗收後進行。 | 可重跑離線輸出使用端，缺所需欄位時明確要求 raw 重建。TP-09、TP-13、TP-25。 |
-| T-10／P2 | T-03、T-02；使用固定地址版或合成來源，真實索引先確認可用資源。 | 負責 offline_lookup.py 與行政區來源驗證。從固定 CSV commit 建立型別索引，保留代碼字串、來源類別及重複／衝突觀測。 | 固定索引與建置資源報告，不取得完整 Git 歷史。TP-11。 |
-| T-11／P2 | T-06、T-03。 | 負責 address_pool.py。在指定輸入範圍建立全域唯一鍵及獨立 address_occurrences 關聯，記錄固定代表表示與排程家族。 | unique_addresses 與 address_occurrences；不以家族／鄰近座標合併識別。TP-12。 |
-| T-12／P2 | T-10、T-11、T-04。 | 負責離線定位與首版 address_state.py。套用有效精確證據、隔離不同結果，來源變更時重新驗證來源定位。 | 首版已定位／未定位／衝突狀態及定位涵蓋報告。TP-13、TP-10。 |
-| T-13 / P2 | T-12、T-07；不需 TGOS。 | 負責 export.py／packaging.py／package-output。依交易 tx_yyyymm 產生月／類別／格式檔與月 manifest，用原月檔組年度 ZIP，附年度涵蓋 manifest 及公開下載索引；發布驗證由 T-23 負責。 | 首版離線定位月 output 與年度包，保留 null／部分／退化幾何及真實粒度。TP-14、TP-26。 |
-| T-14 / P3 | T-12、T-04；舊 TGOS 規則已知，先用合成結果。 | 負責 tgos.py／address_state.py 的持久查詢／保留結構，沿用 addrCompare 每日／每片 10,000 上限、共用帳號服務日期紀錄與一致狀態。 | 持久 prepared／unknown／cancelled／結果狀態，不讓 agent 各算配額。TP-15、TP-17、TP-10。 |
-| T-15 / P3 | T-14、T-22；操作員在 Git 外使用憑證並確認提交。 | 負責 prepare-tgos 與人工確認／取消，沿用 UTF-8-sig／addrCompare／WGS84 上傳程序。共用配額下先提交保留／manifest，再交付 CSV。 | 一份可核對批次與既有人工清單，不預建未來日期批次。TP-15、TP-16、TP-10。 |
-| T-16 / P3 | T-14；先以既有格式樣本驗證，再處理實際下載完成檔。 | 負責 import-tgos，用 Address 與提交清單一對一對照，不要求回傳 id。保留結果雜湊，拒絕歧義對照／軸／CRS，避免重複匯入。 | 已驗證觀測、公開維護結果紀錄與拒絕／衝突報告。TP-16、TP-17。 |
-| T-17 / P3 | T-16、T-11、T-04、T-13；可先用合成證據。 | 負責 backfill.py 與別名撤銷。子快照重建受影響交易月檔及對應年度包，保留已驗證未變月份雜湊。 | 前後定位筆數、月／年一致新版本，前版可讀。TP-18、TP-10、TP-14、TP-26。 |
-| T-18／P4 | T-12 或 T-16，另需 T-03；只輸出已驗證門牌級證據。 | 負責 address_patch.py 與 patch 結構。輸出 patch 識別、座標／拆解及來源 sidecar；隔離無依據行政區代碼。 | 可審查 address_patch.parquet、metadata 及合成相容樣本。TP-19。 |
-| T-19／P4 | T-18；另在 taiwan-address-data 提交可審查變更，先做樣本測試再發布真實補充。 | 負責地址 repo 補充／基底 manifest、import_lvr_patch.py、materialize_addresses.py。建立固定 legacy_base，不在 Git 重複全量資料；保留 14 欄 roads 結構。 | 獨立補充層、重複匯入檢查及固定相容 roads／road.csv。TP-19、TP-21。 |
-| T-20／P4 | T-19；cloud 回歸用模擬縣市來源，真實提交需已驗證輸入與審查。 | 負責地址 repo update_addresses.py、build_road_index.py、monthly-update.yml。先暫存全部選定縣市、保留補充／衝突，再依共同寫入規則列出完整變更。 | 可中斷復原的更新及發布門檻，不提交部分 git add -A／push 結果。TP-20、TP-21。 |
-| T-21 / P5 | 轉換量測需 T-07，離線輸出需 T-12／T-13；全量先通過實測資源檢查。 | 負責本機／cloud／GitHub Actions 路徑量測。分別量測輸入、索引、定位、月輸出、年度打包與同時暫存，再安排可行技術路徑。 | 時間／RSS／磁碟／暫存／傳送／輸出報告及範圍核對。資源不足提出具體結果，不問抽象平台 OQ。TP-22、TP-26。 |
-| T-22 / P2 | T-04；保存平台已確定為 GitHub 公開，樣本傳送可模擬。 | 負責 GitHub Release 取得／上傳核對、有版本下載／狀態 manifest 及預期 parent 的 Git 指標提交。驗證上傳中斷、競爭／過時寫入及憑證界線。 | 可在真實 TGOS 前使用的公開快照交接與前版復原。TP-23。 |
-| T-23 / P2 | T-13、T-08、T-22、T-09；發布回補版時需 T-17，宣稱全歷史另需 T-21。 | 負責公開 Release 驗證／工作流程。更新索引前核對月／類別／格式下載、年度原檔、manifest 範圍／粒度／筆數／雜湊及可接續狀態。 | 依已確定 GitHub 方案的公開月／年候選及持久索引，TGOS 可尚未完成。TP-24、TP-26。 |
-| T-24／P5 | T-01 後即可開始文件；各路徑依自己的前置／測試驗收，不設全域 GAL 門檻。 | 負責 README、docs/{data-contract,downloads,cloud-runbook,tgos-runbook,address-patch,release-runbook}.md、完整資料處理流程圖及 task 結果範本。文件只記已實作路徑與待辦，保留草稿／legacy 參考。 | 全新 cloud agent 可依可取得的 manifest 與 task 結果接續，不依賴本機 .dev。TP-25。 |
+勾選表示該 task 已實作並通過本階段驗證，不表示 PR 已合併。T-01～T-04 的證據見 [P0 紀錄](../p0-foundations.md)。尚未完成的 tasks 保留未勾選。
+
+- [x] **T-01／P0**
+  - 前置條件與適用門檻：無 task 前置，只用樣本。
+  - 工作與檔案責任：安裝／環境試作與 cloud 指引。負責 AGENTS.md、pyproject.toml、uv.lock、scripts/setup.sh、tests/fixtures 及 CI 安裝；保留既有函式／測試。
+  - 交付／test points：固定 Linux 安裝、合成 CSV／ZIP／地址樣本、無憑證測試命令。TP-01。
+
+- [x] **T-02／P0**
+  - 前置條件與適用門檻：無 task 前置；盤點允許使用的本機／公開來源，不上傳資料。
+  - 工作與檔案責任：負責 data/sources/raw_manifest.json 與 address_source.json。列出 58 批來源、成員、雜湊、已知空批次與固定地址來源；無證據的 URI／權利明確留待確認。
+  - 交付／test points：機器可驗證來源清單與條件／來源紀錄，不編造雲端 URI。TP-02。
+
+- [x] **T-03／P0**
+  - 前置條件與適用門檻：T-01；T-02 可用時核對來源語意，未證明識別仍採觀測層。
+  - 工作與檔案責任：負責 schemas/、config/pipeline.example.toml、address.py／tx_date.py 的版本規則。定義觀測／成員／排除契約、record grain、來源識別／修訂政策及 v2 鍵。
+  - 交付／test points：有版本的結構與碰撞樣本，未知正式識別維持可空值。TP-03、TP-04。
+
+- [x] **T-04／P0**
+  - 前置條件與適用門檻：T-01、T-03；只用本機或一次性單寫入工作環境。
+  - 工作與檔案責任：負責 snapshots.py 與 manifest 驗證。建立不可變暫存、雜湊／筆數核對及已提交指標讀取；遠端平台／CAS 介面由 T-22 負責。
+  - 交付／test points：轉換與地址狀態共用的本機快照提交／復原功能。TP-10。
+
+- [ ] **T-05／P1**
+  - 前置條件與適用門檻：T-01、T-02、T-03；先用樣本，真實來源需可取得且允許使用。
+  - 工作與檔案責任：負責 ingest.py 及 ingest 命令。用逐列／Arrow 批次替換 ZIP 成員清單；保留來源／成員／列關聯及未知欄位。
+  - 交付／test points：指定範圍的型別化輸入分割區與筆數／結構診斷。TP-02、TP-05。
+
+- [ ] **T-06／P1**
+  - 前置條件與適用門檻：T-05、T-03。
+  - 工作與檔案責任：負責 normalize.py 與補字／日期／地址規則整合。觀測金額與展開成員分開，保留排除項及未解證據。
+  - 交付／test points：observations／address_components／exclusions／diagnostics，來源關聯穩定。TP-03、TP-04、TP-06。
+
+- [ ] **T-07／P1**
+  - 前置條件與適用門檻：T-06、T-04。
+  - 工作與檔案責任：負責 export-converted 與型別化階段驗證。觀測／成員／排除／診斷 Parquet、品質／manifest 存於 data/work/converted/，用於離線處理前的內部工作。
+  - 交付／test points：已驗證轉換階段快照，不稱第一版使用者 output。TP-07、TP-10。
+
+- [ ] **T-08／P2**
+  - 前置條件與適用門檻：T-13；GitHub 公開已確定。
+  - 工作與檔案責任：負責 measure-output 與 Git／Release 檔案安排。量測月檔、年度包、維護狀態、工作／暫存，考慮小型 bootstrap 進 Git 時另量測歷史成長。
+  - 交付／test points：size_report.json、公開 Release 附件清單及明確小型 Git 檔案。TP-08、TP-26。
+
+- [ ] **T-09／P2**
+  - 前置條件與適用門檻：T-13、T-08、T-22；樣本使用模擬或公開合成快照。
+  - 工作與檔案責任：負責 fetch-output／verify 及全新 cloud 離線交接整合。取得公開固定 manifest、離線 output、未定位池、來源關聯及狀態；驗證雜湊／版本、離線記錄對應、未定位選取及必要保留狀態，不重跑 raw。P2 驗收不執行 TGOS／回補，該整合等 P3 tasks 驗收後進行。
+  - 交付／test points：可重跑離線輸出使用端，缺所需欄位時明確要求 raw 重建。TP-09、TP-13、TP-25。
+
+- [ ] **T-10／P2**
+  - 前置條件與適用門檻：T-03、T-02；使用固定地址版或合成來源，真實索引先確認可用資源。
+  - 工作與檔案責任：負責 offline_lookup.py 與行政區來源驗證。從固定 CSV commit 建立型別索引，保留代碼字串、來源類別及重複／衝突觀測。
+  - 交付／test points：固定索引與建置資源報告，不取得完整 Git 歷史。TP-11。
+
+- [ ] **T-11／P2**
+  - 前置條件與適用門檻：T-06、T-03。
+  - 工作與檔案責任：負責 address_pool.py。在指定輸入範圍建立全域唯一鍵及獨立 address_occurrences 關聯，記錄固定代表表示與排程家族。
+  - 交付／test points：unique_addresses 與 address_occurrences；不以家族／鄰近座標合併識別。TP-12。
+
+- [ ] **T-12／P2**
+  - 前置條件與適用門檻：T-10、T-11、T-04。
+  - 工作與檔案責任：負責離線定位與首版 address_state.py。套用有效精確證據、隔離不同結果，來源變更時重新驗證來源定位。
+  - 交付／test points：首版已定位／未定位／衝突狀態及定位涵蓋報告。TP-13、TP-10。
+
+- [ ] **T-13／P2**
+  - 前置條件與適用門檻：T-12、T-07；不需 TGOS。
+  - 工作與檔案責任：負責 export.py／packaging.py／package-output。依交易 tx_yyyymm 產生月／類別／格式檔與月 manifest，用原月檔組年度 ZIP，附年度涵蓋 manifest 及公開下載索引；發布驗證由 T-23 負責。
+  - 交付／test points：首版離線定位月 output 與年度包，保留 null／部分／退化幾何及真實粒度。TP-14、TP-26。
+
+- [ ] **T-14／P3**
+  - 前置條件與適用門檻：T-12、T-04；舊 TGOS 規則已知，先用合成結果。
+  - 工作與檔案責任：負責 tgos.py／address_state.py 的持久查詢／保留結構，沿用 addrCompare 每日／每片 10,000 上限、共用帳號服務日期紀錄與一致狀態。
+  - 交付／test points：持久 prepared／unknown／cancelled／結果狀態，不讓 agent 各算配額。TP-15、TP-17、TP-10。
+
+- [ ] **T-15／P3**
+  - 前置條件與適用門檻：T-14、T-22；操作員在 Git 外使用憑證並確認提交。
+  - 工作與檔案責任：負責 prepare-tgos 與人工確認／取消，沿用 UTF-8-sig／addrCompare／WGS84 上傳程序。共用配額下先提交保留／manifest，再交付 CSV。
+  - 交付／test points：一份可核對批次與既有人工清單，不預建未來日期批次。TP-15、TP-16、TP-10。
+
+- [ ] **T-16／P3**
+  - 前置條件與適用門檻：T-14；先以既有格式樣本驗證，再處理實際下載完成檔。
+  - 工作與檔案責任：負責 import-tgos，用 Address 與提交清單一對一對照，不要求回傳 id。保留結果雜湊，拒絕歧義對照／軸／CRS，避免重複匯入。
+  - 交付／test points：已驗證觀測、公開維護結果紀錄與拒絕／衝突報告。TP-16、TP-17。
+
+- [ ] **T-17／P3**
+  - 前置條件與適用門檻：T-16、T-11、T-04、T-13；可先用合成證據。
+  - 工作與檔案責任：負責 backfill.py 與別名撤銷。子快照重建受影響交易月檔及對應年度包，保留已驗證未變月份雜湊。
+  - 交付／test points：前後定位筆數、月／年一致新版本，前版可讀。TP-18、TP-10、TP-14、TP-26。
+
+- [ ] **T-18／P4**
+  - 前置條件與適用門檻：T-12 或 T-16，另需 T-03；只輸出已驗證門牌級證據。
+  - 工作與檔案責任：負責 address_patch.py 與 patch 結構。輸出 patch 識別、座標／拆解及來源 sidecar；隔離無依據行政區代碼。
+  - 交付／test points：可審查 address_patch.parquet、metadata 及合成相容樣本。TP-19。
+
+- [ ] **T-19／P4**
+  - 前置條件與適用門檻：T-18；另在 taiwan-address-data 提交可審查變更，先做樣本測試再發布真實補充。
+  - 工作與檔案責任：負責地址 repo 補充／基底 manifest、import_lvr_patch.py、materialize_addresses.py。建立固定 legacy_base，不在 Git 重複全量資料；保留 14 欄 roads 結構。
+  - 交付／test points：獨立補充層、重複匯入檢查及固定相容 roads／road.csv。TP-19、TP-21。
+
+- [ ] **T-20／P4**
+  - 前置條件與適用門檻：T-19；cloud 回歸用模擬縣市來源，真實提交需已驗證輸入與審查。
+  - 工作與檔案責任：負責地址 repo update_addresses.py、build_road_index.py、monthly-update.yml。先暫存全部選定縣市、保留補充／衝突，再依共同寫入規則列出完整變更。
+  - 交付／test points：可中斷復原的更新及發布門檻，不提交部分 git add -A／push 結果。TP-20、TP-21。
+
+- [ ] **T-21／P5**
+  - 前置條件與適用門檻：轉換量測需 T-07，離線輸出需 T-12／T-13；全量先通過實測資源檢查。
+  - 工作與檔案責任：負責本機／cloud／GitHub Actions 路徑量測。分別量測輸入、索引、定位、月輸出、年度打包與同時暫存，再安排可行技術路徑。
+  - 交付／test points：時間／RSS／磁碟／暫存／傳送／輸出報告及範圍核對。資源不足提出具體結果，不問抽象平台 OQ。TP-22、TP-26。
+
+- [ ] **T-22／P2**
+  - 前置條件與適用門檻：T-04；保存平台已確定為 GitHub 公開，樣本傳送可模擬。
+  - 工作與檔案責任：負責 GitHub Release 取得／上傳核對、有版本下載／狀態 manifest 及預期 parent 的 Git 指標提交。驗證上傳中斷、競爭／過時寫入及憑證界線。
+  - 交付／test points：可在真實 TGOS 前使用的公開快照交接與前版復原。TP-23。
+
+- [ ] **T-23／P2**
+  - 前置條件與適用門檻：T-13、T-08、T-22、T-09；發布回補版時需 T-17，宣稱全歷史另需 T-21。
+  - 工作與檔案責任：負責公開 Release 驗證／工作流程。更新索引前核對月／類別／格式下載、年度原檔、manifest 範圍／粒度／筆數／雜湊及可接續狀態。
+  - 交付／test points：依已確定 GitHub 方案的公開月／年候選及持久索引，TGOS 可尚未完成。TP-24、TP-26。
+
+- [ ] **T-24／P5**
+  - 前置條件與適用門檻：T-01 後即可開始文件；各路徑依自己的前置／測試驗收，不設全域 GAL 門檻。
+  - 工作與檔案責任：負責 README、docs/{data-contract,downloads,cloud-runbook,tgos-runbook,address-patch,release-runbook}.md、完整資料處理流程圖及 task 結果範本。文件只記已實作路徑與待辦，保留草稿／legacy 參考。
+  - 交付／test points：全新 cloud agent 可依可取得的 manifest 與 task 結果接續，不依賴本機 .dev。TP-25。
 
 ## 依據與來源
 
