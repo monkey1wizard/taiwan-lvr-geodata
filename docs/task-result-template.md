@@ -113,7 +113,7 @@ T-14 的持久 TGOS 狀態與配額規則已通過合成整合驗收。T-15～T-
 | `python -m lvr_pipeline build-offline-index … --run-id p3-address-02887978` | pass | 599,884,131 bytes；310.48 秒；RSS 峰值 409,104,384 bytes |
 | `python -m lvr_pipeline build-address-pool … --run-id p3-115q1-pool-02887978` | pass | 56,022 個地址鍵 |
 | `python -m lvr_pipeline resolve-offline … --run-id p3-115q1-offline-02887978` | pass | 48,882 個 located；4,871 個可查候選 |
-| `python -m pytest -q` | pass，218 tests | Windows 165.17 秒；全部測試使用合成輸入；Linux 待 GitHub Actions |
+| `python -m pytest -q` | pass，218 tests | Windows 165.17 秒；GitHub Ubuntu 83.99 秒；全部測試使用合成輸入 |
 | `prepare-tgos` 真實批次 | not-run | 尚未取得服務日期及共用帳號同日外部已用筆數，不能推定為 0 |
 | `import-tgos` 真實回傳 | not-run | 尚無人工下載的真實回傳檔 |
 | `backfill-output` 真實輸出 | not-run | 合成測試證明只改受影響月份並保留前版；真實匯入是前置條件 |

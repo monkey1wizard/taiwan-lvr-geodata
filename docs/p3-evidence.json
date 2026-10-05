@@ -44,7 +44,13 @@
     "failed": 0,
     "elapsed_seconds": 165.17,
     "p3_synthetic_cases": 7,
-    "linux_status": "pending_github_actions"
+    "linux": {
+      "status": "passed",
+      "passed": 218,
+      "elapsed_seconds": 83.99,
+      "run_id": 37307639333,
+      "url": "https://github.com/monkey1wizard/taiwan-lvr-geodata/actions/runs/37307639333"
+    }
   },
   "tgos_operation": {
     "eligible_candidates": 4871,
