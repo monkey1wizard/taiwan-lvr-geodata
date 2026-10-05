@@ -179,6 +179,12 @@ def test_resume_same_draft_skips_only_identical_assets(tmp_path, monkeypatch):
         calls.append(args)
         if "--slurp" in args:
             return json.dumps([[release]])
+        if args[:2] == ("release", "view"):
+            return json.dumps(
+                {
+                    "apiUrl": "https://api.github.com/repos/monkey1wizard/taiwan-lvr-geodata/releases/1"
+                }
+            )
         if args[0] == "api":
             return json.dumps(release)
         return ""
@@ -230,3 +236,12 @@ def test_pointer_interleaved_local_commit_cannot_advance_remote(tmp_path, monkey
     with pytest.raises(ValueError, match="Stale local parent"):
         commit_pointer(pointer, tmp_path, transport=Verified())
     assert not any(c[0] == "push" for c in calls)
+
+
+def test_unrelated_producer_cannot_be_published_on_expected_main(output, tmp_path):
+    release_candidate(output)
+    parent = "f" * 40
+    transport = FakeRelease(parent)
+    with pytest.raises(ValueError, match="not an ancestor"):
+        publish_release(output, parent, tmp_path, transport=transport)
+    assert not transport.calls

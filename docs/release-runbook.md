@@ -4,7 +4,7 @@ P2 使用 GitHub 公開 Release 附件。程式、來源描述及小型版本指
 
 發布程式要求 repo 已啟用 [Release immutability](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases)。資料使用唯一版本標籤，先建立 draft、上傳完整附件，再從 GitHub 下載核對全部附件，最後公開成不可變 Release。缺憑證、傳送失敗或 hash 不一致時不更新 Git 指標。
 
-先在正式 checkout 的 main 提交及推送 producer 程式，再用該 commit 建置真實資料。若 producer 有未提交原始程式碼，程式拒絕發布。以目前遠端 main commit 設定預期 parent。
+先在正式 checkout 的 main 提交及推送 producer 程式，再用該 commit 建置真實資料。若 producer 有未提交原始程式碼，程式拒絕發布。以目前遠端 main commit 設定預期 parent。發布工具可包含後續修正，但資料 producer commit 必須是預期 parent 的祖先。Release tag 仍固定在資料 producer commit。
 
 ```bash
 uv run --locked --python 3.13.16 python -m lvr_pipeline publish-output --input data/output/SNAPSHOT_ID --expected-parent PRODUCER_COMMIT --checkout . --receipt data/work/release-receipt.json

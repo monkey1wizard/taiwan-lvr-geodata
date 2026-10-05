@@ -149,6 +149,15 @@ class GitHubRelease:
             self._gh("api", f"repos/{self.repository}/immutable-releases")
         )["enabled"]
 
+    def _release(self, tag):
+        # GitHub's releases/tags endpoint intentionally excludes drafts.
+        location = json.loads(
+            self._gh(
+                "release", "view", tag, "--repo", self.repository, "--json", "apiUrl"
+            )
+        )["apiUrl"]
+        return json.loads(self._gh("api", location))
+
     def create(self, tag, parent, notes_path):
         pages = json.loads(
             self._gh(
@@ -185,9 +194,7 @@ class GitHubRelease:
         self._gh("release", "upload", tag, str(path), "--repo", self.repository)
 
     def upload_many(self, tag, paths):
-        release = json.loads(
-            self._gh("api", f"repos/{self.repository}/releases/tags/{tag}")
-        )
+        release = self._release(tag)
         existing = {a["name"]: a for a in release["assets"]}
         pending = []
         for path in paths:
@@ -230,9 +237,7 @@ class GitHubRelease:
             )
 
     def verify_assets(self, tag, expected):
-        release = json.loads(
-            self._gh("api", f"repos/{self.repository}/releases/tags/{tag}")
-        )
+        release = self._release(tag)
         if sorted(a["name"] for a in release["assets"]) != sorted(
             name for name, _, _ in expected
         ):
@@ -263,9 +268,7 @@ class GitHubRelease:
             "--draft=false",
             "--latest=false",
         )
-        release = json.loads(
-            self._gh("api", f"repos/{self.repository}/releases/tags/{tag}")
-        )
+        release = self._release(tag)
         if not release.get("immutable"):
             raise ValueError(
                 "Published release is not immutable; index was not advanced"
@@ -278,9 +281,7 @@ class GitHubRelease:
         expected_url = f"https://github.com/{self.repository}/releases/download/{tag}/manifest.json"
         if pointer["manifest_url"] != expected_url:
             raise ValueError("Unexpected receipt manifest location")
-        release = json.loads(
-            self._gh("api", f"repos/{self.repository}/releases/tags/{tag}")
-        )
+        release = self._release(tag)
         if release["draft"] or not release.get("immutable"):
             raise ValueError("Receipt does not refer to a published immutable Release")
         with tempfile.TemporaryDirectory(prefix="receipt-verify-") as folder:
@@ -326,8 +327,22 @@ def publish_release(
         )
     if manifest["producer_config"]["working_tree_source_dirty"]:
         raise ValueError("Commit producer code before public release")
-    if manifest["bindings"]["code_commit"] != expected_parent:
-        raise ValueError("Release parent differs from producer code commit")
+    producer = manifest["bindings"]["code_commit"]
+    if producer != expected_parent:
+        check = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(checkout),
+                "merge-base",
+                "--is-ancestor",
+                producer,
+                expected_parent,
+            ],
+            capture_output=True,
+        )
+        if check.returncode:
+            raise ValueError("Producer is not an ancestor of the expected main parent")
     if len(manifest["assets"]) + 1 > 1000:
         raise ValueError("Release exceeds 1000 asset budget; scope partition required")
     expected = [(a["asset_name"], a["sha256"], a["bytes"]) for a in manifest["assets"]]
@@ -344,7 +359,7 @@ def publish_release(
             f"Offline source observations from {', '.join(manifest['source_batches'])}. Transaction-month downloads and byte-identical annual packages. Coordinate coverage is declared in NOTICE.json. Unlocated observations are retained. TGOS has not started.\n",
             encoding="utf-8",
         )
-        transport.create(tag, expected_parent, notes)
+        transport.create(tag, producer, notes)
     upload_paths = [output / item["path"] for item in manifest["assets"]] + [
         output / "manifest.json"
     ]
