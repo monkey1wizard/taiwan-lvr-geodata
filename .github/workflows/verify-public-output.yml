@@ -1,0 +1,32 @@
+name: Verify public offline handoff
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_url:
+        required: true
+        type: string
+      manifest_sha256:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.23'
+      - name: Install and verify with synthetic inputs
+        run: bash scripts/setup.sh
+      - name: Fetch public state and reproduce month files without raw
+        env:
+          MANIFEST_URL: ${{ inputs.manifest_url }}
+          MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
+        run: uv run --locked --python 3.13.16 python -m scripts.verify_public_snapshot --manifest-url "$MANIFEST_URL" --manifest-sha256 "$MANIFEST_SHA256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: public-verification
+          path: data/downloads/public-verification/public-verification.json

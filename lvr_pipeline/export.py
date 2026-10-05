@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import base64
 from pathlib import Path
 import struct
 
@@ -79,7 +80,7 @@ def read_wkb(data):
     raise ValueError("Invalid output WKB geometry")
 
 
-def output_schema():
+def output_schema(geometry_types=None):
     from pyproj import CRS
 
     fields = list(SCHEMAS["observation"]) + [
@@ -96,7 +97,7 @@ def output_schema():
         "columns": {
             "geometry": {
                 "encoding": "WKB",
-                "geometry_types": ["Point", "MultiPoint", "Polygon"],
+                "geometry_types": geometry_types or [],
                 "crs": CRS.from_user_input("OGC:CRS84").to_json_dict(),
                 "edges": "planar",
             }
@@ -141,6 +142,7 @@ class MonthWriter:
         self.ndjson = self.paths["ndjson"].open("w", encoding="utf-8", newline="\n")
         self.geojson.write('{"type":"FeatureCollection","features":[\n')
         self.buffer = []
+        self.geometry_types = set()
         self.buffer_bytes = 0
         self.count = 0
         self.stats = {
@@ -153,6 +155,8 @@ class MonthWriter:
 
     def add(self, row, points, component_count, located_count):
         shape, approximation = geometry(points, row["category"])
+        if shape:
+            self.geometry_types.add(shape["type"])
         value = {
             **row,
             "location_status": "none"
@@ -196,6 +200,15 @@ class MonthWriter:
 
     def close(self):
         self.flush()
+        final_schema = output_schema(sorted(self.geometry_types))
+        self.parquet.add_key_value_metadata(
+            {
+                **final_schema.metadata,
+                b"ARROW:schema": base64.b64encode(
+                    final_schema.serialize().to_pybytes()
+                ),
+            }
+        )
         self.parquet.close()
         self.geojson.write("\n]}\n")
         self.geojson.close()
@@ -242,8 +255,14 @@ def export_month(db, month, category, directory):
 
 def verify_month(paths):
     parquet = pq.ParquetFile(paths["geoparquet"])
-    if not parquet.schema_arrow.equals(output_schema(), check_metadata=True):
+    declared_types = json.loads(parquet.schema_arrow.metadata[b"geo"])["columns"][
+        "geometry"
+    ]["geometry_types"]
+    if not parquet.schema_arrow.equals(
+        output_schema(declared_types), check_metadata=True
+    ):
         raise ValueError("GeoParquet schema/CRS metadata mismatch")
+    observed_types = set()
     stats = {
         "rows": 0,
         "null_geometry": 0,
@@ -267,6 +286,8 @@ def verify_month(paths):
                     ):
                         raise ValueError("Output format parity mismatch")
                     shape = expected["geometry"]
+                    if shape:
+                        observed_types.add(shape["type"])
                     n = row["address_component_count"]
                     located = row["located_component_count"]
                     if not 0 <= located <= n or n < 1:
@@ -303,4 +324,6 @@ def verify_month(paths):
             raise ValueError("NDJSON has extra records")
         if geo.read() != ("\n]}\n" if not stats["rows"] else "]}\n"):
             raise ValueError("GeoJSON footer/row count mismatch")
+    if sorted(observed_types) != declared_types:
+        raise ValueError("GeoParquet geometry type metadata differs from actual rows")
     return stats

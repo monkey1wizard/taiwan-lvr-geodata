@@ -10,10 +10,12 @@
   "bytes": 124662109,
   "sha256": "7212058161f10a13d52ee46e74155526ca4ebf182b151562ba0e533f882a89ab",
   "county_code": "63",
-  "administrative_code_profile": "MOI municipality eight-digit town code to DGBAS seven-digit code, declared by pinned updater",
+  "administrative_code_profile": "MOI municipality eight-digit town code to DGBAS seven-digit code, declared by the local updater and validated against pinned administrative tables",
   "crs": "EPSG:3826",
   "coordinate_columns": ["橫座標", "縱座標"],
-  "crs_evidence": "Pinned taiwan-address-data updater declares EPSG:3826 for this dataset. Taipei government control-point documentation identifies the city's TWD97 plane-coordinate system. This profile is explicit; numeric ranges never select CRS or swap axes.",
+  "crs_evidence": "Local taiwan-address-data scripts/update_addresses.py declares EPSG:3826 for this dataset. That script is not tracked by the pinned Git commit. Its inspected SHA-256 is recorded separately. Taipei government control-point documentation identifies the city's TWD97 plane-coordinate system. This profile is explicit; numeric ranges never select CRS or swap axes.",
+  "local_updater_sha256": "22989597675004df1d5eac53d296b84c946c6a9e0f1f3a0e859607c02f45bac3",
+  "crs_reference_url": "https://www.geomis.gov.taipei/GEOGISSERVER/geogisG.aspx",
   "license": "政府資料開放授權條款第1版",
   "license_url": "https://data.gov.tw/license"
 }
