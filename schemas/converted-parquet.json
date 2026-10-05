@@ -1,0 +1,349 @@
+{
+  "contract_version": "1.0",
+  "representation": "Arrow schemas; JSON text for original properties",
+  "datasets": {
+    "ingest-record": {
+      "fields": [
+        {
+          "name": "raw_record_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "input_sha256",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "src_batch",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "member_path",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "source_row_number",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "source_line_end",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "raw_fields_json",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "raw_values_json",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "header_json",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "row_status",
+          "type": "string",
+          "nullable": false
+        }
+      ],
+      "metadata": {
+        "lvr.dataset": "ingest-record",
+        "lvr.schema_version": "1.0"
+      }
+    },
+    "observation": {
+      "fields": [
+        {
+          "name": "raw_record_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "schema_version",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "src_batch",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "source_serial",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "input_sha256",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "member_path",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "source_row_number",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "record_grain",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "transaction_key",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "raw_address",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "tx_date_raw",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "tx_yyyymm",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "run_cutoff_yyyymm",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "amount_minor",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "area_m2_decimal",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "props_json",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "parse_status",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "currency",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "amount_scale",
+          "type": "int64",
+          "nullable": false
+        }
+      ],
+      "metadata": {
+        "lvr.dataset": "observation",
+        "lvr.schema_version": "1.0"
+      }
+    },
+    "address-component": {
+      "fields": [
+        {
+          "name": "raw_record_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "component_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "ordinal",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "normalized_address",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "key_version",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "building_key",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "legacy_building_key",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "expansion_status",
+          "type": "string",
+          "nullable": false
+        }
+      ],
+      "metadata": {
+        "lvr.dataset": "address-component",
+        "lvr.schema_version": "1.0"
+      }
+    },
+    "exclusion": {
+      "fields": [
+        {
+          "name": "raw_record_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "source_ref",
+          "type": "string",
+          "nullable": false
+        }
+      ],
+      "metadata": {
+        "lvr.dataset": "exclusion",
+        "lvr.schema_version": "1.0"
+      }
+    },
+    "diagnostic": {
+      "fields": [
+        {
+          "name": "raw_record_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "detail",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "source_ref",
+          "type": "string",
+          "nullable": false
+        }
+      ],
+      "metadata": {
+        "lvr.dataset": "diagnostic",
+        "lvr.schema_version": "1.0"
+      }
+    },
+    "disposition": {
+      "fields": [
+        {
+          "name": "raw_record_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "input_sha256",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "src_batch",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "member_path",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "source_row_number",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "source_line_end",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "raw_fields_json",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "raw_values_json",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "header_json",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "row_status",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "outcome",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "nullable": false
+        }
+      ],
+      "metadata": {
+        "lvr.dataset": "disposition",
+        "lvr.schema_version": "1.0"
+      }
+    }
+  }
+}

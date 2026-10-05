@@ -2,18 +2,18 @@
 
 日期：2026-10-05，Asia/Taipei。基準 commit：`9fec3244785ac48c295e4b69be82f1011789851f`。
 
-本次實作位於工作副本，已 commit 並 push 至 codex/phase-0-foundations，見[草稿 PR #1](https://github.com/monkey1wizard/taiwan-lvr-geodata/pull/1)。`C:/Code` 內的原 repo 仍維持上述基準，沒有修改。寫入權限請求未取得授權，因此使用可寫入工作副本完成雲端交付。PR 尚未合併。
+P0 程式、固定環境、來源清單、測試、文件與提交紀錄已同步至正式本機目錄 `C:/Code/taiwan-lvr-geodata`，目前正式分支為 `main`。後續本機修改與驗證在此目錄進行。先前工作副本只保留為參考，不再作為正式作業目錄。[PR #1](https://github.com/monkey1wizard/taiwan-lvr-geodata/pull/1) 已合併，連結僅作歷史證據。
 
 ## 任務結果
 
 | Task | 已實作與實測 | 尚待驗收 |
 | --- | --- | --- |
-| T-01 | AGENTS、固定 Python／uv／套件、Linux setup、無憑證 CI、合成三類別 ZIP／空批次／14 欄地址樣本。Windows 與 GitHub Ubuntu 的固定 Python 3.13.16 環境均通過 145 個測試。 | TP-01 已在 GitHub Ubuntu 驗證，尚待 PR 審查／合併。 |
+| T-01 | AGENTS、固定 Python／uv／套件、Linux setup、無憑證 CI、合成三類別 ZIP／空批次／14 欄地址樣本。Windows 與 GitHub Ubuntu 的固定 Python 3.13.16 環境均通過 145 個測試。 | TP-01 已在 GitHub Ubuntu 驗證，已整合至 main。 |
 | T-02 | 58 個 raw ZIP 的大小、SHA-256、CRC、成員、交易欄名及類別／縣市字首清單。固定地址 commit 的 27,175 個路檔、行政區檔及 road.csv 雜湊。TP-02 的缺失、損壞、雜湊變動與已知空批次樣本通過。 | 直接下載 URI、原始取得時間及當期上游授權證據未確認，欄位明確保留待確認。沒有上傳 raw 或地址資料列。 |
 | T-03 | 四種版本化 JSON Schema、來源觀測／成員識別、關聯檢查、固定日期截止與嚴格曆日驗證、v2 地址鍵。TP-03／TP-04 合成測試通過。 | 尚未證明來源交易識別或修訂順序，transaction_key 固定空值，不做合併。全歷史正規化驗收屬 P1／P5。 |
 | T-04 | 本機不可變版本、雜湊／筆數／JSONL 結構與關聯驗證、parent 保護、獨占發布鎖、指標切換及中斷重試。TP-10 本機測試通過。 | 遠端 CAS／Release 屬 T-22。Linux 樣本測試已通過。網路檔案系統／電源中斷耐久性未驗證。 |
 
-P0 實作與本階段測試已完成。GitHub Ubuntu 的[固定安裝與合成測試](https://github.com/monkey1wizard/taiwan-lvr-geodata/actions/runs/37259318617)通過，程式版本為 ca0297578ef623795845f89c8d17a99ad69274f0。PR 保留為草稿，供審查後合併；後續真實資料與資源驗收仍依各 task 執行。
+P0 實作與本階段測試已完成。GitHub Ubuntu 的[固定安裝與合成測試](https://github.com/monkey1wizard/taiwan-lvr-geodata/actions/runs/37259318617)通過，程式版本為 ca0297578ef623795845f89c8d17a99ad69274f0。P0 已整合至 main。後續真實資料與資源驗收仍依各 task 執行。
 
 ## 可執行命令
 

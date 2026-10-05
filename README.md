@@ -2,13 +2,19 @@
 
 本專案保留台灣實價登錄資料的解析與地址處理程式，作為新版地理資料管線的起點。
 
-P0 基礎程式及固定套件環境已實作，Windows 與 GitHub Ubuntu 均通過 145 個測試。已實作內容、CI 證據與限制見 [P0 紀錄](docs/p0-foundations.md)。變更由草稿 PR #1 提供，尚未合併。
+P0 基礎程式及固定套件環境已實作，Windows 與 GitHub Ubuntu 均通過 145 個測試。已實作內容、CI 證據與限制見 [P0 紀錄](docs/p0-foundations.md)。P0 已整合至 main。本機正式作業目錄為 `C:/Code/taiwan-lvr-geodata`，P0 檔案已完整同步。
+
+P1 已在正式目錄實作逐批轉換命令與內部 Parquet 快照。Windows 與 GitHub Ubuntu 各 178 個測試，以及真實 `115q1` 批次已通過驗證，詳見 [P1 操作與證據](docs/p1-conversion.md)。P1 已直接整合至 main，先前 PR #2 不再作為交付流程。
 
 新版方案見[完整企劃草案](docs/drafts/taiwan-lvr-geodata-完整企劃.md)，內含六個 phases、24 個 tasks 與 26 個 test points，可直接作為 cloud agent 的工作依據。修訂後的執行設計已通過獨立審查。各 task 依自己的前置條件與驗收執行，不要求完整 GAL 流程。
 
 P1 建立內部 Parse／Normalize 階段快照。P2 完成離線地址處理後，先公開交付 output，後續 TGOS 再回補。下載以交易月份 `tx_yyyymm` 為最小時間單位，保留 `YYYYMM_category` 檔名，另提供依格式打包的年度 ZIP。使用者可只下載需要的月份／類別／格式，也可下載整年。
 
-保存方向已確定為 GitHub 公開，實測大小後安排小型固定檔案進 Git、一般月輸出／年度包及維護狀態進 Releases。cloud agent 可從已驗證離線快照接續。TGOS 沿用舊版 addrCompare 人工批次，每日／每片最多 10,000 筆、WGS84。P0 已提供基礎契約與本機快照。新版逐批轉換、地址池、TGOS、GIS 與月／年打包仍未實作或量測。
+保存方向已確定為 GitHub 公開，實測大小後安排小型固定檔案進 Git、一般月輸出／年度包及維護狀態進 Releases。cloud agent 可從已驗證離線快照接續。TGOS 沿用舊版 addrCompare 人工批次，每日／每片最多 10,000 筆、WGS84。P0／P1 已提供契約、本機快照與逐批轉換。地址池、TGOS、GIS 與月／年打包仍待實作及量測。
+
+## 本機開發與 Git
+
+正式目錄為 `C:/Code/taiwan-lvr-geodata`，在 `main` 修改、測試及 commit，再直接 push 至 `origin/main`。本機與遠端 main 保持同步。後續工作不另建工作副本、階段分支或 PR。GitHub Actions 用於 Linux 驗證。
 
 ## 目前內容
 
@@ -17,11 +23,24 @@ P1 建立內部 Parse／Normalize 階段快照。P2 完成離線地址處理後�
 - `lvr_pipeline/address.py`：地址解析、正規化與 `building_key()`。
 - `lvr_pipeline/garbled.py`、`garbled_resolve.py`：人工缺字補正與路名候選處理。
 - `lvr_pipeline/tx_date.py`：民國日期轉交易年月。
-- `tests/`：上述功能的六個既有測試檔。
+- `lvr_pipeline/ingest.py`、`normalize.py`、`converted.py`：P1 的逐批解析、來源觀測正規化及內部轉換快照。
+- `lvr_pipeline/parquet_io.py`、`snapshots.py`：型別、筆數、雜湊、關聯與提交復原檢查。
+- `tests/`：既有解析／補字測試，以及 P0／P1 的合成驗收測試。
 - `data/registry/garbled_override.csv`：既有人工補字規則。
 - `data/reference/`：路名參考資料與來源紀錄。
 
-這些程式沿用舊版 CSV 工作格式。保留程式碼不代表它們已符合新版企劃。
+`0_parse_raw` 與 `1_normalize` 保留舊 CSV 格式。新版逐批轉換請使用下方 P1 命令。
+
+## 使用 P1 逐批轉換
+
+將已驗證的 raw 放入 `data/raw/`，從 repo 根目錄執行。資料範圍與 cutoff 必須明確，run ID 使用未占用的名稱。
+
+```powershell
+uv run --locked --python 3.13.16 python -m lvr_pipeline export-converted --batch 115q1 --cutoff 202610 --run-id my-115q1-run
+uv run --locked --python 3.13.16 python -m lvr_pipeline verify-converted --input data/work/converted/snapshots/my-115q1-run
+```
+
+輸出仍是離線定位前的內部資料，不提供使用者 GIS 月／年下載。來源異常、排除記錄與未解地址都保留供核對。逐階段操作、重跑規則與驗收範圍見 [P1 文件](docs/p1-conversion.md)。
 
 ## 執行測試
 

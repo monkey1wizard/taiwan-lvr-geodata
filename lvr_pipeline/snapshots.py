@@ -62,6 +62,9 @@ def _inspect(path: Path, format_name: str, schema: str | None) -> tuple[int | No
         if schema:
             validate_rows(rows, schema)
         return len(rows), rows
+    if schema and format_name == "parquet":
+        from .parquet_io import inspect_parquet
+        return inspect_parquet(path, schema), None
     if schema:
         raise ValueError("P0 row schemas require JSONL")
     if format_name == "csv":
@@ -176,6 +179,7 @@ class SnapshotStore:
         if actual_files - expected_files:
             raise ValueError("Unindexed or interrupted snapshot artifact")
         rows_by_schema = {}
+        parquet_groups = {}
         for item in artifacts:
             path = _artifact_path(directory, item["path"])
             if path.stat().st_size != item["size_bytes"] or sha256_file(path) != item["sha256"]:
@@ -183,8 +187,17 @@ class SnapshotStore:
             count, rows = _inspect(path, item["format"], item["schema"])
             if count != item["row_count"] or isinstance(item["row_count"], bool):
                 raise ValueError("Snapshot row count mismatch")
-            if item["schema"]:
+            if item["schema"] and item["format"] == "parquet":
+                parquet_groups.setdefault(item["schema"], []).append(path)
+            elif item["schema"]:
                 rows_by_schema.setdefault(item["schema"], []).extend(rows)
+        if parquet_groups:
+            if rows_by_schema:
+                raise ValueError("Mixed JSONL/Parquet row contracts are unsupported")
+            from .parquet_io import verify_relations
+            report_path = directory / "quality.json"
+            report = _read_json(report_path) if report_path.exists() else {}
+            verify_relations(parquet_groups, source_scope=report.get("source_sha256"), cutoff=report.get("cutoff"))
         for name, rows in rows_by_schema.items():
             validate_rows(rows, name)
         if "address-component" in rows_by_schema:
