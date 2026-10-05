@@ -1,0 +1,188 @@
+{
+  "date": "2026-10-05",
+  "working_directory": "C:/Code/taiwan-lvr-geodata",
+  "tasks": [
+    "T-05",
+    "T-06",
+    "T-07"
+  ],
+  "windows_tests": {
+    "passed": 177,
+    "command": ".venv/Scripts/python.exe -m pytest -q --basetemp data/work/p1-code-release-tests"
+  },
+  "linux_tests": {
+    "status": "not-run-yet"
+  },
+  "synthetic_memory_measurements": [
+    [
+      {
+        "rows": 1000,
+        "peak_rss_bytes": 86577152,
+        "elapsed_seconds": 0.279001,
+        "max_buffer_rows": 256
+      },
+      {
+        "rows": 120000,
+        "peak_rss_bytes": 118677504,
+        "elapsed_seconds": 6.621618,
+        "max_buffer_rows": 256
+      }
+    ]
+  ],
+  "real_batch": {
+    "batch": "115q1",
+    "snapshot": "data/work/converted/snapshots/p1-115q1-accepted",
+    "bindings": {
+      "code_commit": "f79e0750fd0a0a0abb127f21ad835552cd7c8c6a",
+      "config_sha256": "0e40d84586b632bf3668cb85858783b93060ad63b9918aebcf565961cd079ffa",
+      "input_sha256": [
+        "57fd5bb676c25d993a1a5491b8780c933407fde00472f964d2a98ee6084c4b7e"
+      ],
+      "schema_version": "1.0"
+    },
+    "manifest_sha256": "5308ced7c501584a6aaedfab8c72193f909471fdc82dfd7700b65390dfe111ba",
+    "elapsed_seconds": 192.348167,
+    "process_peak_rss_bytes": 423309312,
+    "internal_only": true,
+    "published": false,
+    "counts": {
+      "input_rows": 129058,
+      "retained_rows": 102743,
+      "excluded_rows": 26314,
+      "failed_rows": 1,
+      "component_rows": 102881,
+      "diagnostic_rows": 9720
+    },
+    "artifact_bytes": 54430623,
+    "artifacts": [
+      {
+        "format": "parquet",
+        "path": "observations/115q1/sales.parquet",
+        "row_count": 53599,
+        "schema": "observation",
+        "sha256": "be13b6073573e16298d316598672b741e4faf7f7555c85c9fb236e84f85b128d",
+        "size_bytes": 8547144
+      },
+      {
+        "format": "parquet",
+        "path": "address_components/115q1/sales.parquet",
+        "row_count": 53679,
+        "schema": "address-component",
+        "sha256": "6a7dc4b1b3771e35c45fbbc506bb9828db51e48ac7c25135aea8e14d17d06f52",
+        "size_bytes": 5513814
+      },
+      {
+        "format": "parquet",
+        "path": "exclusions/115q1/sales.parquet",
+        "row_count": 17792,
+        "schema": "exclusion",
+        "sha256": "5f5275fd1e8327f436cc049c064efe4ac517c51253446bc0b87ed09b8464bcc7",
+        "size_bytes": 701130
+      },
+      {
+        "format": "parquet",
+        "path": "diagnostics/115q1/sales.parquet",
+        "row_count": 3161,
+        "schema": "diagnostic",
+        "sha256": "a568cb8712a0d147f766865f1c52358a192afeb6d5a0392ce6585a758f364832",
+        "size_bytes": 160293
+      },
+      {
+        "format": "parquet",
+        "path": "dispositions/115q1/sales.parquet",
+        "row_count": 71391,
+        "schema": "disposition",
+        "sha256": "8887d53f8ee94a0b473c5ac7b53ce8a0633de8a960c95c1047896ba9821194de",
+        "size_bytes": 14209237
+      },
+      {
+        "format": "parquet",
+        "path": "observations/115q1/presale.parquet",
+        "row_count": 2670,
+        "schema": "observation",
+        "sha256": "48bc92da3a5b8c4ba7582680aef33b2e049edaf220feff1fb1e5a5fc07842d28",
+        "size_bytes": 333283
+      },
+      {
+        "format": "parquet",
+        "path": "address_components/115q1/presale.parquet",
+        "row_count": 2702,
+        "schema": "address-component",
+        "sha256": "c6a2c4f1b628fb2edd3d2258502575b084110d862ece1f1b9501fff9bf17a3fb",
+        "size_bytes": 217005
+      },
+      {
+        "format": "parquet",
+        "path": "exclusions/115q1/presale.parquet",
+        "row_count": 8201,
+        "schema": "exclusion",
+        "sha256": "465bca8cda47b5a032a4bc2f8cf7dd25bb5196b8e846b989cf0f32a1774091d9",
+        "size_bytes": 318527
+      },
+      {
+        "format": "parquet",
+        "path": "diagnostics/115q1/presale.parquet",
+        "row_count": 1715,
+        "schema": "diagnostic",
+        "sha256": "35ed40866b3934fcd84c57c394a22b402ddc917d453d2d94a4fc231666839bf0",
+        "size_bytes": 77878
+      },
+      {
+        "format": "parquet",
+        "path": "dispositions/115q1/presale.parquet",
+        "row_count": 10872,
+        "schema": "disposition",
+        "sha256": "00955770cdd4337a0bf7b2e1ffdb8ae9bbf8faa15301d0a3c27aab1d7d90aa6f",
+        "size_bytes": 1760688
+      },
+      {
+        "format": "parquet",
+        "path": "observations/115q1/rent.parquet",
+        "row_count": 46474,
+        "schema": "observation",
+        "sha256": "70ecf8527e287df451f755d785b6ba028f89b33e0b560b8ebe8a1d2a8433e48a",
+        "size_bytes": 7375821
+      },
+      {
+        "format": "parquet",
+        "path": "address_components/115q1/rent.parquet",
+        "row_count": 46500,
+        "schema": "address-component",
+        "sha256": "4c3d5a4f35e166acfa1d1061764e052aecfb6eec0201ebedb43668f62056a201",
+        "size_bytes": 5076300
+      },
+      {
+        "format": "parquet",
+        "path": "exclusions/115q1/rent.parquet",
+        "row_count": 321,
+        "schema": "exclusion",
+        "sha256": "214bbd1ce220145c58876cc6fd7d75c6983c53fcf606383a3ed1fa4b122afc8f",
+        "size_bytes": 14682
+      },
+      {
+        "format": "parquet",
+        "path": "diagnostics/115q1/rent.parquet",
+        "row_count": 4844,
+        "schema": "diagnostic",
+        "sha256": "0bea470d7e5d34adae76ee45dcf3c07a22d1f3e1bb67d6c58b562e24687b34e4",
+        "size_bytes": 254959
+      },
+      {
+        "format": "parquet",
+        "path": "dispositions/115q1/rent.parquet",
+        "row_count": 46795,
+        "schema": "disposition",
+        "sha256": "dfeb90c83743c5db44a5a23fe1b2bf49236a56ae4c7548bda54f46ee1c93fc19",
+        "size_bytes": 9869862
+      },
+      {
+        "format": "binary",
+        "path": "quality.json",
+        "row_count": null,
+        "schema": null,
+        "sha256": "8cd09ea27175d3a43fe418613bd82c865c9b69d17512d13122828f8643bfe1b3",
+        "size_bytes": 3408
+      }
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 # 完整資料處理流程
 
-本文件描述新版企劃的資料處理與交接流程。新版執行程式仍待實作，圖中的 `@name` 是企劃模組／職責標記，不能當成已存在的函式或命令。tasks 與 test points 以[完整企劃](drafts/taiwan-lvr-geodata-完整企劃.md)為準。
+本文件描述新版企劃的資料處理與交接流程。P0 基礎與 [P1 逐批轉換](p1-conversion.md)已實作，後續離線定位、TGOS、GIS 及發布仍待實作。圖中的 `@name` 是職責標記，不能僅依標記推定函式或命令已存在。tasks 與 test points 以[完整企劃](drafts/taiwan-lvr-geodata-完整企劃.md)為準。
 
 第一版 output 在離線地址處理後交付，公開於 GitHub。下載以交易月份 `tx_yyyymm` 為最小時間單位，保留 `YYYYMM_category` 命名，再提供年度 ZIP。TGOS 後續補齊受影響月份及年度包。首次重建不匯入舊 SQLite、舊 output 或 migration 座標。
 
