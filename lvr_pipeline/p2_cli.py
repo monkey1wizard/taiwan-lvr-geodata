@@ -10,7 +10,14 @@ from .backfill import backfill_output
 from .distribution import fetch_output, publish_release, commit_pointer
 from .offline_lookup import build_index
 from .packaging import package_output, verify_output, write_json
-from .tgos import import_tgos, load_state, prepare_tgos, revoke_alias, transition_batch
+from .tgos import (
+    import_tgos,
+    load_state,
+    prepare_tgos,
+    repair_prepared_exchange,
+    revoke_alias,
+    transition_batch,
+)
 
 
 def configure(sub):
@@ -51,6 +58,12 @@ def configure(sub):
     p.add_argument("--limit", type=int, default=10_000)
     p.add_argument("--retry-query-fingerprint", action="append", default=[])
     p.add_argument("--retry-reason")
+    p.add_argument("--work-dir", type=Path, default=Path("data/work"))
+    p.add_argument("--exchange-dir", type=Path, default=Path("data/tgos"))
+    p.add_argument("--run-id")
+    p = sub.add_parser("repair-tgos-exchange")
+    p.add_argument("--state", type=Path, required=True)
+    p.add_argument("--batch", required=True)
     p.add_argument("--work-dir", type=Path, default=Path("data/work"))
     p.add_argument("--exchange-dir", type=Path, default=Path("data/tgos"))
     p.add_argument("--run-id")
@@ -176,6 +189,21 @@ def run(args):
             reason=args.reason,
             run_id=args.run_id,
         )
+    elif command == "repair-tgos-exchange":
+        path, exchange = repair_prepared_exchange(
+            args.state,
+            args.work_dir,
+            args.exchange_dir,
+            args.batch,
+            run_id=args.run_id,
+        )
+        print(
+            json.dumps(
+                {"path": str(path), "exchange": str(exchange), "completed": True},
+                ensure_ascii=False,
+            )
+        )
+        return 0
     elif command == "import-tgos":
         path = import_tgos(
             args.state,

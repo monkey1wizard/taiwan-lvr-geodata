@@ -15,6 +15,7 @@ from lvr_pipeline.tgos import (
     import_tgos,
     load_state,
     prepare_tgos,
+    repair_prepared_exchange,
     revoke_alias,
     transition_batch,
 )
@@ -78,8 +79,28 @@ def test_quota_is_reserved_before_utf8_sig_handoff(tmp_path):
     )
     assert (exchange / "addresses.csv").read_bytes().startswith(b"\xef\xbb\xbf")
     assert (exchange / "addresses.csv").read_text(encoding="utf-8-sig").splitlines() == [
+        "id,Address,Response_Address,Response_X,Response_Y",
+        f"1,{address},,,",
+    ]
+    with (exchange / "addresses.csv").open(
+        encoding="utf-8-sig", newline=""
+    ) as stream:
+        submitted = list(csv.DictReader(stream))
+    assert list(submitted[0]) == [
+        "id",
         "Address",
-        address,
+        "Response_Address",
+        "Response_X",
+        "Response_Y",
+    ]
+    assert submitted == [
+        {
+            "id": "1",
+            "Address": address,
+            "Response_Address": "",
+            "Response_X": "",
+            "Response_Y": "",
+        }
     ]
     manifest = json.loads((exchange / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["address_count"] == 1 and manifest["coordinate_system"] == "WGS84"
@@ -95,6 +116,39 @@ def test_quota_is_reserved_before_utf8_sig_handoff(tmp_path):
             service_date=day,
             external_used=0,
         )
+
+
+def test_prepared_exchange_can_be_repaired_without_new_reservation(tmp_path):
+    _, state, address = fixture_state(tmp_path)
+    prepared, exchange = prepare_tgos(
+        state,
+        tmp_path / "work",
+        tmp_path / "exchange",
+        service_date=_service_today().isoformat(),
+        external_used=0,
+        limit=1,
+    )
+    batch_id = list(rows(prepared / "tgos_batches.parquet"))[0]["batch_id"]
+    (exchange / "addresses.csv").write_text(
+        f"Address\r\n{address}\r\n", encoding="utf-8-sig", newline=""
+    )
+    repaired, repaired_exchange = repair_prepared_exchange(
+        prepared,
+        tmp_path / "work",
+        tmp_path / "exchange",
+        batch_id,
+    )
+    assert repaired != prepared
+    assert (repaired_exchange / "addresses.csv").read_text(
+        encoding="utf-8-sig"
+    ).splitlines() == [
+        "id,Address,Response_Address,Response_X,Response_Y",
+        f"1,{address},,,",
+    ]
+    batches = list(rows(repaired / "tgos_batches.parquet"))
+    assert len(batches) == 1
+    assert batches[0]["status"] == "prepared"
+    assert batches[0]["address_count"] == 1
 
 
 def test_future_dates_and_exhausted_shared_quota_fail(tmp_path):

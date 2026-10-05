@@ -42,7 +42,7 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline prepare-tgos \
   --exchange-dir data/tgos --run-id RUN_ID
 ```
 
-成功後先產生不可變 `tgos-state`，再交付 `data/tgos/BATCH_ID/addresses.csv` 與 `manifest.json`。CSV 為 UTF-8-sig，單片與單日不超過 10,000 筆。候選少於剩餘配額時只輸出實際候選，不建立空批次。
+成功後先產生不可變 `tgos-state`，再交付 `data/tgos/BATCH_ID/addresses.csv` 與 `manifest.json`。CSV 為 UTF-8-sig，標頭必須完全是 `id,Address,Response_Address,Response_X,Response_Y`，後三欄在上傳前留空。單片與單日不超過 10,000 筆。候選少於剩餘配額時只輸出實際候選，不建立空批次。
 
 相同查詢不會自動重送。操作員核准重試 failed、rejected 或 cancelled 查詢時，從前次 manifest 取得 fingerprint，另加 `--retry-query-fingerprint FINGERPRINT --retry-reason REASON`。程式會記錄前次批次；沒有原因、查無歷史或狀態不可重試時拒絕建立批次。conflict 留在人工覆核，不送 TGOS 重試。
 

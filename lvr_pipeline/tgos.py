@@ -25,6 +25,7 @@ DAILY_LIMIT = 10_000
 TAIWAN_BOUNDS = (118.0, 123.5, 21.5, 26.5)
 TAIPEI_TZ = timezone(timedelta(hours=8))
 DYNAMIC_SCHEMAS = {"tgos-batch", "tgos-query", "tgos-result", "alias-event"}
+TGOS_CSV_FIELDS = ["id", "Address", "Response_Address", "Response_X", "Response_Y"]
 
 
 def _quality(path: Path) -> dict:
@@ -164,14 +165,29 @@ def _round_robin(values: list[dict]) -> list[dict]:
 
 def _csv_bytes(queries: list[dict]) -> bytes:
     stream = io.StringIO(newline="")
-    writer = csv.DictWriter(stream, fieldnames=["Address"], lineterminator="\r\n")
+    writer = csv.DictWriter(stream, fieldnames=TGOS_CSV_FIELDS, lineterminator="\r\n")
     writer.writeheader()
     for row in queries:
-        writer.writerow({"Address": row["address"]})
+        writer.writerow(
+            {
+                "id": row["ordinal"],
+                "Address": row["address"],
+                "Response_Address": "",
+                "Response_X": "",
+                "Response_Y": "",
+            }
+        )
     return codecs.BOM_UTF8 + stream.getvalue().encode("utf-8")
 
 
-def _write_exchange(root: Path, batch: dict, queries: list[dict], payload: bytes) -> Path:
+def _write_exchange(
+    root: Path,
+    batch: dict,
+    queries: list[dict],
+    payload: bytes,
+    *,
+    replace: bool = False,
+) -> Path:
     target = Path(root) / batch["batch_id"]
     manifest = {
         "schema_version": "1.0",
@@ -181,6 +197,7 @@ def _write_exchange(root: Path, batch: dict, queries: list[dict], payload: bytes
         "csv": "addresses.csv",
         "csv_sha256": hashlib.sha256(payload).hexdigest(),
         "encoding": "UTF-8-sig",
+        "csv_columns": TGOS_CSV_FIELDS,
         "upload_mode": "addrCompare",
         "coordinate_system": "WGS84",
         "return_fields": ["Address", "Response_Address", "Response_X", "Response_Y"],
@@ -195,12 +212,23 @@ def _write_exchange(root: Path, batch: dict, queries: list[dict], payload: bytes
         ],
     }
     if target.exists():
-        if (
+        differs = (
             sha256_file(target / "addresses.csv") != manifest["csv_sha256"]
             or json.loads((target / "manifest.json").read_text(encoding="utf-8"))
             != manifest
-        ):
+        )
+        if not differs:
+            return target
+        if not replace:
             raise ValueError("Existing TGOS exchange differs")
+        with tempfile.TemporaryDirectory(prefix="tgos-repair-", dir=target) as tmp:
+            staging = Path(tmp)
+            (staging / "addresses.csv").write_bytes(payload)
+            (staging / "manifest.json").write_text(
+                canonical_json(manifest) + "\n", encoding="utf-8"
+            )
+            os.replace(staging / "addresses.csv", target / "addresses.csv")
+            os.replace(staging / "manifest.json", target / "manifest.json")
         return target
     target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="tgos-exchange-", dir=target.parent) as tmp:
@@ -212,6 +240,51 @@ def _write_exchange(root: Path, batch: dict, queries: list[dict], payload: bytes
         )
         os.replace(staging, target)
     return target
+
+
+def repair_prepared_exchange(
+    source: Path,
+    work_dir: Path,
+    exchange_dir: Path,
+    batch_id: str,
+    *,
+    run_id: str | None = None,
+):
+    manifest, _, stage_name = load_state(source)
+    _require_latest(source, stage_name)
+    paths = _artifact_paths(source, manifest)
+    batches = _table(paths.get("tgos-batch"))
+    queries = _table(paths.get("tgos-query"))
+    results = _table(paths.get("tgos-result"))
+    aliases = _table(paths.get("verified-alias"))
+    events = _table(paths.get("alias-event"))
+    batch = next((row for row in batches if row["batch_id"] == batch_id), None)
+    if not batch or batch["status"] != "prepared":
+        raise ValueError("Only a prepared TGOS batch can be repaired")
+    batch_queries = sorted(
+        (row for row in queries if row["batch_id"] == batch_id),
+        key=lambda row: row["ordinal"],
+    )
+    if len(batch_queries) != batch["address_count"]:
+        raise ValueError("TGOS prepared query count differs from batch")
+    payload = _csv_bytes(batch_queries)
+    batch["csv_sha256"] = hashlib.sha256(payload).hexdigest()
+    state = _write_state(
+        source,
+        work_dir,
+        action="repair_exchange",
+        batches=batches,
+        queries=queries,
+        results=results,
+        aliases=aliases,
+        alias_events=events,
+        extra_report={"last_tgos_batch_id": batch_id},
+        run_id=run_id,
+    )
+    exchange = _write_exchange(
+        exchange_dir, batch, batch_queries, payload, replace=True
+    )
+    return state, exchange
 
 
 def prepare_tgos(
