@@ -88,9 +88,9 @@ TP-08～TP-14、TP-23～TP-26 的 P2 適用驗收為 pass。本機中斷與 pare
 
 下一階段為 P3 的 T-14～T-17。從 [公開指標](../data/releases/latest.json)取得固定 URL／SHA-256，再依 [cloud 操作](cloud-runbook.md)下載維護包。持久維護資料在不可變 Release，Actions artifact 只供補充驗證證據。
 
-## 本次 P3 執行結果：2026-10-05
+## 本次 P3 執行結果：2026-10-05～2026-10-06
 
-T-14 的持久 TGOS 狀態與配額規則已通過合成整合驗收。T-15 的第一個真實批次已送出並確認提交。T-16～T-17 的命令已實作並通過合成測試，但真實回傳匯入與公開回補尚未執行。因此 T-15 已完成，T-16～T-17 保持未勾選。完整機器可讀數字見 [p3-evidence.json](p3-evidence.json)。
+T-14 的持久 TGOS 狀態與配額規則已通過合成整合驗收。T-15 的第一個真實批次已送出並確認提交。T-16 已完成真實回傳匯入與驗證。T-17 的公開回補在來源權利門檻停止，沒有產生或發布候選。因此 T-14～T-16 已完成，T-17 保持未勾選。完整機器可讀數字見 [p3-evidence.json](p3-evidence.json)。
 
 | 項目 | 實際結果 |
 | --- | --- |
@@ -100,9 +100,10 @@ T-14 的持久 TGOS 狀態與配額規則已通過合成整合驗收。T-15 的�
 | 115q1 地址池 | 56,022 個唯一鍵、102,881 個地址成員 |
 | 最新離線狀態 | located 48,882、conflict 2,269、unmatched 4,871、outside_scope 0 |
 | TGOS 候選 | 4,871；conflict 不自動送查，沒有為湊滿 10,000 建立資料列 |
-| 真實 TGOS 批次 | submitted；`p3-tgos-20261005-001`，服務日期 2026-10-05，`external_used=0`，4,871 筆唯一地址 |
-| 真實匯入／回補 | not-run；等待 TGOS 完成通知及回傳下載 |
-| 公開發布 | not-run；目前地址來源權利未完成，且尚無 TGOS 回傳可供回補 |
+| 真實 TGOS 批次 | completed；`p3-tgos-20261005-001`，服務日期 2026-10-05，`external_used=0`，4,871 筆唯一地址 |
+| 真實匯入 | pass；4,428 筆成功、390 筆查無座標、53 筆拒絕；匯入後 located 53,310、conflict 2,269、unmatched 443 |
+| 真實回補 | fail；權利檢查拒絕 legacy 地址座標，沒有產生 P3 output 候選 |
+| 公開發布 | not-run；T-17 尚未驗收 |
 
 以下命令在正式 repo 根目錄執行。實際 snapshot 路徑位於忽略的 `data/work/`，未提交到 Git。
 
@@ -120,9 +121,23 @@ T-14 的持久 TGOS 狀態與配額規則已通過合成整合驗收。T-15 的�
 | `verify-tgos-state --state data/work/tgos-state/snapshots/p3-tgos-20261005-001-format-fix-clean` | pass | 批次狀態為 `prepared`，批次數 1；located 48,882、conflict 2,269、unmatched 4,871 |
 | `set-tgos-status --state data/work/tgos-state/snapshots/p3-tgos-20261005-001-format-fix-clean --batch p3-tgos-20261005-001 --status submitted --run-id p3-tgos-20261005-001-submitted` | pass | 操作員確認已送出；批次狀態為 `submitted`，保留 4,871 筆配額 |
 | `verify-tgos-state --input data/work/tgos-state/snapshots/p3-tgos-20261005-001-submitted` | pass | 批次數 1；located 48,882、conflict 2,269、unmatched 4,871 |
-| `import-tgos` 真實回傳 | not-run | 尚無人工下載的真實回傳檔 |
-| `backfill-output` 真實輸出 | not-run | 合成測試證明只改受影響月份並保留前版；真實匯入是前置條件 |
+| `import-tgos --state …-submitted --batch p3-tgos-20261005-001 --response data/tgos/p3-tgos-20261005-001/response.csv --run-id p3-tgos-20261005-001-imported` | pass | 回傳 SHA-256 `a6f15f3…`；狀態 manifest SHA-256 `9f4596e…`；4,871 筆一對一核對 |
+| `verify-tgos-state --input data/work/tgos-state/snapshots/p3-tgos-20261005-001-imported` | pass | 批次數 1；located 53,310、conflict 2,269、unmatched 443 |
+| `backfill-output … --run-id p3-115q1-tgos-001-backfill` | fail | `Legacy README alone is insufficient permission for public coordinates`；未產生或發布候選 |
 
-TP-15～TP-18 的合成情境包含 10,001 候選、公平選取、未來日期／額度耗盡、提交前取消、提交不明、UTF-8-sig、一對一 Address、重複匯入、座標軸疑似顛倒及單月回補。T-14 已具備持久狀態證據。T-15 已完成真實批次準備、人工上傳與提交確認。T-16 的真實回傳仍為 not-run。T-17 的真實回補仍為 not-run。
+TP-15～TP-18 的合成情境包含 10,001 候選、公平選取、未來日期／額度耗盡、提交前取消、提交不明、UTF-8-sig、一對一 Address、重複匯入、座標軸疑似顛倒及單月回補。T-14～T-16 已有真實持久狀態與回傳證據。T-17 的合成測試通過，但真實公開回補因來源權利證據不足而失敗，尚未驗收。
 
-下一步等待 TGOS 完成通知。下載回傳 CSV 後，將檔案放在 `data/tgos/p3-tgos-20261005-001/response.csv`，再依 [TGOS 操作手冊](tgos-runbook.md)執行 `import-tgos`、`verify-tgos-state` 與 `backfill-output`。
+T-17 的下一步是補齊 legacy 地址座標的上游再散布證據，或實作來源級篩選，確保公開輸出只包含已授權座標。已驗證 TGOS 結果可獨立接續 P4。
+
+## 本次 P4 T-18 執行結果：2026-10-06
+
+T-18 已建立地址 patch 契約、CLI、來源 sidecar、行政區證據隔離及驗證。真實快照 `p4-tgos-20261005-001-patch-v3` 產生 4,264 個 patch，4,301 筆來源 sidecar，並隔離 127 筆缺少唯一村里代碼的結果。完整雜湊見 [p4-evidence.json](p4-evidence.json)。
+
+| 命令 | 結果 | 證據／限制 |
+| --- | --- | --- |
+| `python -m pytest -q tests/test_p4_address_patch.py` | pass，3 tests | 驗證 14 欄相容值、來源關聯、缺村里隔離及 `N號之M` 正規化 |
+| `python -m pytest -q` | pass，222 tests | Windows 175.47 秒；全部測試使用合成輸入 |
+| `export-address-patch --state data/work/tgos-state/snapshots/p3-tgos-20261005-001-imported --area-file … --run-id p4-tgos-20261005-001-patch-v3` | pass | 使用五個固定行政區檔；producer 工作樹乾淨；manifest SHA-256 `7ebf76b…` |
+| `verify-address-patch --input data/work/address-patch/snapshots/p4-tgos-20261005-001-patch-v3` | pass | patch 4,264、provenance 4,301、quarantine 127 |
+
+TP-19 的 patch 結構與相容情境已驗收。T-18 已完成。T-19～T-20 尚未開始，地址 repo 沒有被修改或發布。下一步依[地址 patch 操作手冊](address-patch-runbook.md)在 `taiwan-address-data` 實作可重複匯入的 `supplements/` 層。

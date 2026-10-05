@@ -4,7 +4,7 @@
 
 ## 第一批目前狀態
 
-批次 `p3-tgos-20261005-001` 已於 2026-10-05 送出，共 4,871 筆。持久狀態位於 `data/work/tgos-state/snapshots/p3-tgos-20261005-001-submitted`。目前等待 TGOS 完成通知與回傳 CSV。
+批次 `p3-tgos-20261005-001` 已於 2026-10-05 送出，共 4,871 筆。回傳檔已於 2026-10-06 匯入並驗證。持久狀態位於 `data/work/tgos-state/snapshots/p3-tgos-20261005-001-imported`。匯入結果為 4,428 筆成功、390 筆查無座標、53 筆因回傳不是完整門牌而拒絕。整體地址狀態為 located 53,310、conflict 2,269、unmatched 443。
 
 ## addrCompare 上傳設定
 
@@ -80,6 +80,10 @@ data/work/tgos-state/snapshots/p3-tgos-20261005-001-imported
 ```
 
 回補只重建受影響的交易月與對應年度包。驗證完成不等於已公開發布。發布仍需核對來源權利、附件雜湊與 Git parent。
+
+第一批真實回補於 2026-10-06 執行後停止。`p3-tgos-20261005-001-imported` 同時保留最新地址基底的離線座標，而 `data/sources/p2_notice.json` 明確設定 `legacy_coordinates_authorized=false`。程式回傳 `Legacy README alone is insufficient permission for public coordinates`，因此沒有產生或發布 P3 月／年候選。補齊最新地址基底各上游資料的再散布證據，或實作只保留已授權座標來源的來源級篩選後，才能重跑本節命令。
+
+已驗證的 TGOS 結果可先依[地址 patch 操作手冊](address-patch-runbook.md)產生內部 patch。這不等於授權公開月／年資料，也不會自動修改地址 repo。
 
 ## 操作狀態
 

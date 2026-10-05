@@ -1,6 +1,6 @@
 # 完整資料處理流程
 
-本文件描述新版企劃的資料處理與交接流程。P0 基礎、[P1 逐批轉換](p1-conversion.md)及 [P2 離線定位／月年輸出／公開交接](p2-offline-output.md)已驗收。P3 的持久 TGOS 狀態、人工交換、嚴格匯入與回補程式已完成合成驗證；真實批次仍等待操作員確認共用帳號當日外部用量。地址 patch／更新仍待 P4，全歷史量測待 P5。圖中的 `@name` 是職責標記，實際狀態以階段紀錄為準。tasks 與 test points 以[完整企劃](drafts/taiwan-lvr-geodata-完整企劃.md)為準。
+本文件描述新版企劃的資料處理與交接流程。P0 基礎、[P1 逐批轉換](p1-conversion.md)及 [P2 離線定位／月年輸出／公開交接](p2-offline-output.md)已驗收。P3 的第一批真實 TGOS 回傳已匯入並驗證，公開回補停在來源權利門檻。P4 的 T-18 已產生真實地址 patch，T-19～T-20 尚待完成。全歷史量測待 P5。圖中的 `@name` 是職責標記，實際狀態以階段紀錄為準。tasks 與 test points 以[完整企劃](drafts/taiwan-lvr-geodata-完整企劃.md)為準。
 
 第一版 output 在離線地址處理後交付，公開於 GitHub。下載以交易月份 `tx_yyyymm` 為最小時間單位，保留 `YYYYMM_category` 命名，再提供年度 ZIP。TGOS 後續補齊受影響月份及年度包。首次重建不匯入舊 SQLite、舊 output 或 migration 座標。
 
@@ -334,7 +334,7 @@ GitHub 下載索引提供年／月／類別／格式的 URL、大小與 SHA-256�
 
 匯入必須有 Address、Response_Address、Response_X、Response_Y 欄位。依 Address 對照原查詢，不要求服務回傳 id。缺批次清單或對照歧義會拒絕匯入，不以舊 building_key 截斷子門牌來匹配。失敗查詢仍保留，新表示或明確重試可重新評估。
 
-人工撤銷別名或更新來源證據時，也經歷史回補／受影響月年重建產生子快照，保留前版供復原。P3 程式與合成整合已驗證；真實 TGOS 上傳、回傳匯入及公開回補版仍依各 task 的實際證據驗收。
+人工撤銷別名或更新來源證據時，也經歷史回補／受影響月年重建產生子快照，保留前版供復原。第一批真實 TGOS 已匯入。4,871 筆中有 4,428 筆成功、390 筆查無座標、53 筆拒絕。公開回補因未證明 legacy 地址座標可再散布而停止，沒有產生或發布候選。
 
 ## 圖 8：一份地址 patch 的跨專案回補
 
@@ -439,4 +439,4 @@ patch 匯入與官方更新共用寫入控制。匯入可以只重建補充影�
 | 圖 8：地址 patch／更新 | T-18、T-19、T-20 | TP-19–TP-21 |
 | 圖 9：提交與復原 | T-04、T-22、T-23 | TP-10、TP-23–TP-25 |
 
-原始來源、固定版本與每輪結果必須可追溯。P0～P2 的驗收及 P3 目前完成範圍見各階段紀錄。真實 TGOS 交換、公開回補及圖 8 地址更新不能因合成測試通過就標成完成。使用 [task 結果範本](task-result-template.md)記錄命令、pass／fail／not-run、輸出雜湊及交接位置。舊操作條件見 [TGOS 操作文件](legacy/RESUBMIT_RUNBOOK.md)。
+原始來源、固定版本與每輪結果必須可追溯。P0～P2、P3 T-14～T-16 及 P4 T-18 的驗收範圍見各階段紀錄。P3 公開回補與圖 8 的地址 repo 匯入仍未完成。使用 [task 結果範本](task-result-template.md)記錄命令、pass／fail／not-run、輸出雜湊及交接位置。舊操作條件見 [TGOS 操作文件](legacy/RESUBMIT_RUNBOOK.md)。

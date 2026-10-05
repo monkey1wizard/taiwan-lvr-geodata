@@ -14,7 +14,7 @@ P1 建立內部 Parse／Normalize 階段快照。P2 完成離線地址處理後�
 
 月輸出、年度包及維護狀態已保存於不可變 Release，約 582.4 MiB。Git 只保存程式、來源描述及小型發布指標。cloud agent 已可取得維護包並重產離線 output。人工程序沿用 addrCompare 每日／每片最多 10,000 筆與 WGS84；地址 repo 回饋仍待 P4。
 
-P3 已完成持久 TGOS 配額／批次狀態、UTF-8-sig 人工交換、嚴格回傳匯入及受影響月／年回補程式。Windows 與 GitHub Ubuntu 各 219 個測試通過。最新 `taiwan-address-data` commit `02887978…` 的乾淨版本真實離線重建留下 4,871 個 TGOS 候選。第一個真實批次 `p3-tgos-20261005-001` 已送出，目前等待 TGOS 回傳。見 [TGOS 操作手冊](docs/tgos-runbook.md)、[P3 執行證據](docs/p3-evidence.json)與 [cloud 操作](docs/cloud-runbook.md)。
+P3 已完成持久 TGOS 配額／批次狀態、UTF-8-sig 人工交換及真實回傳匯入。第一批 4,871 筆中，4,428 筆取得可用座標，443 筆仍未定位。公開月／年回補目前停在來源權利門檻，未產生或發布候選。P4 的 T-18 已從真實結果產生 4,264 筆地址 patch，另隔離 127 筆缺少唯一村里編碼的結果。Windows 完整測試為 222 個通過。見 [TGOS 操作手冊](docs/tgos-runbook.md)、[地址 patch 操作手冊](docs/address-patch-runbook.md)、[P3 執行證據](docs/p3-evidence.json)與 [P4 執行證據](docs/p4-evidence.json)。
 
 ## 本機開發與 Git
 
@@ -69,6 +69,7 @@ taiwan-lvr-geodata/
 │   ├── downloads.md                  月檔／年度包下載說明
 │   ├── cloud-runbook.md              cloud 接續 P3 操作
 │   ├── tgos-runbook.md               TGOS 上傳、回傳、匯入與回補操作
+│   ├── address-patch-runbook.md       P4 地址 patch 產生、驗證與隔離規則
 │   ├── release-runbook.md            GitHub Release 發布／復原
 │   ├── p0-foundations.md             P0 驗收紀錄
 │   ├── p1-conversion.md              P1 操作與驗收紀錄
@@ -76,6 +77,7 @@ taiwan-lvr-geodata/
 │   ├── p1-evidence.json              P1 機器可讀證據
 │   ├── p2-evidence.json              P2 機器可讀證據
 │   ├── p3-evidence.json              P3 機器可讀證據
+│   ├── p4-evidence.json              P4 地址 patch 機器可讀證據
 │   └── task-result-template.md       task 命令／結果紀錄
 ├── lvr_pipeline/
 │   ├── __init__.py                   Python package 標記
@@ -106,7 +108,8 @@ taiwan-lvr-geodata/
 │   ├── packaging.py                  月檔、年度 ZIP、維護包
 │   ├── distribution.py               公開取得、Release 與版本指標
 │   ├── tgos.py                       P3 配額、批次、匯入與別名事件
-│   └── backfill.py                   P3 受影響月份／年度回補
+│   ├── backfill.py                   P3 受影響月份／年度回補
+│   └── address_patch.py              P4 地址 patch、來源 sidecar 與隔離
 ├── schemas/
 │   ├── observation.schema.json       來源觀測契約
 │   ├── address-component.schema.json 地址成員契約
@@ -139,7 +142,8 @@ taiwan-lvr-geodata/
 │   ├── test_p1_validation.py         P1 拒絕與關聯驗證
 │   ├── test_p2_offline.py            P2 離線定位與 GIS 輸出
 │   ├── test_p2_distribution.py       P2 公開取得／發布
-│   └── test_p3_tgos.py               P3 TGOS／回補測試
+│   ├── test_p3_tgos.py               P3 TGOS／回補測試
+│   └── test_p4_address_patch.py       P4 patch 結構與隔離測試
 ├── .env.example                      可用環境變數範例
 ├── .gitignore                        本機資料、憑證與產物排除規則
 ├── AGENTS.md                         coding agent 執行契約
@@ -180,6 +184,7 @@ commit、檔案大小與雜湊。地址 repo 的完整 `roads/` 不複製到本 
 | P2 離線定位 | `offline_lookup.py`、`address_pool.py`、`address_state.py` | 建立門牌索引與唯一地址池，分出 located、conflict、unmatched。 |
 | P2 輸出發布 | `export.py`、`packaging.py`、`distribution.py` | 產生月檔／年包、驗證維護包並更新 GitHub 公開指標。 |
 | P3 TGOS／回補 | `tgos.py`、`backfill.py` | 保留每日配額、人工交換、嚴格匯入及重建受影響月／年。 |
+| P4 地址 patch | `address_patch.py` | 將已驗證 TGOS 門牌結果轉成 14 欄相容 patch、來源 sidecar 與隔離清單。 |
 | 舊入口相容 | `0_parse_raw.py`、`1_normalize.py`、`address.py` | 保留既有呼叫方式；新版工作優先使用總 CLI。 |
 
 `0_parse_raw` 與 `1_normalize` 保留舊 CSV 格式。新版逐批轉換請使用下方 P1 命令。
@@ -224,8 +229,9 @@ python -m lvr_pipeline.1_normalize
 
 - [完整企劃草案](docs/drafts/taiwan-lvr-geodata-完整企劃.md)：離線首版 output、月／年下載、GitHub 公開交接及完整 phases／tasks／test points。
 - [task 結果範本](docs/task-result-template.md)：agent 記錄前置版本、命令、測試、輸出雜湊及交接位置。
-- [完整資料處理流程](docs/data-processing-flow.md)：九個子流程，含已實作 P3 路徑與仍待人工執行的邊界。
-- [P3 執行證據](docs/p3-evidence.json)：最新地址來源、真實離線重建、測試與 TGOS 未執行狀態。
+- [完整資料處理流程](docs/data-processing-flow.md)：九個子流程，含已實作 P3／P4 路徑與公開權利門檻。
+- [P3 執行證據](docs/p3-evidence.json)：真實 TGOS 送出、匯入與回補阻擋證據。
+- [P4 執行證據](docs/p4-evidence.json)：地址 patch、來源 sidecar、隔離結果與雜湊。
 - [P2 驗收](docs/p2-offline-output.md)：已發布首版、實測資源、測試與已實作命令。
 - [cloud 操作](docs/cloud-runbook.md)：取得維護包、固定離線地址來源、建立 TGOS 批次、匯入與回補。
 - [發布操作](docs/release-runbook.md)：draft 傳送核對、不可變 Release 與 main 指標提交。

@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "recorded_at": "2026-10-05",
+  "recorded_at": "2026-10-06",
   "address_source": {
     "repository": "https://github.com/monkey1wizard/taiwan-address-data",
     "previous_commit": "752c87d36a8e52d9b71680115c1c19d1a6d3e4ec",
@@ -62,7 +62,7 @@
     "batch_id": "p3-tgos-20261005-001",
     "service_date": "2026-10-05",
     "external_used": 0,
-    "batch_status": "submitted",
+    "batch_status": "completed",
     "batch_rows": 4871,
     "unique_addresses": 4871,
     "csv_columns": [
@@ -78,15 +78,31 @@
     "csv_path": "data/tgos/p3-tgos-20261005-001/addresses.csv",
     "manifest_path": "data/tgos/p3-tgos-20261005-001/manifest.json",
     "response_path": "data/tgos/p3-tgos-20261005-001/response.csv",
-    "state_snapshot_id": "p3-tgos-20261005-001-submitted",
-    "state_artifact_bytes": 138605363,
-    "state_elapsed_seconds": 10.403943,
-    "state_peak_rss_bytes": 312029184,
+    "state_snapshot_id": "p3-tgos-20261005-001-imported",
+    "state_manifest_sha256": "9f4596e6c86e22ebe6385b848e7ce31bf17b18fb8452d58b39dc55543085ce7b",
+    "response_sha256": "a6f15f3b6e8943b19fd4130c8a96eca73186705df188d1a877e404f1e4aa2e69",
+    "state_artifact_bytes": 140208303,
+    "state_elapsed_seconds": 19.540141,
+    "state_peak_rss_bytes": 1884217344,
     "producer_worktree_dirty": false,
     "state_verified": true,
     "real_upload_completed": true,
     "submission_confirmed_on": "2026-10-05",
-    "real_response_imported": false,
-    "real_backfill_published": false
+    "real_response_imported": true,
+    "response_imported_on": "2026-10-06",
+    "result_status_counts": {
+      "succeeded": 4428,
+      "failed": 390,
+      "rejected": 53
+    },
+    "status_counts_after_import": {
+      "located": 53310,
+      "conflict": 2269,
+      "unmatched": 443,
+      "outside_scope": 0
+    },
+    "real_backfill_published": false,
+    "backfill_status": "blocked_by_source_rights",
+    "backfill_error": "Legacy README alone is insufficient permission for public coordinates"
   }
 }

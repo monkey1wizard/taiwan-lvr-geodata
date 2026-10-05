@@ -1,6 +1,6 @@
-# P2／P3 觀測、地址狀態、TGOS 與 GIS 契約
+# P2～P4 觀測、地址狀態、TGOS、GIS 與 patch 契約
 
-P0／P1 的來源觀測契約在 `schemas/`。P2／P3 的內部 Arrow 契約在 `lvr_pipeline/p2_contracts.py`，公開 GeoParquet 契約在 `lvr_pipeline/export.py`。資料目前使用 schema_version 1.0 與 building key v2。P3 以新的 `tgos-state` 子快照擴充 P2 `offline-state`，不改寫既有 P2 schema。
+P0／P1 的來源觀測契約在 `schemas/`。P2～P4 的內部 Arrow 契約在 `lvr_pipeline/p2_contracts.py`，公開 GeoParquet 契約在 `lvr_pipeline/export.py`。資料目前使用 schema_version 1.0 與 building key v2。P3 以新的 `tgos-state` 子快照擴充 P2 `offline-state`，不改寫既有 P2 schema。P4 的 `address-patch` 快照只讀取已驗證 TGOS 證據，不改寫 P3 狀態。
 
 ## 粒度與金額
 
@@ -43,6 +43,14 @@ v2 鍵保留號後子門牌及無道路村落，不以 legacy key、路名家族
 相同批次及回傳 SHA-256 重複匯入時直接沿用既有 snapshot。不同回傳造成不同有效座標時，地址轉為 `conflict` 並保留全部證據。每次成功匯入重建 `address_index` 與 `unmatched_addresses`，不修改來源觀測粒度或金額。
 
 `backfill-output` 以 P3 子快照重建同一交易月範圍，逐一比較前版及新版月檔 SHA-256。報告列出受影響月份／年份與未變月檔數，前版 output 必須仍可完整驗證。公開發布仍受各座標來源的再散布證據限制；離線命中不會自動取得公開授權。
+
+## P4 地址 patch
+
+`address_patch.parquet` 以 `patch_id` 為主鍵。每列包含 `key_version=v2`、`building_key`、地址 repo 的 `FULL_ADDR,COUNTY,TOWN,VILLAGE,NEIGHBORHOOD,ROAD,SECTION,LANE,ALLEY,SUB_ALLEY,TONG,NUMBER,X,Y` 對應欄位，以及可驗證的 WGS84 座標。欄位在 Parquet 中使用小寫名稱。村里代碼必須由固定行政區檔對應到相同鄉鎮代碼，缺少或有多個候選時不得寫入 patch。
+
+`provenance.parquet` 以 `patch_id,evidence_id` 為複合主鍵。每列保存 TGOS `result_id`、批次、query fingerprint、送查地址、原始回傳地址、回傳檔 SHA-256、來源列號與 `source_kind=tgos_result`。多筆查詢可以指向同一個 patch，但每個 patch 至少有一筆來源。
+
+`quarantine.parquet` 保存成功取得座標但缺少完整行政區證據的候選。每列包含候選 ID、批次、query fingerprint、送查／回傳地址及明確原因。隔離資料不可由匯入程式猜測代碼，也不可混入 14 欄相容輸出。
 
 ## 幾何與下載
 

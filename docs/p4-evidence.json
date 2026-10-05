@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0",
+  "recorded_at": "2026-10-06",
+  "task": "T-18",
+  "source": {
+    "tgos_state_snapshot_id": "p3-tgos-20261005-001-imported",
+    "state_manifest_sha256": "9f4596e6c86e22ebe6385b848e7ce31bf17b18fb8452d58b39dc55543085ce7b",
+    "response_sha256": "a6f15f3b6e8943b19fd4130c8a96eca73186705df188d1a877e404f1e4aa2e69",
+    "successful_tgos_results": 4428,
+    "non_success_tgos_results": 443,
+    "address_repository_commit": "02887978ef19c1067e339787bae976a72d4723af"
+  },
+  "snapshot": {
+    "snapshot_id": "p4-tgos-20261005-001-patch-v3",
+    "manifest_sha256": "7ebf76b0de1c92714a90d67a254def92ff0b193651fedb3f26c7b09fea634376",
+    "patch_rows": 4264,
+    "provenance_rows": 4301,
+    "quarantine_rows": 127,
+    "quarantine_reasons": {
+      "village_code_missing_or_ambiguous": 127
+    },
+    "artifact_bytes": 1187862,
+    "elapsed_seconds": 2.016568,
+    "peak_rss_bytes": 251248640,
+    "producer_worktree_dirty": false,
+    "internal_only": true
+  },
+  "artifacts": {
+    "address_patch.parquet": {
+      "rows": 4264,
+      "bytes": 412903,
+      "sha256": "5ff9fe8aca292703af37fab3adad788747e81014dfb384c9ffe4eb5778971144"
+    },
+    "provenance.parquet": {
+      "rows": 4301,
+      "bytes": 758581,
+      "sha256": "ac88f7dbb160a6114c4a09c0dba5b7b2f7fe17e55c948f5aeb03104ca258da23"
+    },
+    "quarantine.parquet": {
+      "rows": 127,
+      "bytes": 16378,
+      "sha256": "111e07ef42e8a0cb6ea1ceeee0cefe0ba39cc73616cf8ec9a8146b2c01c9573e"
+    }
+  },
+  "verification": {
+    "command": "python -m lvr_pipeline verify-address-patch --input data/work/address-patch/snapshots/p4-tgos-20261005-001-patch-v3",
+    "status": "passed",
+    "synthetic_tests": 3,
+    "full_test_suite": {
+      "platform": "Windows",
+      "passed": 222,
+      "failed": 0,
+      "elapsed_seconds": 175.47
+    },
+    "address_repository_modified": false,
+    "address_repository_published": false
+  }
+}
