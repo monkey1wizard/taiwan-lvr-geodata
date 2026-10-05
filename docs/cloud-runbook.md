@@ -69,11 +69,14 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline set-tgos-status \
 
 ## 匯入回傳並回補 output
 
-回傳檔必須包含 `Address`、`Response_Address`、`Response_X`、`Response_Y`。`Address` 必須與原批次一對一且集合完全相同。程式不要求 TGOS 回傳 id，也不猜座標軸或 CRS。
+完整人工步驟與第一批實際命令見 [TGOS addrCompare 操作手冊](tgos-runbook.md)。
+
+TGOS 回傳後，將完成的 CSV 放在 `data/tgos/BATCH_ID/response.csv`。不要覆蓋 `addresses.csv` 或 `manifest.json`。回傳檔必須包含 `Address`、`Response_Address`、`Response_X`、`Response_Y`。`Address` 必須與原批次一對一且集合完全相同。程式不要求 TGOS 回傳 id，也不猜座標軸或 CRS。
 
 ```bash
 uv run --locked --python 3.13.16 python -m lvr_pipeline import-tgos \
-  --state TGOS_STATE_PATH --batch BATCH_ID --response RESPONSE.csv \
+  --state TGOS_STATE_PATH --batch BATCH_ID \
+  --response data/tgos/BATCH_ID/response.csv \
   --work-dir data/work --run-id IMPORT_RUN_ID
 
 uv run --locked --python 3.13.16 python -m lvr_pipeline verify-tgos-state \

@@ -287,6 +287,9 @@ GitHub 下載索引提供年／月／類別／格式的 URL、大小與 SHA-256�
 (start) 人工下載的 addrCompare 完成 CSV
   │
   ▼
+[保存為 data/tgos/BATCH_ID/response.csv] ~~▶ 操作員
+  │
+  ▼
 [保存原回傳與雜湊，取得原批次 manifest] @tgos.import_tgos
   │
   ▼

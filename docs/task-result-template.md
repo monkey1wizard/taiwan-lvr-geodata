@@ -90,7 +90,7 @@ TP-08～TP-14、TP-23～TP-26 的 P2 適用驗收為 pass。本機中斷與 pare
 
 ## 本次 P3 執行結果：2026-10-05
 
-T-14 的持久 TGOS 狀態與配額規則已通過合成整合驗收。T-15 的第一個真實批次已準備完成，但人工上傳與提交確認尚未執行。T-16～T-17 的命令已實作並通過合成測試，但真實回傳匯入與公開回補尚未執行。因此 T-15～T-17 保持未勾選。完整機器可讀數字見 [p3-evidence.json](p3-evidence.json)。
+T-14 的持久 TGOS 狀態與配額規則已通過合成整合驗收。T-15 的第一個真實批次已送出並確認提交。T-16～T-17 的命令已實作並通過合成測試，但真實回傳匯入與公開回補尚未執行。因此 T-15 已完成，T-16～T-17 保持未勾選。完整機器可讀數字見 [p3-evidence.json](p3-evidence.json)。
 
 | 項目 | 實際結果 |
 | --- | --- |
@@ -100,8 +100,8 @@ T-14 的持久 TGOS 狀態與配額規則已通過合成整合驗收。T-15 的�
 | 115q1 地址池 | 56,022 個唯一鍵、102,881 個地址成員 |
 | 最新離線狀態 | located 48,882、conflict 2,269、unmatched 4,871、outside_scope 0 |
 | TGOS 候選 | 4,871；conflict 不自動送查，沒有為湊滿 10,000 建立資料列 |
-| 真實 TGOS 批次 | prepared；`p3-tgos-20261005-001`，服務日期 2026-10-05，`external_used=0`，4,871 筆唯一地址 |
-| 真實匯入／回補 | not-run；需先完成真實批次、人工上傳及回傳下載 |
+| 真實 TGOS 批次 | submitted；`p3-tgos-20261005-001`，服務日期 2026-10-05，`external_used=0`，4,871 筆唯一地址 |
+| 真實匯入／回補 | not-run；等待 TGOS 完成通知及回傳下載 |
 | 公開發布 | not-run；目前地址來源權利未完成，且尚無 TGOS 回傳可供回補 |
 
 以下命令在正式 repo 根目錄執行。實際 snapshot 路徑位於忽略的 `data/work/`，未提交到 Git。
@@ -118,9 +118,11 @@ T-14 的持久 TGOS 狀態與配額規則已通過合成整合驗收。T-15 的�
 | `prepare-tgos … --service-date 2026-10-05 --external-used 0 --run-id p3-tgos-20261005-001` | fail | 產生的檔案只有 `Address` 欄。TGOS 拒絕上傳，因為標頭未遵守既有五欄契約。未送出任何查詢。 |
 | `repair-tgos-exchange --state data/work/tgos-state/snapshots/p3-tgos-20261005-001-format-fix --batch p3-tgos-20261005-001 --run-id p3-tgos-20261005-001-format-fix-clean` | pass | 4,871 筆，標頭固定為 `id,Address,Response_Address,Response_X,Response_Y`，後三欄留空，UTF-8-sig；批次仍為 `prepared`，沒有新增配額保留 |
 | `verify-tgos-state --state data/work/tgos-state/snapshots/p3-tgos-20261005-001-format-fix-clean` | pass | 批次狀態為 `prepared`，批次數 1；located 48,882、conflict 2,269、unmatched 4,871 |
+| `set-tgos-status --state data/work/tgos-state/snapshots/p3-tgos-20261005-001-format-fix-clean --batch p3-tgos-20261005-001 --status submitted --run-id p3-tgos-20261005-001-submitted` | pass | 操作員確認已送出；批次狀態為 `submitted`，保留 4,871 筆配額 |
+| `verify-tgos-state --input data/work/tgos-state/snapshots/p3-tgos-20261005-001-submitted` | pass | 批次數 1；located 48,882、conflict 2,269、unmatched 4,871 |
 | `import-tgos` 真實回傳 | not-run | 尚無人工下載的真實回傳檔 |
 | `backfill-output` 真實輸出 | not-run | 合成測試證明只改受影響月份並保留前版；真實匯入是前置條件 |
 
-TP-15～TP-18 的合成情境包含 10,001 候選、公平選取、未來日期／額度耗盡、提交前取消、提交不明、UTF-8-sig、一對一 Address、重複匯入、座標軸疑似顛倒及單月回補。T-14 已具備持久狀態證據。T-15 已完成真實批次準備，但尚未完成人工上傳與提交確認。T-16 的真實回傳仍為 not-run。T-17 的真實回補仍為 not-run。
+TP-15～TP-18 的合成情境包含 10,001 候選、公平選取、未來日期／額度耗盡、提交前取消、提交不明、UTF-8-sig、一對一 Address、重複匯入、座標軸疑似顛倒及單月回補。T-14 已具備持久狀態證據。T-15 已完成真實批次準備、人工上傳與提交確認。T-16 的真實回傳仍為 not-run。T-17 的真實回補仍為 not-run。
 
-下一步由操作員將 `data/tgos/p3-tgos-20261005-001/addresses.csv` 上傳 addrCompare。manifest 只供核對，不上傳。座標系選擇 WGS84 經緯度。在「模糊比對規則設定」區塊開啟「分單／雙號比對」，誤差選擇「不限」，回傳筆數選擇「僅回傳一筆」，其餘選項不勾選。操作員須回報提交成功、提交狀態不明或上傳前取消，系統才能更新持久狀態。TGOS 完成後，下載真實回傳檔並執行 T-16。
+下一步等待 TGOS 完成通知。下載回傳 CSV 後，將檔案放在 `data/tgos/p3-tgos-20261005-001/response.csv`，再依 [TGOS 操作手冊](tgos-runbook.md)執行 `import-tgos`、`verify-tgos-state` 與 `backfill-output`。
