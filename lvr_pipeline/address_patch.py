@@ -31,17 +31,18 @@ def _artifact_paths(source: Path, manifest: dict) -> dict[str, Path]:
     }
 
 
-def _area_index(path: Path) -> dict[str, set[str]]:
+def _area_index(paths: list[Path]) -> dict[str, set[str]]:
     found: dict[str, set[str]] = defaultdict(set)
-    with Path(path).open(encoding="utf-8-sig", newline="") as stream:
-        reader = csv.DictReader(stream)
-        if not reader.fieldnames or not {"name", "dgbas_id"}.issubset(reader.fieldnames):
-            raise ValueError("Area file must contain name and dgbas_id")
-        for row in reader:
-            name = row["name"].strip().replace("　", "")
-            code = row["dgbas_id"].strip()
-            if name and code and "-" in code:
-                found[name].add(code)
+    for path in paths:
+        with Path(path).open(encoding="utf-8-sig", newline="") as stream:
+            reader = csv.DictReader(stream)
+            if not reader.fieldnames or not {"name", "dgbas_id"}.issubset(reader.fieldnames):
+                raise ValueError("Area file must contain name and dgbas_id")
+            for row in reader:
+                name = row["name"].strip().replace("　", "")
+                code = row["dgbas_id"].strip()
+                if name and code and "-" in code:
+                    found[name].add(code)
     return found
 
 
@@ -56,13 +57,12 @@ def _split_legacy(response_address: str, town_code: str, areas: dict[str, set[st
         return None, "response_address_missing_village"
     village_name = village_match["village"]
     area_name = f"{admin['county']}{admin['town']}{village_name}"
-    village_codes = areas.get(area_name, set())
+    village_codes = {
+        code for code in areas.get(area_name, set()) if code.startswith(f"{town_code}-")
+    }
     if len(village_codes) != 1:
         return None, "village_code_missing_or_ambiguous"
     village_code = next(iter(village_codes))
-    if not village_code.startswith(f"{town_code}-"):
-        return None, "village_code_outside_town"
-
     street = village_match["rest"]
     number_match = _NUMBER_RE.search(street)
     if not number_match:
@@ -110,14 +110,16 @@ def _write(stage: Stage, name: str, dataset: str, values: list[dict]):
     return name, path, dataset, writer.row_count
 
 
-def export_address_patch(state: Path, area_file: Path, work_dir: Path, *, run_id: str | None = None) -> Path:
+def export_address_patch(state: Path, area_files: list[Path], work_dir: Path, *, run_id: str | None = None) -> Path:
     manifest, report, stage_name = load_state(state)
     if stage_name != "tgos-state":
         raise ValueError("Address patch requires a TGOS state")
     paths = _artifact_paths(state, manifest)
     state_hash = sha256_file(Path(state) / "manifest.json")
-    area_hash = sha256_file(area_file)
-    binding = bindings("address-patch", {"area_sha256": area_hash}, [state_hash, area_hash])
+    if not area_files:
+        raise ValueError("At least one area file is required")
+    area_hashes = [sha256_file(path) for path in area_files]
+    binding = bindings("address-patch", {"area_sha256": area_hashes}, [state_hash, *area_hashes])
     stage = Stage(Path(work_dir) / "address-patch", "address-patch", binding, run_id)
     if stage.reused:
         return stage.path
@@ -130,7 +132,7 @@ def export_address_patch(state: Path, area_file: Path, work_dir: Path, *, run_id
         for row in rows(paths["offline-row"])
         if row["source_kind"] == "tgos_result" and row["validity"] == "valid"
     }
-    areas = _area_index(area_file)
+    areas = _area_index(area_files)
     grouped: dict[str, list[tuple[dict, dict, dict]]] = defaultdict(list)
     quarantined = []
 
@@ -182,7 +184,7 @@ def export_address_patch(state: Path, area_file: Path, work_dir: Path, *, run_id
     return stage.finish(artifacts, {
         "source_state_manifest_sha256": state_hash,
         "source_response_sha256": report.get("last_tgos_response_sha256"),
-        "area_file_sha256": area_hash,
+        "area_file_sha256": area_hashes,
         "successful_tgos_results": sum(row["status"] == "succeeded" for row in results),
         "patch_rows": len(patch_rows),
         "provenance_rows": len(provenance_rows),

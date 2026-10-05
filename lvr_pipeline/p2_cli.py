@@ -107,7 +107,7 @@ def configure(sub):
     p.add_argument("--run-id", required=True)
     p = sub.add_parser("export-address-patch")
     p.add_argument("--state", type=Path, required=True)
-    p.add_argument("--area-file", type=Path, required=True)
+    p.add_argument("--area-file", type=Path, action="append", required=True)
     p.add_argument("--work-dir", type=Path, default=Path("data/work"))
     p.add_argument("--run-id")
     p = sub.add_parser("verify-address-patch")

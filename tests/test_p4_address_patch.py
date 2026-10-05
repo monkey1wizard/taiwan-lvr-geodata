@@ -45,7 +45,7 @@ def test_export_address_patch_keeps_legacy_columns_and_provenance(tmp_path):
         encoding="utf-8",
     )
     patch = export_address_patch(
-        imported, area, tmp_path / "work", run_id="patch-ok"
+        imported, [area], tmp_path / "work", run_id="patch-ok"
     )
     report = verify_address_patch(patch)
     assert report["patch_rows"] == 1
@@ -96,7 +96,7 @@ def test_export_address_patch_quarantines_missing_village_evidence(tmp_path):
     area = tmp_path / "area.csv"
     area.write_text("name,dgbas_id\n", encoding="utf-8")
     patch = export_address_patch(
-        imported, area, tmp_path / "work", run_id="patch-quarantine"
+        imported, [area], tmp_path / "work", run_id="patch-quarantine"
     )
     report = verify_address_patch(patch)
     assert report["patch_rows"] == 0
