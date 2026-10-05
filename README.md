@@ -2,11 +2,13 @@
 
 本專案保留台灣實價登錄資料的解析與地址處理程式，作為新版地理資料管線的起點。
 
+P0 基礎程式及固定套件環境已在工作副本實作，Windows 的 145 個測試通過。Linux TP-01 與 GitHub Actions 尚未執行，P0 尚未完整驗收。已實作內容與限制見 [P0 紀錄](docs/p0-foundations.md)。原 repo 尚待套用本次 patch。
+
 新版方案見[完整企劃草案](docs/drafts/taiwan-lvr-geodata-完整企劃.md)，內含六個 phases、24 個 tasks 與 26 個 test points，可直接作為 cloud agent 的工作依據。修訂後的執行設計已通過獨立審查。各 task 依自己的前置條件與驗收執行，不要求完整 GAL 流程。
 
 P1 建立內部 Parse／Normalize 階段快照。P2 完成離線地址處理後，先公開交付 output，後續 TGOS 再回補。下載以交易月份 `tx_yyyymm` 為最小時間單位，保留 `YYYYMM_category` 檔名，另提供依格式打包的年度 ZIP。使用者可只下載需要的月份／類別／格式，也可下載整年。
 
-保存方向已確定為 GitHub 公開，實測大小後安排小型固定檔案進 Git、一般月輸出／年度包及維護狀態進 Releases。cloud agent 可從已驗證離線快照接續。TGOS 沿用舊版 addrCompare 人工批次，每日／每片最多 10,000 筆、WGS84。新版 Parquet／DuckDB、地址池、TGOS、GIS 與月／年打包仍未實作或量測。
+保存方向已確定為 GitHub 公開，實測大小後安排小型固定檔案進 Git、一般月輸出／年度包及維護狀態進 Releases。cloud agent 可從已驗證離線快照接續。TGOS 沿用舊版 addrCompare 人工批次，每日／每片最多 10,000 筆、WGS84。P0 已提供基礎契約與本機快照。新版逐批轉換、地址池、TGOS、GIS 與月／年打包仍未實作或量測。
 
 ## 目前內容
 
@@ -23,13 +25,14 @@ P1 建立內部 Parse／Normalize 階段快照。P2 完成離線地址處理後�
 
 ## 執行測試
 
-目前保留的執行程式只使用 Python 標準函式庫。測試使用 pytest。
+既有解析與補字程式只使用 Python 標準函式庫。P0 使用 jsonschema、PyArrow、DuckDB 與 pytest，完整依賴固定於 uv.lock。固定環境及 Linux setup 指令見 [P0 紀錄](docs/p0-foundations.md)。
 
 在專案根目錄執行：
 
 ```powershell
-python -m pip install -r requirements.txt
-python -m pytest -q
+uv sync --locked --group dev --python 3.13.16
+uv run --locked --python 3.13.16 python scripts/build_fixtures.py
+uv run --locked --python 3.13.16 python -m pytest -q
 ```
 
 ## 使用既有解析與補字程式

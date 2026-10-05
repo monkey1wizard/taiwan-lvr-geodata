@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "observation",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "raw_record_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "category": {
+      "enum": [
+        "sales",
+        "presale",
+        "rent"
+      ]
+    },
+    "src_batch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_serial": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "input_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "member_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_row_number": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "record_grain": {
+      "const": "source_observation"
+    },
+    "transaction_key": {
+      "type": "null"
+    },
+    "raw_address": {
+      "type": "string"
+    },
+    "tx_date_raw": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tx_yyyymm": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 191201,
+      "maximum": 999912
+    },
+    "run_cutoff_yyyymm": {
+      "type": "integer",
+      "minimum": 191201
+    },
+    "amount_minor": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "area_m2_decimal": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9]+(?:\\.[0-9]+)?$"
+    },
+    "props_json": {
+      "type": "object"
+    },
+    "parse_status": {
+      "enum": [
+        "retained",
+        "review"
+      ]
+    },
+    "currency": {
+      "const": "TWD"
+    },
+    "amount_scale": {
+      "const": 100
+    }
+  },
+  "required": [
+    "raw_record_id",
+    "schema_version",
+    "category",
+    "src_batch",
+    "source_serial",
+    "input_sha256",
+    "member_path",
+    "source_row_number",
+    "record_grain",
+    "transaction_key",
+    "raw_address",
+    "tx_date_raw",
+    "tx_yyyymm",
+    "run_cutoff_yyyymm",
+    "amount_minor",
+    "area_m2_decimal",
+    "props_json",
+    "parse_status",
+    "currency",
+    "amount_scale"
+  ]
+}

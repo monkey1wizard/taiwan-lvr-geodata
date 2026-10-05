@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "address-component",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "raw_record_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "component_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ordinal": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "normalized_address": {
+      "type": "string"
+    },
+    "key_version": {
+      "const": "v2"
+    },
+    "building_key": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^v2:"
+    },
+    "legacy_building_key": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "expansion_status": {
+      "enum": [
+        "confirmed",
+        "review"
+      ]
+    }
+  },
+  "required": [
+    "raw_record_id",
+    "component_id",
+    "ordinal",
+    "normalized_address",
+    "key_version",
+    "building_key",
+    "legacy_building_key",
+    "expansion_status"
+  ]
+}
