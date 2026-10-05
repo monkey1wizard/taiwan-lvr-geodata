@@ -1,6 +1,6 @@
 # 完整資料處理流程
 
-本文件描述新版企劃的資料處理與交接流程。P0 基礎與 [P1 逐批轉換](p1-conversion.md)已實作，後續離線定位、TGOS、GIS 及發布仍待實作。圖中的 `@name` 是職責標記，不能僅依標記推定函式或命令已存在。tasks 與 test points 以[完整企劃](drafts/taiwan-lvr-geodata-完整企劃.md)為準。
+本文件描述新版企劃的資料處理與交接流程。P0 基礎、[P1 逐批轉換](p1-conversion.md)及 [P2 離線定位／月年輸出／公開交接](p2-offline-output.md)已驗收。P2 真實範圍為 115q1 來源觀測，座標來源限官方臺北市資料。TGOS、回補及地址 patch／更新仍待 P3／P4，全歷史量測待 P5。圖中的 `@name` 是職責標記，不能僅依標記推定函式或命令已存在。tasks 與 test points 以[完整企劃](drafts/taiwan-lvr-geodata-完整企劃.md)為準。
 
 第一版 output 在離線地址處理後交付，公開於 GitHub。下載以交易月份 `tx_yyyymm` 為最小時間單位，保留 `YYYYMM_category` 命名，再提供年度 ZIP。TGOS 後續補齊受影響月份及年度包。首次重建不匯入舊 SQLite、舊 output 或 migration 座標。
 
@@ -15,7 +15,7 @@
 | `(end √)` | 這個子流程正常完成 |
 | `(end >>|)` | 有意保留、排除或等待，不代表永久放棄 |
 | `(end ×)` | 拒絕或失敗，保存診斷及前版資料 |
-| `@name` | 預計負責的模組，對應下方 task 表 |
+| `@name` | 負責該步驟的模組職責，實作／待辦狀態見階段紀錄 |
 | `圖 N` | 子流程接續位置；同一圖只描述一個流程 |
 
 ## 圖 1：一輪資料工作的完整主線
@@ -436,4 +436,4 @@ patch 匯入與官方更新共用寫入控制。匯入可以只重建補充影�
 | 圖 8：地址 patch／更新 | T-18、T-19、T-20 | TP-19–TP-21 |
 | 圖 9：提交與復原 | T-04、T-22、T-23 | TP-10、TP-23–TP-25 |
 
-原始來源、固定版本與每輪結果必須可追溯。流程圖不宣稱新版執行測試已完成。實作後使用 [task 結果範本](task-result-template.md)記錄命令、pass／fail／not-run、輸出雜湊及交接位置。舊操作條件見 [TGOS 操作文件](legacy/RESUBMIT_RUNBOOK.md)。
+原始來源、固定版本與每輪結果必須可追溯。P0～P2 的驗收及未測範圍見各階段紀錄，不能將圖 6～8 的 TGOS／回補／地址更新標成已完成。使用 [task 結果範本](task-result-template.md)記錄命令、pass／fail／not-run、輸出雜湊及交接位置。舊操作條件見 [TGOS 操作文件](legacy/RESUBMIT_RUNBOOK.md)。

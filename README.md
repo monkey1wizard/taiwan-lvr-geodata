@@ -6,11 +6,13 @@ P0 基礎程式及固定套件環境已實作，Windows 與 GitHub Ubuntu 均通
 
 P1 已在正式目錄實作逐批轉換命令與內部 Parquet 快照。Windows 與 GitHub Ubuntu 各 178 個測試，以及真實 `115q1` 批次已通過驗證，詳見 [P1 操作與證據](docs/p1-conversion.md)。P1 已直接整合至 main，先前 PR #2 不再作為交付流程。
 
+P2 已完成離線地址池、定位、GIS 月檔、年度 ZIP 與 GitHub 公開交接。Windows／Ubuntu 各 211 個測試通過。全新 Linux 未提供 raw，重產的 783 個月檔雜湊全部相同。首版 [p2-115q1-offline-v2](https://github.com/monkey1wizard/taiwan-lvr-geodata/releases/tag/data-p2-115q1-offline-v2) 有 102,743 筆來源觀測、87 個交易月份與 10 個年度，座標來源限官方臺北市資料。各月／年皆為 `scope_limited`，其餘縣市的未定位資料仍保留。見 [P2 驗收與命令](docs/p2-offline-output.md)及 [下載說明](docs/downloads.md)。
+
 新版方案見[完整企劃草案](docs/drafts/taiwan-lvr-geodata-完整企劃.md)，內含六個 phases、24 個 tasks 與 26 個 test points，可直接作為 cloud agent 的工作依據。修訂後的執行設計已通過獨立審查。各 task 依自己的前置條件與驗收執行，不要求完整 GAL 流程。
 
 P1 建立內部 Parse／Normalize 階段快照。P2 完成離線地址處理後，先公開交付 output，後續 TGOS 再回補。下載以交易月份 `tx_yyyymm` 為最小時間單位，保留 `YYYYMM_category` 檔名，另提供依格式打包的年度 ZIP。使用者可只下載需要的月份／類別／格式，也可下載整年。
 
-保存方向已確定為 GitHub 公開，實測大小後安排小型固定檔案進 Git、一般月輸出／年度包及維護狀態進 Releases。cloud agent 可從已驗證離線快照接續。TGOS 沿用舊版 addrCompare 人工批次，每日／每片最多 10,000 筆、WGS84。P0／P1 已提供契約、本機快照與逐批轉換。地址池、TGOS、GIS 與月／年打包仍待實作及量測。
+月輸出、年度包及維護狀態已保存於不可變 Release，約 582.4 MiB。Git 只保存程式、來源描述及小型發布指標。cloud agent 已可取得維護包並重產離線 output。TGOS、回補及地址 repo 更新尚待 P3／P4；人工程序沿用 addrCompare 每日／每片最多 10,000 筆與 WGS84。
 
 ## 本機開發與 Git
 
@@ -25,7 +27,9 @@ P1 建立內部 Parse／Normalize 階段快照。P2 完成離線地址處理後�
 - `lvr_pipeline/tx_date.py`：民國日期轉交易年月。
 - `lvr_pipeline/ingest.py`、`normalize.py`、`converted.py`：P1 的逐批解析、來源觀測正規化及內部轉換快照。
 - `lvr_pipeline/parquet_io.py`、`snapshots.py`：型別、筆數、雜湊、關聯與提交復原檢查。
-- `tests/`：既有解析／補字測試，以及 P0／P1 的合成驗收測試。
+- `lvr_pipeline/offline_lookup.py`、`address_pool.py`、`address_state.py`：固定離線索引、全域池與獨立來源關聯，以及唯一／衝突／未定位狀態。
+- `lvr_pipeline/export.py`、`packaging.py`、`distribution.py`：三格式月檔、原月檔年度 ZIP、維護包、公開取得／驗證及預期 parent 指標提交。
+- `tests/`：既有解析／補字測試，以及 P0～P2 的合成驗收測試。
 - `data/registry/garbled_override.csv`：既有人工補字規則。
 - `data/reference/`：路名參考資料與來源紀錄。
 
@@ -71,7 +75,10 @@ python -m lvr_pipeline.1_normalize
 
 - [完整企劃草案](docs/drafts/taiwan-lvr-geodata-完整企劃.md)：離線首版 output、月／年下載、GitHub 公開交接及完整 phases／tasks／test points。
 - [task 結果範本](docs/task-result-template.md)：agent 記錄前置版本、命令、測試、輸出雜湊及交接位置。
-- [完整資料處理流程](docs/data-processing-flow.md)：從 raw 到離線定位、月／年輸出、TGOS 回補、地址 patch 與快照復原的九個子流程；新版模組仍待實作。
+- [完整資料處理流程](docs/data-processing-flow.md)：九個子流程，P0～P2 已驗收，TGOS／回補／地址更新仍待實作。
+- [P2 驗收](docs/p2-offline-output.md)：已發布首版、實測資源、測試與已實作命令。
+- [cloud 操作](docs/cloud-runbook.md)：取得公開維護包，不提供 raw 重產離線 output。
+- [發布操作](docs/release-runbook.md)：draft 傳送核對、不可變 Release 與 main 指標提交。
 - [新版資料處理流程草稿](docs/drafts/taiwan-lvr-geodata-新版資料處理流程.md)：Google Drive 文件的完整內容快照，後續將重寫。
 - [舊文件參考索引](docs/legacy/README.md)：保留可再利用的舊文件原文，列出已知過時內容。
 - [資料來源](docs/DATA_SOURCES.md)：本次搬移所需的來源與本機資料放置方式。

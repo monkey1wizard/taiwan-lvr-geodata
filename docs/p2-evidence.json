@@ -1,0 +1,285 @@
+{
+  "schema_version": "1.0",
+  "phase": "P2",
+  "status": "Accepted",
+  "date": "2026-10-05",
+  "tasks": [
+    "T-08",
+    "T-09",
+    "T-10",
+    "T-11",
+    "T-12",
+    "T-13",
+    "T-22",
+    "T-23"
+  ],
+  "test_points": {
+    "TP-08": "pass",
+    "TP-09": "pass",
+    "TP-10": "pass",
+    "TP-11": "pass",
+    "TP-12": "pass",
+    "TP-13": "pass",
+    "TP-14": "pass",
+    "TP-23": "pass",
+    "TP-24": "pass",
+    "TP-25": "pass",
+    "TP-26": "pass"
+  },
+  "acceptance_scope": "Initial offline 115q1 source observations. Taipei official coordinate source only. P3 TGOS/backfill and full-history P5 testing are not run.",
+  "producer_commits": {
+    "converted": "f79e0750fd0a0a0abb127f21ad835552cd7c8c6a",
+    "index": "462a39a37ea638d5f5ef6c616dc9865a087683b4",
+    "pool": "462a39a37ea638d5f5ef6c616dc9865a087683b4",
+    "state": "462a39a37ea638d5f5ef6c616dc9865a087683b4",
+    "output": "793fef98f84cab5cc9fc3126af9cd76e5d480bdb"
+  },
+  "manifest_sha256": {
+    "converted": "5308ced7c501584a6aaedfab8c72193f909471fdc82dfd7700b65390dfe111ba",
+    "index": "95994a73971075b09b90f0ce863cf05a72e31384c6568be4928e393d4ca7129d",
+    "pool": "995b3e15027c6f49f744a17021bc7e06cb70b521f9f09e0b633ec39f7baae7ac",
+    "state": "ad7c4cb5e103df7f76984ecebcbcf5e00991e7b561d3c292034de635102cd0be",
+    "output": "2ac2913b70784e657e6b845c3a558236fddcc73283bcbdd3c6aa61c053a8e028"
+  },
+  "publisher_commit": "00691a8955a2e98d73b6f04a97289b9d30a7c965",
+  "pointer_commit": "c7d64cedbf6b1ed69431d3a20ae885b67ea0d934",
+  "address_reference_commit": "752c87d36a8e52d9b71680115c1c19d1a6d3e4ec",
+  "official_source": {
+    "schema_version": "1.0",
+    "dataset_id": "155472",
+    "provider": "臺北市政府民政局",
+    "dataset_title": "臺北市門牌位置資訊",
+    "dataset_url": "https://data.gov.tw/dataset/155472",
+    "download_url": "https://data.taipei/api/dataset/b7c8e724-1e98-45ee-a0bd-f3840623ed97/resource/ce76ca0c-7f94-4935-ab47-1d2a41ca2abb/download",
+    "source_modified_at": "2026-10-02T11:20:44+08:00",
+    "verified_at": "2026-10-05",
+    "bytes": 124662109,
+    "sha256": "7212058161f10a13d52ee46e74155526ca4ebf182b151562ba0e533f882a89ab",
+    "county_code": "63",
+    "administrative_code_profile": "MOI municipality eight-digit town code to DGBAS seven-digit code, declared by the local updater and validated against pinned administrative tables",
+    "crs": "EPSG:3826",
+    "coordinate_columns": [
+      "橫座標",
+      "縱座標"
+    ],
+    "crs_evidence": "Local taiwan-address-data scripts/update_addresses.py declares EPSG:3826 for this dataset. That script is not tracked by the pinned Git commit. Its inspected SHA-256 is recorded separately. Taipei government control-point documentation identifies the city's TWD97 plane-coordinate system. This profile is explicit; numeric ranges never select CRS or swap axes.",
+    "local_updater_sha256": "22989597675004df1d5eac53d296b84c946c6a9e0f1f3a0e859607c02f45bac3",
+    "crs_reference_url": "https://www.geomis.gov.taipei/GEOGISSERVER/geogisG.aspx",
+    "license": "政府資料開放授權條款第1版",
+    "license_url": "https://data.gov.tw/license"
+  },
+  "p1_source_accounting": {
+    "input_rows": 129058,
+    "retained_rows": 102743,
+    "excluded_rows": 26314,
+    "failed_rows": 1,
+    "component_rows": 102881,
+    "source_sha256": {
+      "115q1": "8d0bfbaea4fe56d7aa9876b8d587d51d6f69f3419ba1d4e5bab59ec198fe9fe2"
+    }
+  },
+  "index": {
+    "rows": 1157763,
+    "valid_rows": 1135554,
+    "invalid_rows": 22209,
+    "artifact_bytes": 59077486,
+    "build_elapsed_seconds": 49.861343,
+    "build_process_peak_rss_bytes": 330125312
+  },
+  "pool": {
+    "pool_rows": 56001,
+    "occurrence_rows": 102881,
+    "artifact_bytes": 13704414,
+    "build_elapsed_seconds": 5.039361,
+    "build_process_peak_rss_bytes": 458518528
+  },
+  "state": {
+    "status_counts": {
+      "conflict": 26,
+      "located": 6481,
+      "outside_scope": 49403,
+      "unmatched": 91
+    },
+    "dataset_counts": {
+      "address-occurrence": 102881,
+      "address-pool": 56001,
+      "address-result": 56001,
+      "offline-row": 148265,
+      "tgos-ledger": 0,
+      "unmatched-address": 49520,
+      "verified-alias": 0
+    },
+    "artifact_bytes": 31256067,
+    "build_elapsed_seconds": 3.85327,
+    "build_process_peak_rss_bytes": 409382912
+  },
+  "output": {
+    "snapshot_id": "p2-115q1-offline-v2",
+    "manifest_sha256": "2ac2913b70784e657e6b845c3a558236fddcc73283bcbdd3c6aa61c053a8e028",
+    "months": 87,
+    "years": 10,
+    "assets_including_manifest": 914,
+    "retained_rows": 102743,
+    "scope_limited": true,
+    "coordinate_counties": [
+      "63"
+    ],
+    "tgos_started": false,
+    "release_bytes_including_manifest": 610717327,
+    "geometry_statistics": {
+      "rows": 102743,
+      "null_geometry": 92797,
+      "partial_geometry": 1,
+      "approximation": 2
+    },
+    "sizes": {
+      "annual_bytes": 61091396,
+      "conservative_working_disk_budget_bytes": 2383611360,
+      "elapsed_seconds": 57.758436600037385,
+      "git": "code, schemas, synthetic tests, source descriptors and small release pointers only",
+      "git_generated_history_growth_bytes": 0,
+      "largest_asset_bytes": 81393203,
+      "maintenance_bytes": 81393203,
+      "max_asset_bytes": 2147483647,
+      "monthly_bytes": 467718964,
+      "process_peak_rss_bytes": 513572864,
+      "release_asset_bytes": 610291176,
+      "retained_build_staging_bytes": 610291176,
+      "snapshot_id": "p2-115q1-offline-v2"
+    }
+  },
+  "tests": {
+    "windows": {
+      "passed": 211,
+      "seconds": 124.13,
+      "command": "python -m pytest -q"
+    },
+    "linux": {
+      "passed": 211,
+      "seconds": 60.37,
+      "run_url": "https://github.com/monkey1wizard/taiwan-lvr-geodata/actions/runs/37285900054"
+    },
+    "fresh_public_linux": {
+      "receipt": {
+        "all_month_hashes_match": true,
+        "manifest_sha256": "2ac2913b70784e657e6b845c3a558236fddcc73283bcbdd3c6aa61c053a8e028",
+        "month_file_count": 783,
+        "raw_provided": false,
+        "result": "pass",
+        "retained_rows": 102743,
+        "snapshot_id": "p2-115q1-offline-v2",
+        "tgos_started": false,
+        "unmatched_selection_verified": true
+      },
+      "run_url": "https://github.com/monkey1wizard/taiwan-lvr-geodata/actions/runs/37288514874"
+    }
+  },
+  "publication": {
+    "release_url": "https://github.com/monkey1wizard/taiwan-lvr-geodata/releases/tag/data-p2-115q1-offline-v2",
+    "manifest_url": "https://github.com/monkey1wizard/taiwan-lvr-geodata/releases/download/data-p2-115q1-offline-v2/manifest.json",
+    "immutable": true,
+    "verified_remote_downloads": 914,
+    "pointer_committed_after_fresh_linux_pass": true
+  },
+  "command_metrics": [
+    {
+      "command": [
+        "python",
+        "-m",
+        "lvr_pipeline",
+        "resolve-offline",
+        "--pool",
+        "data/work/address-pool/snapshots/p2-115q1-pool",
+        "--index",
+        "data/work/offline-index/snapshots/p2-taipei-official-v2",
+        "--run-id",
+        "p2-115q1-state"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 25.614335599995684,
+      "monitored_scope": [
+        "data/work",
+        "data/output",
+        "data/cache"
+      ],
+      "peak_retained_file_bytes": 996552416,
+      "samples": 20,
+      "sampling_seconds": 0.5,
+      "limitation": "Logical file bytes in the declared directories only. Does not include system temporary validation files or physical allocation overhead."
+    },
+    {
+      "command": [
+        "python",
+        "-m",
+        "lvr_pipeline",
+        "package-output",
+        "--input",
+        "data/work/converted/snapshots/p1-115q1-accepted",
+        "--state",
+        "data/work/offline-state/snapshots/p2-115q1-state",
+        "--notices",
+        "data/sources/p2_notice.json",
+        "--run-id",
+        "p2-115q1-offline"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 69.23669680004241,
+      "monitored_scope": [
+        "data/work",
+        "data/output",
+        "data/cache"
+      ],
+      "peak_retained_file_bytes": 1607269519,
+      "samples": 54,
+      "sampling_seconds": 0.5,
+      "limitation": "Logical file bytes in the declared directories only. Does not include system temporary validation files or physical allocation overhead."
+    },
+    {
+      "command": [
+        "python",
+        "-m",
+        "lvr_pipeline",
+        "package-output",
+        "--input",
+        "data/work/converted/snapshots/p1-115q1-accepted",
+        "--state",
+        "data/work/offline-state/snapshots/p2-115q1-state",
+        "--notices",
+        "data/sources/p2_notice.json",
+        "--run-id",
+        "p2-115q1-offline-v2"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 89.56859700003406,
+      "monitored_scope": [
+        "data/work",
+        "data/output",
+        "data/cache"
+      ],
+      "peak_retained_file_bytes": 2217987463,
+      "samples": 56,
+      "sampling_seconds": 0.5,
+      "limitation": "Logical file bytes in the declared directories only. Does not include system temporary validation files or physical allocation overhead."
+    }
+  ],
+  "failure_recovery": [
+    {
+      "candidate": "p2-115q1-offline",
+      "result": "fail",
+      "reason": "GitHub rejected zero-byte NDJSON. No index was published.",
+      "obsolete_unpublished_draft_removed": true
+    },
+    {
+      "candidate": "p2-115q1-offline-v2",
+      "result": "fail_then_pass",
+      "reason": "Draft lookup by tag returned 404. Corrected to Release ID, resumed the same data candidate and verified all attachments."
+    }
+  ],
+  "limitations": [
+    "Coordinate coverage limited to Taipei. All declared transaction months/years are scope_limited.",
+    "Stage build_elapsed_seconds is recorded before snapshot publication validation. Whole-command timings are reported separately where measured.",
+    "Monitored file-byte peak excludes system temporary validation paths and physical allocation overhead.",
+    "Assets larger than the single-file budget or versions exceeding 1000 assets require additional partition contracts before full-history publication.",
+    "TP-26 backfill-specific changes remain NotRun until T-17. TP-09 TGOS integration remains NotRun until P3."
+  ]
+}

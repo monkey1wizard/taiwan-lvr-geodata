@@ -2,9 +2,11 @@
 
 ## 範圍與狀態
 
-P2 實作 T-08～T-13、T-22、T-23。所有程式在本機正式目錄的 main 修改、測試及提交。階段驗收以本文件的命令、測試結果及公開快照為準，不能由程式存在推定通過。
+P2 的 T-08～T-13、T-22、T-23 已驗收。所有程式在本機正式目錄的 main 修改、測試、提交並直接推送。Windows 與 GitHub Ubuntu 各 211 個測試通過。全新 Linux 未提供 raw，重產的 783 個月檔與公開版本全部雜湊相同。完整數值、版本與限制見 [p2-evidence.json](p2-evidence.json)。
 
-目前正在驗證首版真實範圍：P1 已驗收的 `p1-115q1-accepted`，共 102,743 筆來源觀測、102,881 個地址成員。交易月份共有 87 個，從 201712 到 202610。原始批次只有 115q1，因此各月及年度都是 `scope_limited`。沒有出現的月份是 `absent`，不能視為全月沒有交易。
+首版已驗證範圍為 P1 的 `p1-115q1-accepted`，共 102,743 筆來源觀測、102,881 個地址成員。交易月份共有 87 個，從 201712 到 202610，分屬 10 個年度。原始批次只有 115q1，因此各月及年度都是 `scope_limited`。沒有出現的月份是 `absent`，不能視為全月沒有交易。
+
+公開版本為 [p2-115q1-offline-v2](https://github.com/monkey1wizard/taiwan-lvr-geodata/releases/tag/data-p2-115q1-offline-v2)，共有 914 個附件，已逐一從 GitHub 下載核對，並以不可變 Release 保存。小型指標見 [latest.json](../data/releases/latest.json)。manifest SHA-256 為 `2ac2913b70784e657e6b845c3a558236fddcc73283bcbdd3c6aa61c053a8e028`。
 
 離線行政區與候選路名使用固定 `taiwan-address-data` commit `752c87d36a8e52d9b71680115c1c19d1a6d3e4ec`。首版可公開座標使用另行固定的官方臺北市門牌 CSV。舊地址 repo 的座標來源權利仍未完全證明，因此不使用或發布那些座標。其餘縣市保留 `outside_scope` 或地址診斷。
 
@@ -21,21 +23,21 @@ P2 實作 T-08～T-13、T-22、T-23。所有程式在本機正式目錄的 main 
 從 repo 根目錄執行。下列資料建置命令需要自行提供已固定的地址 checkout 與官方 CSV，不屬於安裝或測試。安裝及合成測試不會下載真實資料。
 
 ```powershell
-uv run --locked --python 3.13.16 python -m lvr_pipeline build-offline-index --address-dir ../taiwan-address-data --county 63 --official-source data/sources/official_taipei.json --official-file data/cache/official-source/taipei-address.csv --run-id p2-taipei-official
-uv run --locked --python 3.13.16 python -m lvr_pipeline build-address-pool --input data/work/converted/snapshots/p1-115q1-accepted --address-dir ../taiwan-address-data --index data/work/offline-index/snapshots/p2-taipei-official --run-id p2-115q1-pool
-uv run --locked --python 3.13.16 python -m lvr_pipeline resolve-offline --pool data/work/address-pool/snapshots/p2-115q1-pool --index data/work/offline-index/snapshots/p2-taipei-official --run-id p2-115q1-state
+uv run --locked --python 3.13.16 python -m lvr_pipeline build-offline-index --address-dir ../taiwan-address-data --county 63 --official-source data/sources/official_taipei.json --official-file data/cache/official-source/taipei-address.csv --run-id p2-taipei-official-v2
+uv run --locked --python 3.13.16 python -m lvr_pipeline build-address-pool --input data/work/converted/snapshots/p1-115q1-accepted --address-dir ../taiwan-address-data --index data/work/offline-index/snapshots/p2-taipei-official-v2 --run-id p2-115q1-pool
+uv run --locked --python 3.13.16 python -m lvr_pipeline resolve-offline --pool data/work/address-pool/snapshots/p2-115q1-pool --index data/work/offline-index/snapshots/p2-taipei-official-v2 --run-id p2-115q1-state
 uv run --locked --python 3.13.16 python -m lvr_pipeline verify-offline-state --input data/work/offline-state/snapshots/p2-115q1-state
-uv run --locked --python 3.13.16 python -m lvr_pipeline package-output --input data/work/converted/snapshots/p1-115q1-accepted --state data/work/offline-state/snapshots/p2-115q1-state --notices data/sources/p2_notice.json --run-id p2-115q1-offline
-uv run --locked --python 3.13.16 python -m lvr_pipeline verify-output --input data/output/p2-115q1-offline
+uv run --locked --python 3.13.16 python -m lvr_pipeline package-output --input data/work/converted/snapshots/p1-115q1-accepted --state data/work/offline-state/snapshots/p2-115q1-state --notices data/sources/p2_notice.json --run-id p2-115q1-offline-v2
+uv run --locked --python 3.13.16 python -m lvr_pipeline verify-output --input data/output/p2-115q1-offline-v2
 ```
 
-首次 `resolve-offline` 不需要 `--prior-state`。後續指定舊狀態時，程式仍從新索引重新計算，不承接已移除的座標證據。若 TGOS 已開始，P2 命令拒絕重設狀態，須等待 P3 帳本整合。
+以上是已驗收版本的建置參數。重跑時使用未占用的 run ID，或由固定 producer 與完全相同的綁定重用快照。不要覆寫既有版本。首次 `resolve-offline` 不需要 `--prior-state`。後續指定舊狀態時，程式仍從新索引重新計算，不承接已移除的座標證據。若 TGOS 已開始，P2 命令拒絕重設狀態，須等待 P3 帳本整合。
 
 ## 資料契約
 
 索引保存來源列觀測，包括重複、無效及衝突。行政區依 CSV 欄位與固定代碼表核對，檔名只作選定輸入範圍用途。代碼保持字串與前導零。別名只有行政區表的明確同碼表示，沒有距離或子門牌等價推論。
 
-`unique_addresses.parquet` 每個 v2 鍵一列。`address_occurrences.parquet` 每個來源地址成員一列，獨立保存原鍵及套用原因，不把大量出現關聯塞入單一地址列。代表地址使用固定最小表示，排程家族不作識別合併。亂碼路名只有唯一候選且完整門牌精確命中唯一座標時才套用。
+`unique_addresses.parquet` 每個 v2 鍵一列。`address_occurrences.parquet` 每個來源地址成員一列，獨立保存原鍵及套用原因，不把大量出現關聯塞入單一地址列。池內的 `record_count` 是地址成員出現次數，不是去重後的交易數。代表地址使用固定最小表示，排程家族不作識別合併。亂碼路名只有唯一候選且完整門牌精確命中唯一座標時才套用。
 
 狀態包含 `address_index`、`address_observations`、`unique_addresses`、`address_occurrences`、`unmatched_addresses`、空的 `verified_aliases` 及空的 `tgos_results`。`tgos_started=false`。不同有效座標是 `conflict`，不任取第一列；沒有有效證據是 `unmatched` 或 `outside_scope`。不能將衝突池直接當作可送 TGOS 的池，P3 還須套用查詢資格。
 
@@ -66,9 +68,33 @@ GeoParquet 固定 1.1.0、CRS84、WKB，幾何不是地籍邊界。GeoJSON 與 N
 | --- | --- | --- |
 | T-10～T-12／TP-11～TP-13 | 合成行政區、前導零、來源欄位、重複／衝突、來源移除與亂碼精確證據 | pass |
 | T-13／TP-14、TP-26 | 幾何 WKB、跨年交易月、三格式／金額對應、部分／null 幾何、年度分片原檔雜湊 | pass |
-| T-09／TP-09、TP-25 | 合成快照在空目錄下載維護狀態，不提供 raw | pass，GitHub Linux 真實交接 not-run |
-| T-22／TP-23 | 模擬上傳中斷、附件雜湊錯誤、過時 parent 與正確提交順序 | pass，真實公開傳送 not-run |
-| T-08／TP-08 | 真實 output 大小與配置 | not-run |
-| T-23／TP-24 | 真實公開月／年與狀態核對 | not-run |
+| T-09／TP-09、TP-25 | 合成下載及全新 GitHub Linux 的公開維護狀態，不提供 raw | pass，783 個重產月檔雜湊全部相同 |
+| T-22／TP-23 | 中斷、雜湊錯誤、過時 parent、draft 接續及真實公開傳送 | pass，914 個附件下載核對後公開，Linux 交接通過後才提交索引 |
+| T-08／TP-08 | 真實 output 大小與配置 | pass，實測資料見下表 |
+| T-23／TP-24 | 真實公開月／年與狀態核對 | pass，單一不可變公開版本 |
 
-完整命令與最終快照證據將在實測後補入本文件與 `p2-evidence.json`。以上不等同 P2 全部驗收完成。
+TP-26 的初版分月、空／缺月、年度原檔及分片已驗證。TGOS／回補整合與回補後單月重建尚未執行，屬 P3 的 T-14～T-17。全歷史範圍與更大附件配置屬 P5，尚未驗收。
+
+## 實測結果與資源
+
+| 項目 | 已驗證結果 |
+| --- | --- |
+| 地址索引 | 1,157,763 列，1,135,554 有效，22,209 無效觀測仍保留 |
+| 全域地址池 | 56,001 個唯一鍵，102,881 列來源成員關聯 |
+| 地址狀態 | located 6,481、conflict 26、unmatched 91、outside_scope 49,403 |
+| 使用者觀測 | 102,743 列，9,946 有幾何，92,797 為 null |
+| 部分／近似幾何 | 1 列 partial，2 列近似 bbox |
+| 月檔 | 783 個，約 446 MiB |
+| 年度 ZIP | 30 個，約 58 MiB，原月檔位元組已核對 |
+| 維護包 | 約 78 MiB，可在 cloud 不提供 raw 重產 |
+| 全部公開附件 | 約 582.4 MiB，最大單檔約 77.6 MiB |
+| 產生 output 的整體命令 | 89.57 秒，包括輸入與完成驗證 |
+| output 建置程序 RSS 峰值 | 約 489.8 MiB，包含同程序的輸入驗證，不含其他程序 |
+| 本機監測目錄檔案峰值 | 約 2.07 GiB，包含保留的兩份候選與既有工作資料，不含系統暫存 |
+| Git／Release 配置 | 生成資料不進 Git，只提交來源描述及小型指標，資料存於 Release |
+
+建置階段的 `build_elapsed_seconds` 在提交／讀回驗證前記錄，不能當作整體命令時間。監測值是指定目錄的邏輯檔案大小，且為取樣峰值，不是完整實體磁碟配置峰值。DuckDB 驗證暫存另有 1 GiB 上限；size_report 的保守預算另留驗證空間。
+
+第一次傳送因零位元組空 NDJSON 被 GitHub 拒絕而失敗，沒有提交指標。第二次 draft 查詢遇到依 tag 端點的 404，改用 Release ID 接續原候選。最終所有附件核對成功後公開，未替換既有版本附件。這些 fail／pass 紀錄保存在 evidence 與 [task 結果](task-result-template.md)。
+
+Windows 211 tests：[publisher commit](https://github.com/monkey1wizard/taiwan-lvr-geodata/commit/00691a8955a2e98d73b6f04a97289b9d30a7c965)。Linux 合成驗證：[run 37285900054](https://github.com/monkey1wizard/taiwan-lvr-geodata/actions/runs/37285900054)。公開 Linux 交接：[run 37288514874](https://github.com/monkey1wizard/taiwan-lvr-geodata/actions/runs/37288514874)。公開狀態不以會到期的 Actions artifact 作唯一保存，持久維護包在不可變 Release。

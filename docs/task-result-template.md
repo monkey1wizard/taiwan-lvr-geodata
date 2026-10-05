@@ -50,3 +50,40 @@
 ## 結論與下一個 task
 
 說明已完成的範圍、尚未驗收的 test points、實際阻擋及可接續的 task。指明下一位 agent 如何取得相同輸入及輸出。採用已驗證離線快照時，說明是否需要 raw ZIP 重建，不能省略不相容檢查。
+
+## 本次 P2 執行結果：2026-10-05
+
+T-08～T-13、T-22、T-23 已在宣告的初版範圍驗收。正式工作目錄為 `C:/Code/taiwan-lvr-geodata`，所有變更在 main 提交並直接推送。資料 producer 為 `793fef98f84cab5cc9fc3126af9cd76e5d480bdb`，發布修正版本為 `00691a8955a2e98d73b6f04a97289b9d30a7c965`，指標提交為 `c7d64cedbf6b1ed69431d3a20ae885b67ea0d934`。較早的索引／池／狀態與 P1 producer 版本及輸入 manifest 雜湊見 [p2-evidence.json](p2-evidence.json)。
+
+| 項目 | 實際結果 |
+| --- | --- |
+| 前置條件 | P0／P1 T-01～T-07 已驗收，使用 p1-115q1-accepted |
+| 輸入範圍 | 115q1，102,743 筆來源觀測，102,881 個地址成員 |
+| 地址來源 | 固定地址 repo 的行政區參考，座標使用固定官方臺北市 CSV，沒有修改地址 repo |
+| 公開版本 | p2-115q1-offline-v2，不可變 Release，914 個附件下載核對 |
+| 月／年 | 87 交易月、783 個月檔、10 年／30 年度 ZIP，均為 scope_limited |
+| 定位 | 9,946 筆有幾何、92,797 筆 null，另保留全部來源與未定位狀態 |
+| 維護交接 | 約 77.6 MiB，cloud 不提供 raw 重產全部月檔雜湊相同 |
+| 完整資料與資源 | 詳見 [P2 紀錄](p2-offline-output.md)，生成檔案不進 Git |
+
+以下命令皆從正式 repo 根目錄執行。資料建置已完成，重跑須使用未占用的 run ID。重用快照時，producer、結構版本、設定與輸入雜湊須全部相同。表中是實際使用的命令，不依賴 GAL。
+
+| 命令 | 結果 | 證據／限制 |
+| --- | --- | --- |
+| `python -m pytest -q` | pass，211 tests | Windows 124.13 秒，Linux 60.37 秒；測試全部使用合成輸入 |
+| `python -m lvr_pipeline build-offline-index --address-dir ../taiwan-address-data --county 63 --official-source data/sources/official_taipei.json --official-file data/cache/official-source/taipei-address.csv --run-id p2-taipei-official-v2` | pass | 1,157,763 列，來源 SHA 及行政區已核對 |
+| `python -m lvr_pipeline build-address-pool --input data/work/converted/snapshots/p1-115q1-accepted --address-dir ../taiwan-address-data --index data/work/offline-index/snapshots/p2-taipei-official-v2 --run-id p2-115q1-pool` | pass | 56,001 唯一鍵，102,881 成員關聯 |
+| `python -m lvr_pipeline resolve-offline --pool data/work/address-pool/snapshots/p2-115q1-pool --index data/work/offline-index/snapshots/p2-taipei-official-v2 --run-id p2-115q1-state` | pass | located 6,481、conflict 26、unmatched 91、outside_scope 49,403；不任取第一列 |
+| `python -m lvr_pipeline package-output --input data/work/converted/snapshots/p1-115q1-accepted --state data/work/offline-state/snapshots/p2-115q1-state --notices data/sources/p2_notice.json --run-id p2-115q1-offline-v2` | pass | 完成前後均核對三格式、年度原月檔及維護狀態 |
+| `python -m lvr_pipeline publish-output --input data/output/p2-115q1-offline --expected-parent 462a39a37ea638d5f5ef6c616dc9865a087683b4 --checkout . --receipt data/work/p2-release-receipt.json` | fail | 零位元組空 NDJSON 遭 GitHub 拒絕，沒有提交指標 |
+| `python -m lvr_pipeline publish-output --input data/output/p2-115q1-offline-v2 --expected-parent 793fef98f84cab5cc9fc3126af9cd76e5d480bdb --checkout . --receipt data/work/p2-release-receipt.json` | fail | draft 依 tag 查詢 404，零附件，沒有提交指標 |
+| `python -m lvr_pipeline publish-output --input data/output/p2-115q1-offline-v2 --expected-parent 00691a8955a2e98d73b6f04a97289b9d30a7c965 --checkout . --receipt data/work/p2-release-receipt.json` | pass | 相同資料 producer，改用 Release ID 接續，914 附件下載雜湊核對後公開 |
+| `python -m scripts.verify_public_snapshot --manifest-url https://github.com/monkey1wizard/taiwan-lvr-geodata/releases/download/data-p2-115q1-offline-v2/manifest.json --manifest-sha256 2ac2913b70784e657e6b845c3a558236fddcc73283bcbdd3c6aa61c053a8e028` | pass | 全新 GitHub Ubuntu，raw_provided=false，783 個重產月檔全部相同 |
+| `python -m lvr_pipeline commit-release-pointer --receipt data/work/p2-release-receipt.json --checkout .` | pass | Linux 交接通過後提交／推送 c7d64ce，預期 parent 及公開不可變 digest 再次核對 |
+| P3 TGOS 準備／匯入／回補 | not-run | 此階段沒有開始 TGOS，tgos_started=false |
+| P4 地址 repo patch／更新 | not-run | 此階段沒有修改或發布相關地址 repo |
+| P5 全歷史量測 | not-run | 不以單批 scope_limited 宣稱全歷史驗收 |
+
+TP-08～TP-14、TP-23～TP-26 的 P2 適用驗收為 pass。本機中斷與 parent 復原由 TP-10 測試核對。TP-09 的 TGOS 整合仍為 not-run。TP-26 的回補更新仍為 not-run。P5 全量驗收也尚未執行。
+
+下一階段為 P3 的 T-14～T-17。從 [公開指標](../data/releases/latest.json)取得固定 URL／SHA-256，再依 [cloud 操作](cloud-runbook.md)下載維護包。持久維護資料在不可變 Release，Actions artifact 只供補充驗證證據。

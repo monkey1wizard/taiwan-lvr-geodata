@@ -4,7 +4,7 @@
 >
 > 月份依交易／租賃日期 tx_yyyymm 劃分，保留 YYYYMM_category 檔名。使用者可獨立下載月／類別／格式，也可選年度包。GitHub 公開及舊 TGOS 操作條件已確定，不再保留原三個 OQ。
 >
-> P0／P1 的 T-01～T-07 已實作並通過階段驗收。最新 Windows／GitHub Ubuntu 各 178 個測試，P1 指定真實批次亦已驗證，見 [P0 紀錄](../p0-foundations.md)與 [P1 紀錄](../p1-conversion.md)。P0／P1 已直接整合至 main，後續以本機 commit／push 交付。P2～P5 tasks 為 Planned，尚未執行的 test points 為 NotRun。cloud 執行不需要 GAL、.dev 或另產生執行提示。本機雙語鏡像只供維護。執行後使用 repo 內的 `docs/task-result-template.md` 記錄版本、命令、測試、月／年輸出及交接位置。
+> P0／P1 的 T-01～T-07，以及 P2 的 T-08～T-13、T-22、T-23 已驗收。Windows／GitHub Ubuntu 各 211 個測試通過。115q1 首版公開離線 output 已保存於不可變 GitHub Release，全新 Linux 未提供 raw，重產 783 個月檔雜湊全部相同。座標範圍限官方臺北市資料，月／年仍是 scope_limited。見 [P0](../p0-foundations.md)、[P1](../p1-conversion.md)與 [P2 驗收](../p2-offline-output.md)。P3～P5 tasks 尚未完成，未執行項目仍為 NotRun。所有程式在本機正式目錄 main commit／push，cloud 不需要 GAL、.dev 或另產生提示。執行紀錄見 docs/task-result-template.md。
 
 ## 審核狀態
 
@@ -15,15 +15,15 @@
 
 ## 目標與範圍
 
-P1 的 T-05～T-07 已實作並完成本階段驗收。Windows／GitHub Ubuntu 各 178 個測試，以及指定 `115q1` 真實批次已驗證。P0／P1 任務已勾選，P2～P5 尚未完成。詳見 [P1 紀錄](../p1-conversion.md)。
+P1 的 T-05～T-07 已實作並完成本階段驗收。Windows／GitHub Ubuntu 各 178 個測試，以及指定 `115q1` 真實批次已驗證。P0～P2 已勾選其驗收 tasks，P3～P5 尚未完成。P2 交付 115q1 的 102,743 筆來源觀測、87 個交易月份、10 個年度及可接續維護狀態，座標來源限官方臺北市。詳見 [P2 紀錄](../p2-offline-output.md)。詳見 [P1 紀錄](../p1-conversion.md)。
 
 以 taiwan-lvr-geodata 建立可重建的台灣實價登錄地理資料管線。taiwan-address-data 提供固定版本的離線門牌座標，並接收經驗證的新地址資料。雲端 agent 必須能取得相同輸入、接續人工 TGOS 輪次、回補各年份與三種交易類別，再發布有版本紀錄的 GIS 資料。
 
-企劃完成後已實作 P0 基礎程式，驗證紀錄見 docs/p0-foundations.md。P1 已實作，P2～P5 尚待實作。使用者要求 GitHub 公開交付、TGOS 前先交付離線處理 output、以交易月為最小下載單位並提供年度包，以及 cloud agent 可直接使用的 phases／tasks／test points，不要求完整 GAL 流程。沿用草案資料格式與舊 TGOS 操作條件。執行／資源安排由 agent 量測處理，不再列為使用者 OQ。原 Google Drive 草稿與 legacy 文件保留為參考快照。
+企劃完成後已實作 P0 基礎程式，驗證紀錄見 docs/p0-foundations.md。P1、P2 已驗收，P3～P5 尚待實作。使用者要求 GitHub 公開交付、TGOS 前先交付離線處理 output、以交易月為最小下載單位並提供年度包，以及 cloud agent 可直接使用的 phases／tasks／test points，不要求完整 GAL 流程。沿用草案資料格式與舊 TGOS 操作條件。執行／資源安排由 agent 量測處理，不再列為使用者 OQ。原 Google Drive 草稿與 legacy 文件保留為參考快照。
 
 ## 已確認現況
 
-以下為 2026-10-04、Asia/Taipei 的規劃基準盤點。P0／P1 的後續實作與驗收另見階段紀錄，不能將基準表視為目前分支尚未實作的宣告。現有程式碼優先於過時圖譜與說明文件。
+以下為 2026-10-04、Asia/Taipei 的規劃基準盤點。P0～P2 的後續實作與驗收另見階段紀錄，不能將基準表視為目前分支尚未實作的宣告。現有程式碼優先於過時圖譜與說明文件。
 
 | 項目 | 已確認現況 | 規劃影響 |
 | --- | --- | --- |
@@ -40,26 +40,26 @@ P1 的 T-05～T-07 已實作並完成本階段驗收。Windows／GitHub Ubuntu �
 
 ## 需求
 
-- [ ] 離線定位後、TGOS 完成前交付首版已驗證月 GIS，明確標示粒度／範圍、未定位資料與可接續狀態。
-- [ ] 提供交易月／類別／格式獨立檔案，以及由相同月檔組成的年度包。
+- [x] 離線定位後、TGOS 完成前交付首版已驗證月 GIS，明確標示粒度／範圍、未定位資料與可接續狀態。
+- [x] 提供交易月／類別／格式獨立檔案，以及由相同月檔組成的年度包。
 - [ ] 全新 cloud 環境可取得並驗證公開離線快照，支援的 TGOS／回補／輸出動作不需 raw ZIP。
 - [ ] 追蹤企劃完整提供 phases、可執行 tasks、前置條件、交付成果與 test points，GAL 為選用。
 - [ ] 乾淨 Linux 環境能取得固定版本輸入並驗證雜湊，不需要 Windows 絕對路徑。
 - [ ] 全歷史 sales、presale、rent 共用有版本的地址鍵與全域地址池。
 - [ ] 首次重建不匯入 SQLite、舊 output 或 migration 座標。後續只接續本管線已驗證的快照。
-- [ ] 正式資料以 Parquet 保存，DuckDB 在受控記憶體與暫存空間內查詢，不要求長期保存 .duckdb。
+- [x] 正式資料以 Parquet 保存，DuckDB 在受控記憶體與暫存空間內查詢，不要求長期保存 .duckdb。
 - [ ] 每個成功定位結果可回補全部適用的歷史交易，衝突保留供審查。
 - [ ] 每輪人工 addrCompare 沿用每日 10,000 筆及每片最多 10,000 行的既有規則，前輪匯入及回補後才產生下一輪。
 - [ ] TGOS 失敗是可追溯的查詢紀錄，不是永久排除。允許明確重試與經驗證的新地址表示。
 - [ ] 回補 taiwan-address-data 的資料不會在縣市更新時消失，並保持 CSV 與前端介面相容。
-- [ ] GeoParquet、GeoJSON、NDJSON 使用同一組核准記錄與幾何規則。
-- [ ] 每個公開版本可追溯輸入、來源版本、決策、輸出雜湊與品質報告。
-- [ ] 資料及可接續狀態以 GitHub 公開交付，憑證不進發布資料、Git 提交或日誌。
-- [ ] 中斷或並行執行不會讓讀者取得只完成一部分的快照。
+- [x] GeoParquet、GeoJSON、NDJSON 使用同一組核准記錄與幾何規則。
+- [x] 每個公開版本可追溯輸入、來源版本、決策、輸出雜湊與品質報告。
+- [x] 資料及可接續狀態以 GitHub 公開交付，憑證不進發布資料、Git 提交或日誌。
+- [x] 中斷或並行執行不會讓讀者取得只完成一部分的快照。
 
 ## 流程與專案分工
 
-完整分支與交接步驟見[完整資料處理流程](../data-processing-flow.md)。該文件包含九個子流程，對應本企劃的 tasks 與 test points；圖中模組標記為待實作職責。
+完整分支與交接步驟見[完整資料處理流程](../data-processing-flow.md)。該文件包含九個子流程，對應本企劃的 tasks 與 test points；圖中標記為模組職責；P0～P2 已驗收，TGOS／回補／地址更新仍待實作。
 
 ### 專案責任與回補流程
 
@@ -561,32 +561,32 @@ T-01～T-07 已實作並通過階段驗收，見 P0／P1 紀錄及 main 的提�
   - 工作與檔案責任：負責 export-converted 與型別化階段驗證。觀測／成員／排除／診斷 Parquet、品質／manifest 存於 data/work/converted/，用於離線處理前的內部工作。
   - 交付／test points：已驗證轉換階段快照，不稱第一版使用者 output。TP-07、TP-10。
 
-- [ ] **T-08／P2**
+- [x] **T-08／P2**
   - 前置條件與適用門檻：T-13；GitHub 公開已確定。
   - 工作與檔案責任：負責 measure-output 與 Git／Release 檔案安排。量測月檔、年度包、維護狀態、工作／暫存，考慮小型 bootstrap 進 Git 時另量測歷史成長。
   - 交付／test points：size_report.json、公開 Release 附件清單及明確小型 Git 檔案。TP-08、TP-26。
 
-- [ ] **T-09／P2**
+- [x] **T-09／P2**
   - 前置條件與適用門檻：T-13、T-08、T-22；樣本使用模擬或公開合成快照。
   - 工作與檔案責任：負責 fetch-output／verify 及全新 cloud 離線交接整合。取得公開固定 manifest、離線 output、未定位池、來源關聯及狀態；驗證雜湊／版本、離線記錄對應、未定位選取及必要保留狀態，不重跑 raw。P2 驗收不執行 TGOS／回補，該整合等 P3 tasks 驗收後進行。
   - 交付／test points：可重跑離線輸出使用端，缺所需欄位時明確要求 raw 重建。TP-09、TP-13、TP-25。
 
-- [ ] **T-10／P2**
+- [x] **T-10／P2**
   - 前置條件與適用門檻：T-03、T-02；使用固定地址版或合成來源，真實索引先確認可用資源。
   - 工作與檔案責任：負責 offline_lookup.py 與行政區來源驗證。從固定 CSV commit 建立型別索引，保留代碼字串、來源類別及重複／衝突觀測。
   - 交付／test points：固定索引與建置資源報告，不取得完整 Git 歷史。TP-11。
 
-- [ ] **T-11／P2**
+- [x] **T-11／P2**
   - 前置條件與適用門檻：T-06、T-03。
   - 工作與檔案責任：負責 address_pool.py。在指定輸入範圍建立全域唯一鍵及獨立 address_occurrences 關聯，記錄固定代表表示與排程家族。
   - 交付／test points：unique_addresses 與 address_occurrences；不以家族／鄰近座標合併識別。TP-12。
 
-- [ ] **T-12／P2**
+- [x] **T-12／P2**
   - 前置條件與適用門檻：T-10、T-11、T-04。
   - 工作與檔案責任：負責離線定位與首版 address_state.py。套用有效精確證據、隔離不同結果，來源變更時重新驗證來源定位。
   - 交付／test points：首版已定位／未定位／衝突狀態及定位涵蓋報告。TP-13、TP-10。
 
-- [ ] **T-13／P2**
+- [x] **T-13／P2**
   - 前置條件與適用門檻：T-12、T-07；不需 TGOS。
   - 工作與檔案責任：負責 export.py／packaging.py／package-output。依交易 tx_yyyymm 產生月／類別／格式檔與月 manifest，用原月檔組年度 ZIP，附年度涵蓋 manifest 及公開下載索引；發布驗證由 T-23 負責。
   - 交付／test points：首版離線定位月 output 與年度包，保留 null／部分／退化幾何及真實粒度。TP-14、TP-26。
@@ -631,12 +631,12 @@ T-01～T-07 已實作並通過階段驗收，見 P0／P1 紀錄及 main 的提�
   - 工作與檔案責任：負責本機／cloud／GitHub Actions 路徑量測。分別量測輸入、索引、定位、月輸出、年度打包與同時暫存，再安排可行技術路徑。
   - 交付／test points：時間／RSS／磁碟／暫存／傳送／輸出報告及範圍核對。資源不足提出具體結果，不問抽象平台 OQ。TP-22、TP-26。
 
-- [ ] **T-22／P2**
+- [x] **T-22／P2**
   - 前置條件與適用門檻：T-04；保存平台已確定為 GitHub 公開，樣本傳送可模擬。
   - 工作與檔案責任：負責 GitHub Release 取得／上傳核對、有版本下載／狀態 manifest 及預期 parent 的 Git 指標提交。驗證上傳中斷、競爭／過時寫入及憑證界線。
   - 交付／test points：可在真實 TGOS 前使用的公開快照交接與前版復原。TP-23。
 
-- [ ] **T-23／P2**
+- [x] **T-23／P2**
   - 前置條件與適用門檻：T-13、T-08、T-22、T-09；發布回補版時需 T-17，宣稱全歷史另需 T-21。
   - 工作與檔案責任：負責公開 Release 驗證／工作流程。更新索引前核對月／類別／格式下載、年度原檔、manifest 範圍／粒度／筆數／雜湊及可接續狀態。
   - 交付／test points：依已確定 GitHub 方案的公開月／年候選及持久索引，TGOS 可尚未完成。TP-24、TP-26。
