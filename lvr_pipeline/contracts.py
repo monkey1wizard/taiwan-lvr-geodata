@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from functools import lru_cache
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
@@ -29,12 +30,17 @@ def component_id(raw_record_id: str, ordinal: int) -> str:
     return hashlib.sha256(json.dumps([raw_record_id, ordinal], separators=(",", ":")).encode()).hexdigest()
 
 
-def validate_rows(rows: list[dict], schema_name: str) -> None:
+@lru_cache(maxsize=8)
+def schema_validator(schema_name: str) -> Draft202012Validator:
     if schema_name not in {"observation", "address-component", "exclusion", "diagnostic"}:
         raise ValueError("Unknown schema")
     schema = json.loads((SCHEMAS / f"{schema_name}.schema.json").read_text(encoding="utf-8"))
     Draft202012Validator.check_schema(schema)
-    validator = Draft202012Validator(schema)
+    return Draft202012Validator(schema)
+
+
+def validate_rows(rows: list[dict], schema_name: str) -> None:
+    validator = schema_validator(schema_name)
     primary = "component_id" if schema_name == "address-component" else "raw_record_id"
     seen: set[str] = set()
     for row in rows:
