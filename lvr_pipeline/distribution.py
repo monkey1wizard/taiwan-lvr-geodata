@@ -150,6 +150,22 @@ class GitHubRelease:
         )["enabled"]
 
     def create(self, tag, parent, notes_path):
+        pages = json.loads(
+            self._gh(
+                "api",
+                "--paginate",
+                "--slurp",
+                f"repos/{self.repository}/releases?per_page=100",
+            )
+        )
+        existing = [r for page in pages for r in page if r["tag_name"] == tag]
+        if existing:
+            release = existing[0]
+            if not release["draft"] or release["target_commitish"] != parent:
+                raise ValueError(
+                    "Existing release version is published or refers to another producer"
+                )
+            return
         self._gh(
             "release",
             "create",
@@ -169,13 +185,46 @@ class GitHubRelease:
         self._gh("release", "upload", tag, str(path), "--repo", self.repository)
 
     def upload_many(self, tag, paths):
+        release = json.loads(
+            self._gh("api", f"repos/{self.repository}/releases/tags/{tag}")
+        )
+        existing = {a["name"]: a for a in release["assets"]}
+        pending = []
+        for path in paths:
+            if path.name not in existing:
+                pending.append(path)
+                continue
+            asset = existing[path.name]
+            sha = sha256_file(path)
+            if asset["size"] != path.stat().st_size:
+                raise ValueError(
+                    "Existing draft asset differs; never replace a versioned asset"
+                )
+            if asset.get("digest"):
+                if asset["digest"] != "sha256:" + sha:
+                    raise ValueError("Existing draft asset hash differs")
+            else:
+                with tempfile.TemporaryDirectory(prefix="resume-verify-") as folder:
+                    self._gh(
+                        "release",
+                        "download",
+                        tag,
+                        "--repo",
+                        self.repository,
+                        "--pattern",
+                        path.name,
+                        "--dir",
+                        folder,
+                    )
+                    if sha256_file(Path(folder) / path.name) != sha:
+                        raise ValueError("Existing draft asset hash differs")
         # Bound argv length on Windows while letting gh transfer each batch.
-        for offset in range(0, len(paths), 40):
+        for offset in range(0, len(pending), 40):
             self._gh(
                 "release",
                 "upload",
                 tag,
-                *[str(p) for p in paths[offset : offset + 40]],
+                *[str(p) for p in pending[offset : offset + 40]],
                 "--repo",
                 self.repository,
             )
@@ -221,6 +270,45 @@ class GitHubRelease:
             raise ValueError(
                 "Published release is not immutable; index was not advanced"
             )
+
+    def verify_receipt(self, pointer):
+        tag = pointer["release_tag"]
+        if tag != "data-" + pointer["snapshot_id"]:
+            raise ValueError("Receipt release tag differs from snapshot")
+        expected_url = f"https://github.com/{self.repository}/releases/download/{tag}/manifest.json"
+        if pointer["manifest_url"] != expected_url:
+            raise ValueError("Unexpected receipt manifest location")
+        release = json.loads(
+            self._gh("api", f"repos/{self.repository}/releases/tags/{tag}")
+        )
+        if release["draft"] or not release.get("immutable"):
+            raise ValueError("Receipt does not refer to a published immutable Release")
+        with tempfile.TemporaryDirectory(prefix="receipt-verify-") as folder:
+            path = Path(folder) / "manifest.json"
+            download(expected_url, path, max_bytes=64 * 2**20)
+            if sha256_file(path) != pointer["manifest_sha256"]:
+                raise ValueError("Receipt manifest hash differs")
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            if (
+                manifest["snapshot_id"] != pointer["snapshot_id"]
+                or manifest["schema_version"] != "1.0"
+            ):
+                raise ValueError("Receipt snapshot version differs")
+            expected = {
+                a["asset_name"]: (a["bytes"], "sha256:" + a["sha256"])
+                for a in manifest["assets"]
+            }
+            expected["manifest.json"] = (
+                path.stat().st_size,
+                "sha256:" + pointer["manifest_sha256"],
+            )
+            actual = {
+                a["name"]: (a["size"], a.get("digest")) for a in release["assets"]
+            }
+            if actual != expected:
+                raise ValueError(
+                    "Immutable Release inventory/digests differ from receipt"
+                )
 
 
 def publish_release(
@@ -302,10 +390,14 @@ def commit_pointer(
     checkout: Path,
     *,
     message="docs(release): index verified offline snapshot",
+    transport=None,
 ):
     """Local main is authoritative; no force update, new branch, clone or PR."""
     checkout = Path(checkout)
     expected = pointer["expected_parent"]
+    safe_path(pointer["snapshot_id"])
+    if "/" in pointer["snapshot_id"]:
+        raise ValueError("Snapshot ID must be a single segment")
 
     def git(*args):
         return subprocess.check_output(
@@ -321,6 +413,9 @@ def commit_pointer(
         raise ValueError("Commit existing changes before writing the release pointer")
     if git("ls-remote", "origin", "refs/heads/main").split()[0] != expected:
         raise ValueError("Stale remote parent")
+    (
+        transport or GitHubRelease("monkey1wizard/taiwan-lvr-geodata", checkout)
+    ).verify_receipt(pointer)
     path = checkout / "data/releases/latest.json"
     version = checkout / "data/releases" / f"{pointer['snapshot_id']}.json"
     write_json(path, pointer)
@@ -332,6 +427,14 @@ def commit_pointer(
         f"data/releases/{pointer['snapshot_id']}.json",
     )
     git("commit", "-m", message)
+    commit = git("rev-parse", "HEAD")
+    if (
+        git("rev-parse", commit + "^") != expected
+        or json.loads(git("show", commit + ":data/releases/latest.json")) != pointer
+    ):
+        raise ValueError(
+            "Stale local parent or changed pointer; remote index was not advanced"
+        )
     # A plain Git push performs an atomic non-fast-forward rejection at the server.
-    git("push", "origin", "HEAD:refs/heads/main")
-    return git("rev-parse", "HEAD")
+    git("push", "origin", commit + ":refs/heads/main")
+    return commit

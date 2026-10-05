@@ -212,6 +212,8 @@ class MonthWriter:
         self.parquet.close()
         self.geojson.write("\n]}\n")
         self.geojson.close()
+        if not self.count:
+            self.ndjson.write("\n")
         self.ndjson.close()
 
 
@@ -320,7 +322,7 @@ def verify_month(paths):
                     stats["partial_geometry"] += status == "partial"
                     stats["approximation"] += row["is_approximation"]
                     stats["amount_minor_sum"] += row["amount_minor"] or 0
-        if nd.read():
+        if nd.read().strip():
             raise ValueError("NDJSON has extra records")
         if geo.read() != ("\n]}\n" if not stats["rows"] else "]}\n"):
             raise ValueError("GeoJSON footer/row count mismatch")

@@ -70,8 +70,8 @@ def source(tmp_path, coordinates=None):
     }
 
 
-def run(tmp_path, coordinates=None, records=None):
-    _, _, converted = pipeline(tmp_path, records)
+def run(tmp_path, coordinates=None, records=None, **kwargs):
+    _, _, converted = pipeline(tmp_path, records, **kwargs)
     root, descriptor = source(tmp_path, coordinates)
     index = build_index(root, descriptor, tmp_path / "work", counties=["63"])
     pool = build_pool(converted, root, descriptor, tmp_path / "work", index_path=index)
@@ -391,3 +391,24 @@ def test_annual_part_budget_preserves_all_original_months(tmp_path):
     annual = next(y for y in manifest["years"] if y["year"] == 2025)
     assert len(annual["formats"]["geoparquet"]) > 1 and not annual["absent_months"]
     assert annual["year_coverage_status"] == "scope_limited"
+
+
+def test_empty_category_ndjson_has_no_records_and_nonzero_transfer_length(tmp_path):
+    converted, *_, state = run(tmp_path, categories=("sales",))
+    output = package_output(
+        converted,
+        state,
+        tmp_path / "output",
+        notices={
+            "publication_authorized": True,
+            "legacy_coordinates_authorized": True,
+            "sources": ["synthetic"],
+        },
+    )
+    manifest = verify_output(output)
+    for category in ["presale", "rent"]:
+        assert next(output.rglob(f"202601_{category}.ndjson")).read_bytes() == b"\n"
+        assert manifest["months"][0]["categories"][category]["rows"] == 0
+        assert (
+            manifest["months"][0]["categories"][category]["status"] == "empty_in_scope"
+        )

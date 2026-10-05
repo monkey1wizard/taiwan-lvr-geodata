@@ -54,7 +54,7 @@ GeoParquet 固定 1.1.0、CRS84、WKB，幾何不是地籍邊界。GeoJSON 與 N
 
 ## 月檔、年包與資源
 
-月檔位於 `monthly/YYYY/YYYYMM/YYYYMM_category.{parquet,geojson,ndjson}`，月 manifest 保存各類別筆數、null／部分定位、近似幾何及金額核對。宣告範圍中沒有該類別時，產生可讀的空檔並標示 `empty_in_scope`。
+月檔位於 `monthly/YYYY/YYYYMM/YYYYMM_category.{parquet,geojson,ndjson}`，月 manifest 保存各類別筆數、null／部分定位、近似幾何及金額核對。宣告範圍中沒有該類別時，產生可讀的空檔並標示 `empty_in_scope`。空 NDJSON 使用一個空白換行，仍為零筆記錄，避免 GitHub 拒絕零位元組附件。
 
 年度 ZIP 依格式打包同一版本的月檔原始位元組。年度 manifest 列出實際月份與缺失月份，不能宣稱完整曆年。超過設定預算時按完整月／類別檔分年度 ZIP 片，所有片列入年度 manifest。若單一月檔或維護包已超過附件預算，程式明確停止並要求新增分片契約，不強行提交 Git。
 

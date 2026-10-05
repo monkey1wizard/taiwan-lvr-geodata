@@ -13,6 +13,6 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline commit-release-pointer -
 
 第一個命令只在全部附件核對且公開成功後產生 receipt。第二個命令要求本機 main 乾淨且仍符合 expected parent，提交 `data/releases/latest.json` 與版本指標，再直接非強制 push main。遠端已前進時，Git 拒絕更新，不能 force push。舊指標仍存在於 Git 歷史，舊版本指標及不可變 Release 繼續可取得。
 
-若上傳中斷，保留 draft 供調查，不將它當作完成交接。若 Release 已公開但 main 同時前進，保留舊指標並重新核對最新 main，另提交完整新版本指標。不要重用標籤或替換附件。
+若上傳中斷，以同一個未修改候選與相同 parent 重試。程式只接續相同 producer 的 draft，逐項核對已存在附件再補傳缺件，不替換不同雜湊的附件。若候選內容已修改，使用新 snapshot ID。若 Release 已公開但 main 同時前進，保留舊指標並重新核對最新 main，另提交完整新版本指標。不要重用已公開標籤或替換附件。
 
 一般檔案讀取使用者不需要發布憑證。`gh` 使用本機登入，環境憑證不得寫入 NOTICE、manifest、receipt 或日誌。無發布權限的工作環境只能產生候選及驗證結果，不能宣稱公開交付完成。
