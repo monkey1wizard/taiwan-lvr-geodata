@@ -4,7 +4,7 @@
 >
 > 月份依交易／租賃日期 tx_yyyymm 劃分，保留 YYYYMM_category 檔名。使用者可獨立下載月／類別／格式，也可選年度包。GitHub 公開及舊 TGOS 操作條件已確定，不再保留原三個 OQ。
 >
-> P0 的 T-01～T-04 已實作；TP-01～TP-04、TP-10 的 P0 樣本驗證通過。Windows 與 GitHub Ubuntu 均通過 145 個測試，見 [P0 紀錄](../p0-foundations.md)。草稿 PR #1 尚未合併。其餘 tasks 為 Planned，其餘 test points 為 NotRun。cloud 執行不需要 GAL、.dev 或另產生執行提示。本機雙語鏡像只供維護。執行後使用 repo 內的 `docs/task-result-template.md` 記錄版本、命令、測試、月／年輸出及交接位置。
+> P0／P1 的 T-01～T-07 已實作並通過階段驗收。最新 Windows／GitHub Ubuntu 各 178 個測試，P1 指定真實批次亦已驗證，見 [P0 紀錄](../p0-foundations.md)與 [P1 紀錄](../p1-conversion.md)。PR 尚未合併。P2～P5 tasks 為 Planned，尚未執行的 test points 為 NotRun。cloud 執行不需要 GAL、.dev 或另產生執行提示。本機雙語鏡像只供維護。執行後使用 repo 內的 `docs/task-result-template.md` 記錄版本、命令、測試、月／年輸出及交接位置。
 
 ## 審核狀態
 
@@ -15,7 +15,7 @@
 
 ## 目標與範圍
 
-P1 的 T-05～T-07 已實作，Windows 177 個測試及指定 `115q1` 真實批次已驗證。Linux CI 尚待執行完成，P1 核取方塊將在驗收紀錄齊備後更新。詳見 [P1 紀錄](../p1-conversion.md)。
+P1 的 T-05～T-07 已實作並完成本階段驗收。Windows／GitHub Ubuntu 各 178 個測試，以及指定 `115q1` 真實批次已驗證。P0／P1 任務已勾選，P2～P5 尚未完成。詳見 [P1 紀錄](../p1-conversion.md)。
 
 以 taiwan-lvr-geodata 建立可重建的台灣實價登錄地理資料管線。taiwan-address-data 提供固定版本的離線門牌座標，並接收經驗證的新地址資料。雲端 agent 必須能取得相同輸入、接續人工 TGOS 輪次、回補各年份與三種交易類別，再發布有版本紀錄的 GIS 資料。
 
@@ -23,7 +23,7 @@ P1 的 T-05～T-07 已實作，Windows 177 個測試及指定 `115q1` 真實批�
 
 ## 已確認現況
 
-查核日期為 2026-10-04，時區 Asia/Taipei。現有程式碼優先於過時圖譜與說明文件。
+以下為 2026-10-04、Asia/Taipei 的規劃基準盤點。P0／P1 的後續實作與驗收另見階段紀錄，不能將基準表視為目前分支尚未實作的宣告。現有程式碼優先於過時圖譜與說明文件。
 
 | 項目 | 已確認現況 | 規劃影響 |
 | --- | --- | --- |
@@ -36,7 +36,7 @@ P1 的 T-05～T-07 已實作，Windows 177 個測試及指定 `115q1` 真實批�
 | 地址更新器 | run() 將縣市資料讀入記憶體，刪除舊路檔再重寫，最後重建 road.csv | 回補需獨立儲存，替換途中中斷可能留下不完整檔案 |
 | 來源授權 | 地址 README 宣稱 BSD，未追蹤授權檔，GitHub licenseInfo 為 null | 保存來源條件與顯名紀錄，不以 repo README 取代上游證據 |
 
-主專案目前只使用 Python 標準函式庫。既有程式會產生或覆寫 CSV，parse 的 main() 也會將 ZIP 成員內容讀入清單。現有單元測試主要驗證工具邏輯，尚未證明雲端全歷史流程可執行。地址 README 宣稱更新器支援 17 縣市，檔名則有 22 個縣市代碼，兩者不能視為相同涵蓋範圍。
+盤點時保留的程式只使用 Python 標準函式庫。舊 0_parse_raw／1_normalize 仍維持 CSV 相容行為，舊 parse 的 main() 仍會將 ZIP 成員讀入清單。P1 新命令改用逐列／分批 Arrow 與 DuckDB 驗證。P0／P1 已驗證樣本、Linux 環境與指定單季，但尚未證明雲端全歷史流程可執行。地址 README 宣稱更新器支援 17 縣市，檔名則有 22 個縣市代碼，兩者不能視為相同涵蓋範圍。
 
 ## 需求
 
@@ -263,7 +263,7 @@ PR CI 不取得憑證，只使用合成或已確認可分發的樣本。固定 A
 
 第一個對使用者交付的里程碑位於 Parse、Normalize 及離線地址定位之後。交付可用的離線定位月資料，附未定位記錄、證據及 manifest。剛 Parse／轉換完成的表格是內部階段快照，不是使用者要求的第一版 output。TGOS 與地址專案回補不延後首次交付。
 
-轉換階段在 data/work/converted/<snapshot_id>/ 保留 observations.parquet、address_components.parquet、exclusions.parquet、diagnostics.parquet、quality.json 與 manifest.json。保存來源列識別，每個觀測只記一次金額。尚未證明交易識別時保持空值及 record_grain=source_observation。離線定位後，交付第 9 節的三格式月輸出，另附地址索引、未定位池及接續所需階段狀態。維護狀態與一般使用者的月／年下載分開，使用一個月不必下載整個地址池。維護包包含觀測／成員、地址關聯、離線索引／結果、未定位／衝突狀態及後續回補所需固定版本。初次快照明確設定 tgos_started=false；TGOS 開始後，交接必須包含保留／查詢帳本，缺帳本就失敗，不能當成新的空配額狀態。
+轉換階段在 data/work/converted/snapshots/<snapshot_id>/ 保存 observations／address_components／exclusions／diagnostics／dispositions，各資料集依來源批次／類別寫 Parquet，另附 quality.json 與 manifest.json。實際檔案依 manifest 路徑讀取。保存來源列識別，每個觀測只記一次金額。尚未證明交易識別時保持空值及 record_grain=source_observation。離線定位後，交付第 9 節的三格式月輸出，另附地址索引、未定位池及接續所需階段狀態。維護狀態與一般使用者的月／年下載分開，使用一個月不必下載整個地址池。維護包包含觀測／成員、地址關聯、離線索引／結果、未定位／衝突狀態及後續回補所需固定版本。初次快照明確設定 tgos_started=false；TGOS 開始後，交接必須包含保留／查詢帳本，缺帳本就失敗，不能當成新的空配額狀態。
 
 首次處理可涵蓋明確來源子範圍、單季或全部盤點批次，分月仍依各批來源的交易日期。scope、selected_inputs、missing_inputs 與 completeness 描述來源涵蓋，不代表百分之百定位或已證明全歷史唯一交易。離線未命中保留 null geometry／診斷，不默默刪除。年度便利包如實列出已有月份。
 
@@ -283,7 +283,7 @@ GAL receipt 與本機企劃鏡像只供選用紀錄。它們的全域流程檢�
 
 ## 預計新增與修改的檔案
 
-以下為整體責任範圍。P0 路徑與固定環境已實作，結果見 docs/p0-foundations.md；其餘執行程式與資料路徑仍待實作。企劃、完整流程圖與 task 結果範本已建立。
+以下為整體責任範圍。P0／P1 路徑與固定環境已實作，結果見 docs/p0-foundations.md 與 docs/p1-conversion.md，其餘執行程式與資料路徑仍待實作。企劃、完整流程圖與 task 結果範本已建立。
 
 | 專案 | 路徑 | 責任 |
 | --- | --- | --- |
@@ -309,7 +309,7 @@ GAL receipt 與本機企劃鏡像只供選用紀錄。它們的全域流程檢�
 
 ## Phases：分階段交付
 
-Tasks 依前置關係及測試驗收執行，不要求完整 GAL。T-01～T-04 已實作並通過 P0 樣本驗證，其餘 tasks 為 Planned。P0 的測試證據見 docs/p0-foundations.md，其餘 test points 為 NotRun。task 數字是固定識別，不表示必須按數字順序執行。
+Tasks 依前置關係及測試驗收執行，不要求完整 GAL。T-01～T-07 已實作並通過各階段驗收，其餘 tasks 為 Planned。P0／P1 證據見階段紀錄，尚未執行的 test points 為 NotRun。task 數字是固定識別，不表示必須按數字順序執行。
 
 | Phase | Tasks | 交付內容 | 結束測試 |
 | --- | --- | --- | --- |
@@ -383,7 +383,7 @@ P0 → P1 → P2 交付使用者要求的首版公開離線 output，不等待 T
 
 ### 架構審查
 
-審查結果為 APPROVE。針對性獨立審查已確認離線首版 output、交易月下載與原月檔年度包、GitHub 公開／索引復原、既有 TGOS Address 對照及前置關係。P2 交接只驗收離線狀態，P3 才驗收實際 TGOS／回補執行。初始 tgos_started=false 與後續必備查詢帳本防止配額重置。每個 task 仍需測試／資源／憑證證據，不重新詢問使用者 OQ 或要求完整 GAL。執行測試與大小／資源量測仍為 NotRun。
+審查結果為 APPROVE。針對性獨立審查已確認離線首版 output、交易月下載與原月檔年度包、GitHub 公開／索引復原、既有 TGOS Address 對照及前置關係。P2 交接只驗收離線狀態，P3 才驗收實際 TGOS／回補執行。初始 tgos_started=false 與後續必備查詢帳本防止配額重置。每個 task 仍需測試／資源／憑證證據，不重新詢問使用者 OQ 或要求完整 GAL。該次規劃審查當時未執行程式測試。後續 P0／P1 的測試與單季量測已完成，範圍見階段紀錄，其餘仍為 NotRun。
 
 <!-- ARCH_REVIEW: CLEAR -->
 
@@ -444,9 +444,9 @@ P0／P1 的實作與測試證據見各階段紀錄。後續實作仍為 NotRun�
 
 ## Tasks：可執行任務
 
-T-01～T-04 已實作，見 P0 紀錄及草稿 PR #1；其餘 tasks 為 Planned。前置條件指已驗收的交付成果，不只代表程式已寫完。可先驗收樣本實作，再處理真實資料部署。以下路徑是責任範圍。P0 檔案已建立，其餘路徑仍屬規劃。
+T-01～T-07 已實作並通過階段驗收，見 P0／P1 紀錄及草稿 PR #1／#2；其餘 tasks 為 Planned。前置條件指已驗收的交付成果，不只代表程式已寫完。可先驗收樣本實作，再處理真實資料部署。以下路徑是責任範圍。P0／P1 檔案已建立，其餘路徑仍屬規劃。
 
-勾選表示該 task 已實作並通過本階段驗證，不表示 PR 已合併。T-01～T-04 的證據見 [P0 紀錄](../p0-foundations.md)。尚未完成的 tasks 保留未勾選。
+勾選表示該 task 已實作並通過本階段驗證，不表示 PR 已合併。T-01～T-07 的證據見 [P0 紀錄](../p0-foundations.md)與 [P1 紀錄](../p1-conversion.md)。尚未完成的 tasks 保留未勾選。
 
 - [x] **T-01／P0**
   - 前置條件與適用門檻：無 task 前置，只用樣本。
@@ -468,17 +468,17 @@ T-01～T-04 已實作，見 P0 紀錄及草稿 PR #1；其餘 tasks 為 Planned�
   - 工作與檔案責任：負責 snapshots.py 與 manifest 驗證。建立不可變暫存、雜湊／筆數核對及已提交指標讀取；遠端平台／CAS 介面由 T-22 負責。
   - 交付／test points：轉換與地址狀態共用的本機快照提交／復原功能。TP-10。
 
-- [ ] **T-05／P1**
+- [x] **T-05／P1**
   - 前置條件與適用門檻：T-01、T-02、T-03；先用樣本，真實來源需可取得且允許使用。
   - 工作與檔案責任：負責 ingest.py 及 ingest 命令。用逐列／Arrow 批次替換 ZIP 成員清單；保留來源／成員／列關聯及未知欄位。
   - 交付／test points：指定範圍的型別化輸入分割區與筆數／結構診斷。TP-02、TP-05。
 
-- [ ] **T-06／P1**
+- [x] **T-06／P1**
   - 前置條件與適用門檻：T-05、T-03。
   - 工作與檔案責任：負責 normalize.py 與補字／日期／地址規則整合。觀測金額與展開成員分開，保留排除項及未解證據。
   - 交付／test points：observations／address_components／exclusions／diagnostics，來源關聯穩定。TP-03、TP-04、TP-06。
 
-- [ ] **T-07／P1**
+- [x] **T-07／P1**
   - 前置條件與適用門檻：T-06、T-04。
   - 工作與檔案責任：負責 export-converted 與型別化階段驗證。觀測／成員／排除／診斷 Parquet、品質／manifest 存於 data/work/converted/，用於離線處理前的內部工作。
   - 交付／test points：已驗證轉換階段快照，不稱第一版使用者 output。TP-07、TP-10。

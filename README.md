@@ -4,7 +4,7 @@
 
 P0 基礎程式及固定套件環境已實作，Windows 與 GitHub Ubuntu 均通過 145 個測試。已實作內容、CI 證據與限制見 [P0 紀錄](docs/p0-foundations.md)。變更由草稿 PR #1 提供，尚未合併。本機正式作業目錄為 `C:/Code/taiwan-lvr-geodata`，P0 檔案已完整同步。
 
-P1 已在正式目錄實作逐批轉換命令與內部 Parquet 快照。Windows 177 個測試及真實 `115q1` 批次已通過驗證，詳見 [P1 操作與證據](docs/p1-conversion.md)。Linux CI 尚待本 PR 完成。
+P1 已在正式目錄實作逐批轉換命令與內部 Parquet 快照。Windows 與 GitHub Ubuntu 各 178 個測試，以及真實 `115q1` 批次已通過驗證，詳見 [P1 操作與證據](docs/p1-conversion.md)。P1 由[草稿 PR #2](https://github.com/monkey1wizard/taiwan-lvr-geodata/pull/2)提供，尚未合併。
 
 新版方案見[完整企劃草案](docs/drafts/taiwan-lvr-geodata-完整企劃.md)，內含六個 phases、24 個 tasks 與 26 個 test points，可直接作為 cloud agent 的工作依據。修訂後的執行設計已通過獨立審查。各 task 依自己的前置條件與驗收執行，不要求完整 GAL 流程。
 

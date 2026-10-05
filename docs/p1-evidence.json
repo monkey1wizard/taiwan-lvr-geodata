@@ -7,24 +7,32 @@
     "T-07"
   ],
   "windows_tests": {
-    "passed": 177,
-    "command": ".venv/Scripts/python.exe -m pytest -q --basetemp data/work/p1-code-release-tests"
+    "passed": 178,
+    "command": ".venv/Scripts/python.exe -m pytest -q --basetemp data/work/p1-final-code-tests",
+    "elapsed_seconds": 34.16,
+    "code_commit": "6f70b4e7355155a82a1d7df775f9400af1fdff18"
   },
   "linux_tests": {
-    "status": "not-run-yet"
+    "status": "passed",
+    "passed": 178,
+    "elapsed_seconds": 24.08,
+    "python": "3.13.16",
+    "runner": "ubuntu-latest",
+    "code_commit": "6f70b4e7355155a82a1d7df775f9400af1fdff18",
+    "run_url": "https://github.com/monkey1wizard/taiwan-lvr-geodata/actions/runs/37268397622"
   },
   "synthetic_memory_measurements": [
     [
       {
         "rows": 1000,
-        "peak_rss_bytes": 86577152,
-        "elapsed_seconds": 0.279001,
+        "peak_rss_bytes": 87150592,
+        "elapsed_seconds": 0.276087,
         "max_buffer_rows": 256
       },
       {
         "rows": 120000,
-        "peak_rss_bytes": 118677504,
-        "elapsed_seconds": 6.621618,
+        "peak_rss_bytes": 119951360,
+        "elapsed_seconds": 7.623871,
         "max_buffer_rows": 256
       }
     ]
@@ -183,6 +191,16 @@
         "sha256": "8cd09ea27175d3a43fe418613bd82c865c9b69d17512d13122828f8643bfe1b3",
         "size_bytes": 3408
       }
-    ]
-  }
+    ],
+    "readback_verification": {
+      "verified": true,
+      "command": ".venv/Scripts/python.exe -m lvr_pipeline verify-converted --input data/work/converted/snapshots/p1-115q1-accepted"
+    },
+    "description_rule_audit": {
+      "matched": 64,
+      "counts_changed": false
+    }
+  },
+  "tasks_status": "Accepted for P1 scope; PR pending review/merge",
+  "pull_request": "https://github.com/monkey1wizard/taiwan-lvr-geodata/pull/2"
 }

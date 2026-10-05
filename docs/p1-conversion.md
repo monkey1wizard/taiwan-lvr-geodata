@@ -36,7 +36,7 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline verify-converted --input
 
 Typed Parquet 欄位及 metadata 見 [Arrow 契約](../schemas/converted-parquet.json)。P0 的四種 JSON Schema 繼續驗證列內容，跨分割區的唯一鍵、外部索引鍵及去向由 DuckDB 檢查。原始欄位以 JSON 文字存於 Parquet，讀取驗證時還原為物件。
 
-`raw_record_id` 使用 input SHA-256、member path 與起始實體行號。跨行 CSV 的結束行號另存。英文說明列只在地址欄符合已知說明文字時跳過，不假設第二列一定是說明。重複標頭與空白行另計數。欄數異常列保留原值並標為 failed，不填補欄位或默默丟棄。
+`raw_record_id` 使用 input SHA-256、member path 與起始實體行號。跨行 CSV 的結束行號另存。英文說明列需同時符合已知地址及交易標的說明文字，且日期欄不是數字，不能只依地址文字或第二列位置跳過。重複標頭與空白行另計數。欄數異常列保留原值並標為 failed，不填補欄位或默默丟棄。
 
 來源欄位明確對應版本規則：買賣使用「交易年月日／總價元」，預售屋支援「交易年月日／總價元」及既有欄名，租賃使用「租賃年月日／總額元／建物總面積平方公尺」及既有欄名。同義欄位若同時有不同值，保留診斷，不任選一欄。
 
@@ -56,11 +56,11 @@ Arrow 同時限制列數與每個 writer 的 8 MiB 字串／數值負載。超�
 
 ## 驗收紀錄
 
-日期：2026-10-05，Asia/Taipei。Windows 固定 Python 3.13.16 環境已通過 177 個測試，包含既有 145 個及新增 32 個 P1 測試。涵蓋 TP-02～TP-07 與 TP-10 的 P1 範圍。Linux CI 紀錄待本 PR 執行完成後補上。
+日期：2026-10-05，Asia/Taipei。Windows 固定 Python 3.13.16 環境已通過 178 個測試，包含既有 145 個及新增 33 個 P1 測試。涵蓋 TP-02～TP-07 與 TP-10 的 P1 範圍。GitHub Ubuntu 的 [PR CI](https://github.com/monkey1wizard/taiwan-lvr-geodata/actions/runs/37268397622) 已通過 178 個測試，24.08 秒，Python 3.13.16。測試程式版本為 `6f70b4e7355155a82a1d7df775f9400af1fdff18`。
 
 記憶體成長測試使用獨立行程處理 1,000／120,000 列合成輸入，Arrow writer 維持 256 列上限。測試要求大輸入行程峰值低於 512 MiB，且相對小輸入增加不超過 96 MiB。完整量測與真實批次結果見 [P1 證據](p1-evidence.json)。測試及安裝不讀取真實 raw。
 
-真實 `115q1` 已使用提交 `f79e0750fd0a0a0abb127f21ad835552cd7c8c6a` 處理，來源程式狀態為 clean。後續匯出 cutoff 防誤用修正另由測試驗證。驗收命令為：
+真實 `115q1` 已使用提交 `f79e0750fd0a0a0abb127f21ad835552cd7c8c6a` 處理，來源程式狀態為 clean。後續匯出 cutoff 防誤用與說明列防誤判修正另由測試驗證。115q1 的 64 個說明列已逐一核對，修正不改變此批次的計數。驗收命令為：
 
 ```powershell
 .venv/Scripts/python.exe -m lvr_pipeline export-converted --batch 115q1 --cutoff 202610 --batch-rows 1024 --run-id p1-115q1-accepted
