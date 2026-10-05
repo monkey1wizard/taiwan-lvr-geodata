@@ -11,18 +11,19 @@
     "license_status": "pending_upstream_evidence"
   },
   "offline_index": {
-    "snapshot_id": "p3-address-02887978",
+    "snapshot_id": "p3-address-02887978-clean",
     "input_rows": 10624627,
     "valid_rows": 9491547,
     "invalid_rows_retained": 1133080,
     "county_codes_in_scope": 22,
     "artifact_bytes": 599884131,
-    "elapsed_seconds": 310.482613,
-    "peak_rss_bytes": 409104384
+    "elapsed_seconds": 381.849405,
+    "peak_rss_bytes": 602394624,
+    "producer_worktree_dirty": false
   },
   "address_state": {
-    "pool_snapshot_id": "p3-115q1-pool-02887978",
-    "state_snapshot_id": "p3-115q1-offline-02887978",
+    "pool_snapshot_id": "p3-115q1-pool-02887978-clean",
+    "state_snapshot_id": "p3-115q1-offline-02887978-clean",
     "unique_address_rows": 56022,
     "address_occurrence_rows": 102881,
     "located": 48882,
@@ -32,9 +33,12 @@
     "unmatched_table_rows": 7140,
     "evidence_rows": 925672,
     "artifact_bytes": 138105103,
-    "elapsed_seconds": 35.194282,
-    "peak_rss_bytes": 1248325632,
-    "producer_worktree_dirty": true,
+    "pool_artifact_bytes": 13706236,
+    "pool_elapsed_seconds": 19.750794,
+    "pool_peak_rss_bytes": 651689984,
+    "elapsed_seconds": 44.222244,
+    "peak_rss_bytes": 1227882496,
+    "producer_worktree_dirty": false,
     "public_release_eligible": false
   },
   "tests": {
@@ -54,8 +58,26 @@
   },
   "tgos_operation": {
     "eligible_candidates": 4871,
-    "real_batch_created": false,
-    "reason": "shared_account_external_usage_not_confirmed",
+    "real_batch_created": true,
+    "batch_id": "p3-tgos-20261005-001",
+    "service_date": "2026-10-05",
+    "external_used": 0,
+    "batch_status": "prepared",
+    "batch_rows": 4871,
+    "unique_addresses": 4871,
+    "csv_columns": [
+      "Address"
+    ],
+    "csv_encoding": "UTF-8-sig",
+    "csv_bytes": 210605,
+    "csv_sha256": "a46e7b48167adc23e65919d341793b54a8badf07ed57496aea2b62ec3ad960ad",
+    "csv_path": "data/tgos/p3-tgos-20261005-001/addresses.csv",
+    "manifest_path": "data/tgos/p3-tgos-20261005-001/manifest.json",
+    "state_snapshot_id": "p3-tgos-20261005-001",
+    "state_artifact_bytes": 138605334,
+    "state_elapsed_seconds": 0.054846,
+    "state_peak_rss_bytes": 292671488,
+    "state_verified": true,
     "real_upload_completed": false,
     "real_response_imported": false,
     "real_backfill_published": false

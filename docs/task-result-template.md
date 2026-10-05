@@ -90,7 +90,7 @@ TP-08～TP-14、TP-23～TP-26 的 P2 適用驗收為 pass。本機中斷與 pare
 
 ## 本次 P3 執行結果：2026-10-05
 
-T-14 的持久 TGOS 狀態與配額規則已通過合成整合驗收。T-15～T-17 的命令已實作並通過合成測試，但真實批次、人工上傳、回傳匯入與公開回補尚未執行，因此 tasks 保持未勾選。完整機器可讀數字見 [p3-evidence.json](p3-evidence.json)。
+T-14 的持久 TGOS 狀態與配額規則已通過合成整合驗收。T-15 的第一個真實批次已準備完成，但人工上傳與提交確認尚未執行。T-16～T-17 的命令已實作並通過合成測試，但真實回傳匯入與公開回補尚未執行。因此 T-15～T-17 保持未勾選。完整機器可讀數字見 [p3-evidence.json](p3-evidence.json)。
 
 | 項目 | 實際結果 |
 | --- | --- |
@@ -100,9 +100,9 @@ T-14 的持久 TGOS 狀態與配額規則已通過合成整合驗收。T-15～T-
 | 115q1 地址池 | 56,022 個唯一鍵、102,881 個地址成員 |
 | 最新離線狀態 | located 48,882、conflict 2,269、unmatched 4,871、outside_scope 0 |
 | TGOS 候選 | 4,871；conflict 不自動送查，沒有為湊滿 10,000 建立資料列 |
-| 真實 TGOS 批次 | not-run；共用帳號當日 `external_used` 尚未由操作員確認 |
+| 真實 TGOS 批次 | prepared；`p3-tgos-20261005-001`，服務日期 2026-10-05，`external_used=0`，4,871 筆唯一地址 |
 | 真實匯入／回補 | not-run；需先完成真實批次、人工上傳及回傳下載 |
-| 公開發布 | not-run；目前地址來源權利未完成，且本次資料快照由未提交工作樹產生，只供內部驗證 |
+| 公開發布 | not-run；目前地址來源權利未完成，且尚無 TGOS 回傳可供回補 |
 
 以下命令在正式 repo 根目錄執行。實際 snapshot 路徑位於忽略的 `data/work/`，未提交到 Git。
 
@@ -110,14 +110,16 @@ T-14 的持久 TGOS 狀態與配額規則已通過合成整合驗收。T-15～T-
 | --- | --- | --- |
 | `git -C C:/Code/taiwan-address-data pull --ff-only` | pass | fast-forward 到 `02887978ef19c1067e339787bae976a72d4723af`，工作樹乾淨 |
 | `python -m lvr_pipeline pin-address-source --address-dir C:/Code/taiwan-address-data --output data/sources/address_source.json` | pass | 27,176 個 road CSV；描述檔已更新 |
-| `python -m lvr_pipeline build-offline-index … --run-id p3-address-02887978` | pass | 599,884,131 bytes；310.48 秒；RSS 峰值 409,104,384 bytes |
-| `python -m lvr_pipeline build-address-pool … --run-id p3-115q1-pool-02887978` | pass | 56,022 個地址鍵 |
-| `python -m lvr_pipeline resolve-offline … --run-id p3-115q1-offline-02887978` | pass | 48,882 個 located；4,871 個可查候選 |
+| `python -m lvr_pipeline build-offline-index … --run-id p3-address-02887978-clean` | pass | 599,884,131 bytes；381.85 秒；RSS 峰值 602,394,624 bytes；producer 工作樹乾淨 |
+| `python -m lvr_pipeline build-address-pool … --run-id p3-115q1-pool-02887978-clean` | pass | 56,022 個地址鍵、102,881 個成員；19.75 秒；producer 工作樹乾淨 |
+| `python -m lvr_pipeline resolve-offline … --run-id p3-115q1-offline-02887978-clean` | pass | located 48,882、conflict 2,269、unmatched 4,871；44.22 秒；producer 工作樹乾淨 |
 | `python -m pytest -q` | pass，218 tests | Windows 165.17 秒；GitHub Ubuntu 83.99 秒；全部測試使用合成輸入 |
-| `prepare-tgos` 真實批次 | not-run | 尚未取得服務日期及共用帳號同日外部已用筆數，不能推定為 0 |
+| `prepare-tgos … --service-date 2026-10-05 --external-used 0 --run-id p3-tgos-20261005-001` | fail | Windows sandbox 無法存取暫存目錄，未提交快照或交付檔案 |
+| `prepare-tgos … --service-date 2026-10-05 --external-used 0 --run-id p3-tgos-20261005-001` | pass | 改由獲准的本機環境重跑；4,871 筆，只有 `Address` 欄，UTF-8-sig，210,605 bytes，SHA-256 `a46e7b48167adc23e65919d341793b54a8badf07ed57496aea2b62ec3ad960ad` |
+| `verify-tgos-state --state data/work/tgos-state/snapshots/p3-tgos-20261005-001` | pass | 批次狀態為 `prepared`，批次數 1；located 48,882、conflict 2,269、unmatched 4,871 |
 | `import-tgos` 真實回傳 | not-run | 尚無人工下載的真實回傳檔 |
 | `backfill-output` 真實輸出 | not-run | 合成測試證明只改受影響月份並保留前版；真實匯入是前置條件 |
 
-TP-15～TP-18 的合成情境包含 10,001 候選、公平選取、未來日期／額度耗盡、提交前取消、提交不明、UTF-8-sig、一對一 Address、重複匯入、座標軸疑似顛倒及單月回補。T-14 已具備持久狀態證據。T-15 的真實批次、T-16 的真實回傳及 T-17 的真實回補仍為 not-run。
+TP-15～TP-18 的合成情境包含 10,001 候選、公平選取、未來日期／額度耗盡、提交前取消、提交不明、UTF-8-sig、一對一 Address、重複匯入、座標軸疑似顛倒及單月回補。T-14 已具備持久狀態證據。T-15 已完成真實批次準備，但尚未完成人工上傳與提交確認。T-16 的真實回傳仍為 not-run。T-17 的真實回補仍為 not-run。
 
-下一步先由操作員提供預計服務日期與同一共用帳號該日已由其他工作使用的筆數。之後應從已提交且工作樹乾淨的程式版本重建或核對最新離線 state，再建立真實保留與 CSV；不要直接把本次 dirty producer 快照當公開交接版本。
+下一步由操作員將 `data/tgos/p3-tgos-20261005-001/addresses.csv` 上傳 addrCompare。manifest 只供核對，不上傳。操作員須回報提交成功、提交狀態不明或上傳前取消，系統才能更新持久狀態。TGOS 完成後，下載真實回傳檔並執行 T-16。
