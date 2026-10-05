@@ -1,6 +1,6 @@
 """P4 address patch export acceptance."""
 
-from lvr_pipeline.address_patch import export_address_patch, verify_address_patch
+from lvr_pipeline.address_patch import _split_legacy, export_address_patch, verify_address_patch
 from lvr_pipeline.parquet_io import rows
 from lvr_pipeline.tgos import _service_today, import_tgos, prepare_tgos, transition_batch
 from test_p3_tgos import fixture_state, response
@@ -104,3 +104,14 @@ def test_export_address_patch_quarantines_missing_village_evidence(tmp_path):
     assert list(rows(patch / "quarantine.parquet"))[0]["reason"] == (
         "response_address_missing_village"
     )
+
+
+def test_split_legacy_normalizes_tgos_post_number_syntax():
+    legacy, reason = _split_legacy(
+        "臺南市佳里區海澄里1鄰萊芉寮5號之2",
+        "6701200",
+        {"臺南市佳里區海澄里": {"6701200-001"}},
+    )
+    assert reason is None
+    assert legacy["full_addr"] == "臺南市佳里區海澄里1鄰萊芉寮5之2號"
+    assert legacy["number"] == "5之2號"

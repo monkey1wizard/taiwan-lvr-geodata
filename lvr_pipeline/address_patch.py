@@ -18,6 +18,7 @@ from .tgos import load_state
 _ADMIN_RE = re.compile(r"^(?P<county>.+?[縣市])(?P<town>.+?[市區鎮鄉])(?P<rest>.+)$")
 _VILLAGE_RE = re.compile(r"^(?P<village>.+?[里村])(?P<neighborhood>\d+鄰)?(?P<rest>.*)$")
 _NUMBER_RE = re.compile(r"(?P<number>\d+(?:之\d+)*號)$")
+_POST_NUMBER_RE = re.compile(r"(?P<base>\d+)號之(?P<sub>\d+)$")
 _ALLEY_RE = re.compile(r"(?P<alley>\d+(?:之\d+)*弄)$")
 _LANE_RE = re.compile(r"(?P<lane>\d+(?:之\d+)*巷)$")
 _SECTION_RE = re.compile(r"^(?P<road>.*?)(?P<section>[一二三四五六七八九十\d]+段)$")
@@ -64,6 +65,16 @@ def _split_legacy(response_address: str, town_code: str, areas: dict[str, set[st
         return None, "village_code_missing_or_ambiguous"
     village_code = next(iter(village_codes))
     street = village_match["rest"]
+    post_number = _POST_NUMBER_RE.search(street)
+    if post_number:
+        street = (
+            street[: post_number.start()]
+            + post_number["base"]
+            + "之"
+            + post_number["sub"]
+            + "號"
+        )
+        value = value[: -len(village_match["rest"])] + street
     number_match = _NUMBER_RE.search(street)
     if not number_match:
         return None, "response_address_missing_door_number"
