@@ -2,7 +2,7 @@
 
 本專案保留台灣實價登錄資料的解析與地址處理程式，作為新版地理資料管線的起點。
 
-P0 基礎程式及固定套件環境已在工作副本實作，Windows 的 145 個測試通過。Linux TP-01 與 GitHub Actions 尚未執行，P0 尚未完整驗收。已實作內容與限制見 [P0 紀錄](docs/p0-foundations.md)。原 repo 尚待套用本次 patch。
+P0 基礎程式及固定套件環境已實作，Windows 與 GitHub Ubuntu 均通過 145 個測試。已實作內容、CI 證據與限制見 [P0 紀錄](docs/p0-foundations.md)。變更由草稿 PR #1 提供，尚未合併。
 
 新版方案見[完整企劃草案](docs/drafts/taiwan-lvr-geodata-完整企劃.md)，內含六個 phases、24 個 tasks 與 26 個 test points，可直接作為 cloud agent 的工作依據。修訂後的執行設計已通過獨立審查。各 task 依自己的前置條件與驗收執行，不要求完整 GAL 流程。
 

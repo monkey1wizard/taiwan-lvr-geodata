@@ -4,7 +4,7 @@
 >
 > 月份依交易／租賃日期 tx_yyyymm 劃分，保留 YYYYMM_category 檔名。使用者可獨立下載月／類別／格式，也可選年度包。GitHub 公開及舊 TGOS 操作條件已確定，不再保留原三個 OQ。
 >
-> tasks 均為 Planned，新 test points 均為 NotRun。cloud 執行不需要 GAL、.dev 或另產生執行提示。本機雙語鏡像只供維護。執行後使用 repo 內的 `docs/task-result-template.md` 記錄版本、命令、測試、月／年輸出及交接位置。
+> P0 的 T-01～T-04 已實作；TP-01～TP-04、TP-10 的 P0 樣本驗證通過。Windows 與 GitHub Ubuntu 均通過 145 個測試，見 [P0 紀錄](../p0-foundations.md)。草稿 PR #1 尚未合併。其餘 tasks 為 Planned，其餘 test points 為 NotRun。cloud 執行不需要 GAL、.dev 或另產生執行提示。本機雙語鏡像只供維護。執行後使用 repo 內的 `docs/task-result-template.md` 記錄版本、命令、測試、月／年輸出及交接位置。
 
 ## 審核狀態
 
@@ -17,7 +17,7 @@
 
 以 taiwan-lvr-geodata 建立可重建的台灣實價登錄地理資料管線。taiwan-address-data 提供固定版本的離線門牌座標，並接收經驗證的新地址資料。雲端 agent 必須能取得相同輸入、接續人工 TGOS 輪次、回補各年份與三種交易類別，再發布有版本紀錄的 GIS 資料。
 
-本次修訂企劃，尚未修改執行程式。使用者要求 GitHub 公開交付、TGOS 前先交付離線處理 output、以交易月為最小下載單位並提供年度包，以及 cloud agent 可直接使用的 phases／tasks／test points，不要求完整 GAL 流程。沿用草案資料格式與舊 TGOS 操作條件。執行／資源安排由 agent 量測處理，不再列為使用者 OQ。原 Google Drive 草稿與 legacy 文件保留為參考快照。
+企劃完成後已實作 P0 基礎程式，驗證紀錄見 docs/p0-foundations.md。P1～P5 尚待實作。使用者要求 GitHub 公開交付、TGOS 前先交付離線處理 output、以交易月為最小下載單位並提供年度包，以及 cloud agent 可直接使用的 phases／tasks／test points，不要求完整 GAL 流程。沿用草案資料格式與舊 TGOS 操作條件。執行／資源安排由 agent 量測處理，不再列為使用者 OQ。原 Google Drive 草稿與 legacy 文件保留為參考快照。
 
 ## 已確認現況
 
@@ -281,7 +281,7 @@ GAL receipt 與本機企劃鏡像只供選用紀錄。它們的全域流程檢�
 
 ## 預計新增與修改的檔案
 
-以下執行程式與資料路徑為預計變更，尚未實作。本次已建立企劃、docs/data-processing-flow.md 與 docs/task-result-template.md。
+以下為整體責任範圍。P0 路徑與固定環境已實作，結果見 docs/p0-foundations.md；其餘執行程式與資料路徑仍待實作。企劃、完整流程圖與 task 結果範本已建立。
 
 | 專案 | 路徑 | 責任 |
 | --- | --- | --- |
@@ -307,7 +307,7 @@ GAL receipt 與本機企劃鏡像只供選用紀錄。它們的全域流程檢�
 
 ## Phases：分階段交付
 
-Tasks 依前置關係及測試驗收執行，不要求完整 GAL。全部 tasks 仍為 Planned，新執行測試仍為 NotRun。task 數字是固定識別，不表示必須按數字順序執行。
+Tasks 依前置關係及測試驗收執行，不要求完整 GAL。T-01～T-04 已實作並通過 P0 樣本驗證，其餘 tasks 為 Planned。P0 的測試證據見 docs/p0-foundations.md，其餘 test points 為 NotRun。task 數字是固定識別，不表示必須按數字順序執行。
 
 | Phase | Tasks | 交付內容 | 結束測試 |
 | --- | --- | --- | --- |
@@ -442,7 +442,7 @@ P0 → P1 → P2 交付使用者要求的首版公開離線 output，不等待 T
 
 ## Tasks：可執行任務
 
-全部 tasks 為 Planned。前置條件指已驗收的交付成果，不只代表程式已寫完。可先驗收樣本實作，再處理真實資料部署。以下路徑是預計責任範圍，不表示檔案已存在。
+T-01～T-04 已實作，見 P0 紀錄及草稿 PR #1；其餘 tasks 為 Planned。前置條件指已驗收的交付成果，不只代表程式已寫完。可先驗收樣本實作，再處理真實資料部署。以下路徑是責任範圍。P0 檔案已建立，其餘路徑仍屬規劃。
 
 | Task／phase | 前置條件與適用門檻 | 工作與檔案責任 | 交付／test points |
 | --- | --- | --- | --- |
