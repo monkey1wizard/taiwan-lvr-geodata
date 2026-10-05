@@ -154,6 +154,54 @@ SCHEMAS = {
             ("evidence_ref", S, False),
         ],
     ),
+    "address-patch": _schema(
+        "address-patch",
+        [
+            ("patch_id", S, False),
+            ("key_version", S, False),
+            ("building_key", S, False),
+            ("full_addr", S, False),
+            ("county", S, False),
+            ("town", S, False),
+            ("village", S, False),
+            ("neighborhood", S, False),
+            ("road", S, False),
+            ("section", S, False),
+            ("lane", S, False),
+            ("alley", S, False),
+            ("sub_alley", S, False),
+            ("tong", S, False),
+            ("number", S, False),
+            ("x", F, False),
+            ("y", F, False),
+        ],
+    ),
+    "address-patch-provenance": _schema(
+        "address-patch-provenance",
+        [
+            ("patch_id", S, False),
+            ("evidence_id", S, False),
+            ("result_id", S, False),
+            ("batch_id", S, False),
+            ("query_fingerprint", S, False),
+            ("submitted_address", S, False),
+            ("response_address", S, False),
+            ("response_sha256", S, False),
+            ("source_row_number", I, False),
+            ("source_kind", S, False),
+        ],
+    ),
+    "address-patch-quarantine": _schema(
+        "address-patch-quarantine",
+        [
+            ("candidate_id", S, False),
+            ("batch_id", S, False),
+            ("query_fingerprint", S, False),
+            ("submitted_address", S, False),
+            ("response_address", S, True),
+            ("reason", S, False),
+        ],
+    ),
 }
 PRIMARY = {
     "offline-row": ["evidence_id"],
@@ -166,6 +214,9 @@ PRIMARY = {
     "tgos-query": ["batch_id", "query_fingerprint"],
     "tgos-result": ["result_id"],
     "alias-event": ["event_id"],
+    "address-patch": ["patch_id"],
+    "address-patch-provenance": ["patch_id", "evidence_id"],
+    "address-patch-quarantine": ["candidate_id"],
 }
 SCHEMAS["unmatched-address"] = _schema(
     "unmatched-address",
@@ -189,7 +240,8 @@ def validate_rows(values, dataset):
             if not row["building_key"].startswith("v2:"):
                 raise ValueError("Invalid offline key")
             key = json.loads(row["building_key"][3:])
-            if key["county"] != row["county_code"]:
+            row_county = row.get("county_code", row.get("county"))
+            if row_county is not None and key["county"] != row_county:
                 raise ValueError("Offline key county differs")
         if dataset == "offline-row" and row["validity"] not in {
             "valid",
@@ -266,6 +318,18 @@ def validate_rows(values, dataset):
             raise ValueError("Invalid TGOS result status")
         if dataset == "alias-event" and row["action"] not in {"verified", "revoked"}:
             raise ValueError("Invalid alias event")
+        if dataset == "address-patch":
+            if row["key_version"] != "v2" or not row["building_key"].startswith("v2:"):
+                raise ValueError("Invalid address patch key")
+            if not all(row[key] for key in ["patch_id", "full_addr", "county", "town", "village", "number"]):
+                raise ValueError("Address patch lacks required administrative evidence")
+            if not valid_coordinate(row["x"], row["y"]):
+                raise ValueError("Invalid address patch coordinate")
+        if dataset == "address-patch-provenance":
+            if row["source_kind"] != "tgos_result":
+                raise ValueError("Unsupported address patch source")
+        if dataset == "address-patch-quarantine" and not row["reason"]:
+            raise ValueError("Address patch quarantine reason required")
 
 
 def valid_coordinate(lng, lat):

@@ -7,6 +7,7 @@ from .address_pool import build_pool
 from .address_source import pin_address_source
 from .address_state import resolve_offline, load_p2
 from .backfill import backfill_output
+from .address_patch import export_address_patch, verify_address_patch
 from .distribution import fetch_output, publish_release, commit_pointer
 from .offline_lookup import build_index
 from .packaging import package_output, verify_output, write_json
@@ -104,6 +105,13 @@ def configure(sub):
     p.add_argument("--output-dir", type=Path, default=Path("data/output"))
     p.add_argument("--report", type=Path, required=True)
     p.add_argument("--run-id", required=True)
+    p = sub.add_parser("export-address-patch")
+    p.add_argument("--state", type=Path, required=True)
+    p.add_argument("--area-file", type=Path, required=True)
+    p.add_argument("--work-dir", type=Path, default=Path("data/work"))
+    p.add_argument("--run-id")
+    p = sub.add_parser("verify-address-patch")
+    p.add_argument("--input", type=Path, required=True)
     p = sub.add_parser("fetch-output")
     p.add_argument("--manifest-url", required=True)
     p.add_argument("--manifest-sha256", required=True)
@@ -257,6 +265,12 @@ def run(args):
         )
         write_json(args.report, report)
         print(json.dumps({"path": str(path), "report": str(args.report), "completed": True}, ensure_ascii=False))
+        return 0
+    elif command == "export-address-patch":
+        path = export_address_patch(args.state, args.area_file, args.work_dir, run_id=args.run_id)
+    elif command == "verify-address-patch":
+        report = verify_address_patch(args.input)
+        print(json.dumps({"verified": True, "snapshot_id": report["snapshot_id"], "patch_rows": report["patch_rows"], "quarantine_rows": report["quarantine_rows"]}, ensure_ascii=False))
         return 0
     elif command == "fetch-output":
         path = fetch_output(

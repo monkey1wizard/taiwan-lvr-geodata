@@ -217,6 +217,11 @@ def verify_relations(groups: dict[str, list[Path]], *, source_scope: dict | None
                 reject("SELECT count(*) FROM verified_alias WHERE alias_key=target_key", "Verified alias points to itself")
             if "alias-event" in groups and "verified-alias" in groups:
                 reject("SELECT count(*) FROM verified_alias a WHERE NOT EXISTS (SELECT 1 FROM alias_event e WHERE e.alias_key=a.alias_key AND e.target_key=a.target_key AND e.action='verified')", "Verified alias lacks event evidence")
+            if "address-patch-provenance" in groups:
+                if "address-patch" not in groups:
+                    raise ValueError("Address patch provenance requires patch rows")
+                reject("SELECT count(*) FROM address_patch_provenance p ANTI JOIN address_patch a USING(patch_id)", "Address patch provenance lacks patch row")
+                reject("SELECT count(*) FROM address_patch a WHERE NOT EXISTS (SELECT 1 FROM address_patch_provenance p WHERE p.patch_id=a.patch_id)", "Address patch lacks provenance")
             if "observation" in groups and "exclusion" in groups:
                 reject("SELECT count(*) FROM observation JOIN exclusion USING(raw_record_id)", "Observation also excluded")
             if "disposition" in groups:

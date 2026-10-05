@@ -106,6 +106,14 @@ def load_snapshot(path: Path, expected_stage: str) -> tuple[dict, dict]:
     if expected_stage == "ingest":
         if counts.get("ingest-record") != report["input_rows"]:
             raise ValueError("Ingest report count differs from artifacts")
+    elif expected_stage == "address-patch":
+        for dataset, counter in [
+            ("address-patch", "patch_rows"),
+            ("address-patch-provenance", "provenance_rows"),
+            ("address-patch-quarantine", "quarantine_rows"),
+        ]:
+            if counts.get(dataset) != report[counter]:
+                raise ValueError("Address patch report count differs from artifacts")
     else:
         for dataset, counter in [("observation", "retained_rows"), ("exclusion", "excluded_rows"),
                                  ("address-component", "component_rows"), ("diagnostic", "diagnostic_rows"), ("disposition", "input_rows")]:
