@@ -244,3 +244,11 @@ def test_cli_runs_and_verifies_only_internal_output(tmp_path):
     assert payload["internal_only"] and payload["process_peak_rss_bytes"]>0
     check=subprocess.run([sys.executable,"-m","lvr_pipeline","verify-converted","--input",payload["snapshot"]],capture_output=True,text=True,check=True)
     assert json.loads(check.stdout)["verified"]
+
+
+def test_exporting_existing_normalized_snapshot_cannot_ignore_cutoff(tmp_path):
+    _,normalized,_=pipeline(tmp_path,categories=("sales",))
+    completed=subprocess.run([sys.executable,"-m","lvr_pipeline","export-converted","--input",str(normalized),
+        "--cutoff","202512","--work-dir",str(tmp_path/"fresh")],capture_output=True,text=True)
+    assert completed.returncode==1 and "Cutoff differs" in json.loads(completed.stdout)["error"]
+    assert not (tmp_path/"fresh/converted/current.json").exists()

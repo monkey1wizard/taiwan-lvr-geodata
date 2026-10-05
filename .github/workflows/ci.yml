@@ -1,4 +1,4 @@
-name: P0 synthetic tests
+name: Pipeline synthetic tests
 on:
   push:
   pull_request:

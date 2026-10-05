@@ -51,6 +51,12 @@ def main(argv=None):
                              batch_rows=args.batch_rows, run_id=args.run_id)
         else:
             normalized = args.input
+            if normalized is not None:
+                _, existing = load_snapshot(normalized, "normalize")
+                if existing["cutoff"] != args.cutoff:
+                    raise ValueError("Cutoff differs from normalized snapshot; rerun normalize to change it")
+                if args.batch:
+                    raise ValueError("Cannot reselect batches from a normalized snapshot")
             if normalized is None:
                 manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
                 raw = ingest(args.raw_dir, manifest, args.batch, args.work_dir, batch_rows=args.batch_rows,
