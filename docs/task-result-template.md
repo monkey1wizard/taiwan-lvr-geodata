@@ -140,4 +140,25 @@ T-18 已建立地址 patch 契約、CLI、來源 sidecar、行政區證據隔離
 | `export-address-patch --state data/work/tgos-state/snapshots/p3-tgos-20261005-001-imported --area-file … --run-id p4-tgos-20261005-001-patch-v3` | pass | 使用五個固定行政區檔；producer 工作樹乾淨；manifest SHA-256 `7ebf76b…` |
 | `verify-address-patch --input data/work/address-patch/snapshots/p4-tgos-20261005-001-patch-v3` | pass | patch 4,264、provenance 4,301、quarantine 127 |
 
-TP-19 的 patch 結構與相容情境已驗收。T-18 已完成。T-19～T-20 尚未開始，地址 repo 沒有被修改或發布。下一步依[地址 patch 操作手冊](address-patch-runbook.md)在 `taiwan-address-data` 實作可重複匯入的 `supplements/` 層。
+TP-19 的 patch 結構與相容情境已驗收。T-18 已完成。這是 T-18 執行當下的紀錄：T-19～T-20 當時尚未開始，地址 repo 當時沒有被修改或發布。後續 T-19 實作結果記錄如下。
+
+## 本次 P4 T-19 實作結果：2026-10-06
+
+T-19 的地址 repo 程式、文件及合成驗證已完成並推送至 `main`。真實 4,264 筆 patch 尚未匯入或發布，因為來源權利審查尚未完成。因此 T-19 保持未驗收，T-20 不依賴未審查的真實資料啟動。
+
+| 項目 | 實際結果 |
+| --- | --- |
+| 地址 repo commit | `3ff9be0265b22a4910abf2bd4e3e96c7653fb6f0`，已推送 `origin/main` |
+| 固定基底 | 27,176 個 road CSV；roads tree SHA-256 `f2a6204b…`；road.csv SHA-256 `499b337b…` |
+| 補充層 | 獨立 `supplements/` manifest、不可變來源目錄、14 欄 `addresses.csv`、provenance 與 quarantine |
+| 寫入安全 | 匯入與物化共用鎖；來源雜湊、基底雜湊及 `FULL_ADDR` 衝突均採拒絕處理 |
+| 真實 patch | not-run；沒有把內部快照加入地址 repo，也沒有改寫公開 `roads/` |
+
+| 命令 | 結果 | 證據／限制 |
+| --- | --- | --- |
+| `python -m unittest discover -s tests -v` | pass，6 tests | Windows；合成資料驗證重複匯入、竄改、衝突、共用鎖、固定基底及候選物化 |
+| 固定基底雜湊核對 | pass | 本機 27,176 個檔案及 `road.csv` 均符合 `supplements/legacy-base.json` |
+| GitHub Actions `Supplement tests` | pass | Linux run `37348305863`，commit `3ff9be026…` |
+| 真實 `import_lvr_patch.py` | not-run | 上游地址座標公開再散布依據待確認 |
+
+TP-19 的 14 欄相容與隔離規則已由 T-18 驗收。TP-21 的樣本重複匯入、寫入重疊、固定基底及固定候選結果已通過。真實補充發布仍是 T-19 的未完成驗收點。機器可讀紀錄見 [p4-t19-evidence.json](p4-t19-evidence.json)。

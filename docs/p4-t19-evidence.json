@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "recorded_at": "2026-10-06",
+  "task": "T-19",
+  "status": "waiting_for_real_import_rights_review",
+  "address_repository": {
+    "path": "C:/Code/taiwan-address-data",
+    "commit": "3ff9be0265b22a4910abf2bd4e3e96c7653fb6f0",
+    "branch": "main",
+    "pushed": true
+  },
+  "legacy_base": {
+    "source_commit": "02887978ef19c1067e339787bae976a72d4723af",
+    "road_file_count": 27176,
+    "roads_tree_sha256": "f2a6204bf611ba5b71ffb5cc3df68b938624aa4f9c0e66dc690ed8c17a5f73d5",
+    "road_index_sha256": "499b337bf3bc89213c29605febbce5366a66058c0ab08b32ab0edc4941e6ddb4"
+  },
+  "implementation": {
+    "immutable_patch_import": true,
+    "artifact_hash_verification": true,
+    "provenance_relationship_verification": true,
+    "legacy_14_column_output": true,
+    "idempotent_import": true,
+    "shared_writer_lock": true,
+    "pinned_base_verification": true,
+    "conflict_rejection": true
+  },
+  "verification": {
+    "windows_synthetic_tests": 6,
+    "windows_status": "passed",
+    "github_actions_run": "https://github.com/monkey1wizard/taiwan-address-data/actions/runs/37348305863",
+    "github_actions_status": "passed"
+  },
+  "real_patch": {
+    "snapshot_id": "p4-tgos-20261005-001-patch-v3",
+    "patch_rows": 4264,
+    "imported": false,
+    "published": false,
+    "reason": "Upstream coordinate redistribution evidence remains pending."
+  }
+}

@@ -15,11 +15,11 @@
 
 ## 目標與範圍
 
-P0～P2 已完成本階段驗收。P2 交付 115q1 的 102,743 筆來源觀測、87 個交易月份、10 個年度及可接續維護狀態。P3 的第一個真實批次已完成匯入，公開回補因來源權利證據不足而停止。P4 已完成 T-18 的真實地址 patch，尚未匯入或發布至地址 repo。詳見 [P1 紀錄](../p1-conversion.md)、[P2 紀錄](../p2-offline-output.md)、[P3／P4 結果](../task-result-template.md)與 [地址 patch 操作手冊](../address-patch-runbook.md)。
+P0～P2 已完成本階段驗收。P2 交付 115q1 的 102,743 筆來源觀測、87 個交易月份、10 個年度及可接續維護狀態。P3 的第一個真實批次已完成匯入，公開回補因來源權利證據不足而停止。P4 已完成 T-18 的真實地址 patch。地址 repo 已完成 T-19 的匯入與物化程式及合成驗證，但真實 patch 尚未匯入或發布。詳見 [P1 紀錄](../p1-conversion.md)、[P2 紀錄](../p2-offline-output.md)、[P3／P4 結果](../task-result-template.md)與 [地址 patch 操作手冊](../address-patch-runbook.md)。
 
 以 taiwan-lvr-geodata 建立可重建的台灣實價登錄地理資料管線。taiwan-address-data 提供固定版本的離線門牌座標，並接收經驗證的新地址資料。雲端 agent 必須能取得相同輸入、接續人工 TGOS 輪次、回補各年份與三種交易類別，再發布有版本紀錄的 GIS 資料。
 
-P0～P2 已驗收。P3 的 T-14～T-16 已驗收。第一個真實批次已匯入，T-17 因 legacy 地址座標缺少可再散布證據而停止。P4 的 T-18 已驗收，T-19～T-20 尚待完成。P5 尚待完成。使用者要求 GitHub 公開交付、TGOS 前先交付離線處理 output、以交易月為最小下載單位並提供年度包，以及 cloud agent 可直接使用的 phases／tasks／test points，不要求完整 GAL 流程。沿用草案資料格式與舊 TGOS 操作條件。原 Google Drive 草稿與 legacy 文件保留為參考快照。
+P0～P2 已驗收。P3 的 T-14～T-16 已驗收。第一個真實批次已匯入，T-17 因 legacy 地址座標缺少可再散布證據而停止。P4 的 T-18 已驗收。T-19 的程式、文件及合成測試已推送至地址 repo，真實資料匯入仍待來源權利審查，因此 T-19 保持未勾選。T-20 尚待完成。P5 尚待完成。使用者要求 GitHub 公開交付、TGOS 前先交付離線處理 output、以交易月為最小下載單位並提供年度包，以及 cloud agent 可直接使用的 phases／tasks／test points，不要求完整 GAL 流程。沿用草案資料格式與舊 TGOS 操作條件。原 Google Drive 草稿與 legacy 文件保留為參考快照。
 
 ## 已確認現況
 
@@ -622,6 +622,7 @@ P0／P1、P2、P3 T-14～T-16 與 P4 T-18 已通過各自適用的階段驗收�
   - 前置條件與適用門檻：T-18；另在 taiwan-address-data 提交可審查變更，先做樣本測試再發布真實補充。
   - 工作與檔案責任：負責地址 repo 補充／基底 manifest、import_lvr_patch.py、materialize_addresses.py。建立固定 legacy_base，不在 Git 重複全量資料；保留 14 欄 roads 結構。
   - 交付／test points：獨立補充層、重複匯入檢查及固定相容 roads／road.csv。TP-19、TP-21。
+  - 目前結果：程式、文件與 6 項合成測試已在地址 repo `3ff9be0265b22a4910abf2bd4e3e96c7653fb6f0` 完成並通過 Linux CI。真實 4,264 筆 patch 尚待來源權利審查，因此尚未驗收。
 
 - [ ] **T-20／P4**
   - 前置條件與適用門檻：T-19；cloud 回歸用模擬縣市來源，真實提交需已驗證輸入與審查。

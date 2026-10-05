@@ -52,6 +52,8 @@ data/work/address-patch/snapshots/p4-tgos-20261005-001-patch-v3
 
 驗證會檢查 Parquet schema、主鍵、patch 與來源 sidecar 的關聯、村里證據及座標範圍。TGOS 的 `N號之M` 表示會轉成地址 repo 使用的 `N之M號`，原始回傳地址仍保留在 sidecar。程式不猜測缺少的行政區編碼，也不把隔離列寫入 patch。
 
-## 下一步
+## 地址 repo 接續狀態
 
-T-19 需要在 `C:/Code/taiwan-address-data` 實作獨立 `supplements/` 層、可重複匯入及固定 14 欄輸出。執行 T-19 前，先以本快照的 `address_patch.parquet`、`provenance.parquet` 及 `manifest.json` 作為固定輸入。不要直接把 Parquet 複製成 `roads/*.csv`，也不要將 127 筆隔離結果人工補成未知村里編碼。
+`C:/Code/taiwan-address-data` 已在 commit `3ff9be0265b22a4910abf2bd4e3e96c7653fb6f0` 完成獨立 `supplements/` 層、可重複匯入、固定 14 欄輸出及候選物化功能。地址 repo 的 `docs/supplements.md` 記錄操作命令。不要直接把 Parquet 複製成 `roads/*.csv`，也不要將 127 筆隔離結果人工補成未知村里編碼。
+
+真實快照仍是內部資料。每個上游地址座標來源的公開再散布依據完成審查後，才可執行真實匯入與發布。

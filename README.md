@@ -14,7 +14,7 @@ P1 建立內部 Parse／Normalize 階段快照。P2 完成離線地址處理後�
 
 月輸出、年度包及維護狀態已保存於不可變 Release，約 582.4 MiB。Git 只保存程式、來源描述及小型發布指標。cloud agent 已可取得維護包並重產離線 output。人工程序沿用 addrCompare 每日／每片最多 10,000 筆與 WGS84；地址 repo 回饋仍待 P4。
 
-P3 已完成持久 TGOS 配額／批次狀態、UTF-8-sig 人工交換及真實回傳匯入。第一批 4,871 筆中，4,428 筆取得可用座標，443 筆仍未定位。公開月／年回補目前停在來源權利門檻，未產生或發布候選。P4 的 T-18 已從真實結果產生 4,264 筆地址 patch，另隔離 127 筆缺少唯一村里編碼的結果。Windows 完整測試為 222 個通過。見 [TGOS 操作手冊](docs/tgos-runbook.md)、[地址 patch 操作手冊](docs/address-patch-runbook.md)、[P3 執行證據](docs/p3-evidence.json)與 [P4 執行證據](docs/p4-evidence.json)。
+P3 已完成持久 TGOS 配額／批次狀態、UTF-8-sig 人工交換及真實回傳匯入。第一批 4,871 筆中，4,428 筆取得可用座標，443 筆仍未定位。公開月／年回補目前停在來源權利門檻，未產生或發布候選。P4 的 T-18 已從真實結果產生 4,264 筆地址 patch，另隔離 127 筆缺少唯一村里編碼的結果。地址 repo 已完成可重複匯入、固定基底及候選物化功能，6 項合成測試與 Linux CI 通過。真實 patch 尚待來源權利審查。見 [TGOS 操作手冊](docs/tgos-runbook.md)、[地址 patch 操作手冊](docs/address-patch-runbook.md)、[P3 執行證據](docs/p3-evidence.json)、[T-18 執行證據](docs/p4-evidence.json)與 [T-19 執行證據](docs/p4-t19-evidence.json)。
 
 ## 本機開發與 Git
 
@@ -78,6 +78,7 @@ taiwan-lvr-geodata/
 │   ├── p2-evidence.json              P2 機器可讀證據
 │   ├── p3-evidence.json              P3 機器可讀證據
 │   ├── p4-evidence.json              P4 地址 patch 機器可讀證據
+│   ├── p4-t19-evidence.json          地址 repo 補充層實作與測試證據
 │   └── task-result-template.md       task 命令／結果紀錄
 ├── lvr_pipeline/
 │   ├── __init__.py                   Python package 標記
