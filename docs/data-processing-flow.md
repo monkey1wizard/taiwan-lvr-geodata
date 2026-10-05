@@ -1,6 +1,6 @@
 # 完整資料處理流程
 
-本文件描述新版企劃的資料處理與交接流程。P0 基礎、[P1 逐批轉換](p1-conversion.md)及 [P2 離線定位／月年輸出／公開交接](p2-offline-output.md)已驗收。P2 真實範圍為 115q1 來源觀測，座標來源限官方臺北市資料。TGOS、回補及地址 patch／更新仍待 P3／P4，全歷史量測待 P5。圖中的 `@name` 是職責標記，不能僅依標記推定函式或命令已存在。tasks 與 test points 以[完整企劃](drafts/taiwan-lvr-geodata-完整企劃.md)為準。
+本文件描述新版企劃的資料處理與交接流程。P0 基礎、[P1 逐批轉換](p1-conversion.md)及 [P2 離線定位／月年輸出／公開交接](p2-offline-output.md)已驗收。P3 的持久 TGOS 狀態、人工交換、嚴格匯入與回補程式已完成合成驗證；真實批次仍等待操作員確認共用帳號當日外部用量。地址 patch／更新仍待 P4，全歷史量測待 P5。圖中的 `@name` 是職責標記，實際狀態以階段紀錄為準。tasks 與 test points 以[完整企劃](drafts/taiwan-lvr-geodata-完整企劃.md)為準。
 
 第一版 output 在離線地址處理後交付，公開於 GitHub。下載以交易月份 `tx_yyyymm` 為最小時間單位，保留 `YYYYMM_category` 命名，再提供年度 ZIP。TGOS 後續補齊受影響月份及年度包。首次重建不匯入舊 SQLite、舊 output 或 migration 座標。
 
@@ -224,7 +224,7 @@ GitHub 下載索引提供年／月／類別／格式的 URL、大小與 SHA-256�
 (start) 最新已提交快照的未定位地址池
   │
   ▼
-[排除已定位、衝突、保留及提交不明鍵] @tgos
+[排除已定位、衝突、保留及提交不明鍵] @tgos.prepare_tgos
   │
   ▼
 { 相同查詢已送過? }
@@ -246,7 +246,7 @@ GitHub 下載索引提供年／月／類別／格式的 URL、大小與 SHA-256�
   │
   是
   ▼
-[按 address_family 與固定順序選取] @tgos
+[按 address_family 與固定順序選取] @tgos.prepare_tgos
   │
   ▼
 { 共用帳號今日尚有配額? }
@@ -254,7 +254,7 @@ GitHub 下載索引提供年／月／類別／格式的 URL、大小與 SHA-256�
   │
   是
   ▼
-[選不超過剩餘配額，單片最多 10,000 資料列] @tgos
+[選不超過剩餘配額，單片最多 10,000 資料列] @tgos.prepare_tgos
   │
   ▼
 [先提交保留帳本與 batch manifest] 圖 9
@@ -265,7 +265,7 @@ GitHub 下載索引提供年／月／類別／格式的 URL、大小與 SHA-256�
   │
   是
   ▼
-[輸出 UTF-8-sig CSV；地址列與 manifest 對照] @tgos
+[輸出 UTF-8-sig CSV；地址列與 manifest 對照] @tgos.prepare_tgos
   │
   ▼
 [人工 addrCompare 上傳，確認提交] ~~▶ 操作員
@@ -287,7 +287,7 @@ GitHub 下載索引提供年／月／類別／格式的 URL、大小與 SHA-256�
 (start) 人工下載的 addrCompare 完成 CSV
   │
   ▼
-[保存原回傳與雜湊，取得原批次 manifest] @tgos
+[保存原回傳與雜湊，取得原批次 manifest] @tgos.import_tgos
   │
   ▼
 { 同批次／雜湊已匯入? }
@@ -312,7 +312,7 @@ GitHub 下載索引提供年／月／類別／格式的 URL、大小與 SHA-256�
                  │
                  否
                  ▼
-               [更新索引，回補全部適用歷史] @backfill
+               [更新索引，回補全部適用歷史] @backfill.backfill_output
                  │
                  ▼
                [重建受影響月／年 output] 圖 4／5
@@ -331,7 +331,7 @@ GitHub 下載索引提供年／月／類別／格式的 URL、大小與 SHA-256�
 
 匯入必須有 Address、Response_Address、Response_X、Response_Y 欄位。依 Address 對照原查詢，不要求服務回傳 id。缺批次清單或對照歧義會拒絕匯入，不以舊 building_key 截斷子門牌來匹配。失敗查詢仍保留，新表示或明確重試可重新評估。
 
-人工撤銷別名或更新來源證據時，也經歷史回補／受影響月年重建產生子快照，保留前版供復原。P2 首版交接只驗證離線狀態；實際 TGOS／回補整合由 P3 tasks 驗收。
+人工撤銷別名或更新來源證據時，也經歷史回補／受影響月年重建產生子快照，保留前版供復原。P3 程式與合成整合已驗證；真實 TGOS 上傳、回傳匯入及公開回補版仍依各 task 的實際證據驗收。
 
 ## 圖 8：一份地址 patch 的跨專案回補
 
@@ -436,4 +436,4 @@ patch 匯入與官方更新共用寫入控制。匯入可以只重建補充影�
 | 圖 8：地址 patch／更新 | T-18、T-19、T-20 | TP-19–TP-21 |
 | 圖 9：提交與復原 | T-04、T-22、T-23 | TP-10、TP-23–TP-25 |
 
-原始來源、固定版本與每輪結果必須可追溯。P0～P2 的驗收及未測範圍見各階段紀錄，不能將圖 6～8 的 TGOS／回補／地址更新標成已完成。使用 [task 結果範本](task-result-template.md)記錄命令、pass／fail／not-run、輸出雜湊及交接位置。舊操作條件見 [TGOS 操作文件](legacy/RESUBMIT_RUNBOOK.md)。
+原始來源、固定版本與每輪結果必須可追溯。P0～P2 的驗收及 P3 目前完成範圍見各階段紀錄。真實 TGOS 交換、公開回補及圖 8 地址更新不能因合成測試通過就標成完成。使用 [task 結果範本](task-result-template.md)記錄命令、pass／fail／not-run、輸出雜湊及交接位置。舊操作條件見 [TGOS 操作文件](legacy/RESUBMIT_RUNBOOK.md)。

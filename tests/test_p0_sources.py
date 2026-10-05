@@ -48,5 +48,5 @@ def test_tracked_actual_inventory():
     assert raw["raw_count"] == len(raw["inputs"]) == 58
     assert len({r["batch"] for r in raw["inputs"]}) == 58
     assert [r["batch"] for r in raw["inputs"] if r["known_empty"]] == ["101q1"]
-    assert address["road_count"] == len(address["roads"]) == 27175
-    assert address["commit"] == "752c87d36a8e52d9b71680115c1c19d1a6d3e4ec"
+    assert address["commit"] == "02887978ef19c1067e339787bae976a72d4723af"
+    assert address["road_count"] == len(address["roads"]) == 27176

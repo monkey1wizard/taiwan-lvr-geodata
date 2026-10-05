@@ -12,7 +12,9 @@ P2 已完成離線地址池、定位、GIS 月檔、年度 ZIP 與 GitHub 公開
 
 P1 建立內部 Parse／Normalize 階段快照。P2 完成離線地址處理後，先公開交付 output，後續 TGOS 再回補。下載以交易月份 `tx_yyyymm` 為最小時間單位，保留 `YYYYMM_category` 檔名，另提供依格式打包的年度 ZIP。使用者可只下載需要的月份／類別／格式，也可下載整年。
 
-月輸出、年度包及維護狀態已保存於不可變 Release，約 582.4 MiB。Git 只保存程式、來源描述及小型發布指標。cloud agent 已可取得維護包並重產離線 output。TGOS、回補及地址 repo 更新尚待 P3／P4；人工程序沿用 addrCompare 每日／每片最多 10,000 筆與 WGS84。
+月輸出、年度包及維護狀態已保存於不可變 Release，約 582.4 MiB。Git 只保存程式、來源描述及小型發布指標。cloud agent 已可取得維護包並重產離線 output。人工程序沿用 addrCompare 每日／每片最多 10,000 筆與 WGS84；地址 repo 回饋仍待 P4。
+
+P3 已完成持久 TGOS 配額／批次狀態、UTF-8-sig 人工交換、嚴格回傳匯入及受影響月／年回補程式。Windows 完整測試為 218 個通過。最新 `taiwan-address-data` commit `02887978…` 的真實離線重建留下 4,871 個 TGOS 候選；真實批次需先確認共用帳號當日外部已用筆數，尚未上傳或回補發布。見 [P3 執行證據](docs/p3-evidence.json)與 [cloud 操作](docs/cloud-runbook.md)。
 
 ## 本機開發與 Git
 
@@ -29,7 +31,8 @@ P1 建立內部 Parse／Normalize 階段快照。P2 完成離線地址處理後�
 - `lvr_pipeline/parquet_io.py`、`snapshots.py`：型別、筆數、雜湊、關聯與提交復原檢查。
 - `lvr_pipeline/offline_lookup.py`、`address_pool.py`、`address_state.py`：固定離線索引、全域池與獨立來源關聯，以及唯一／衝突／未定位狀態。
 - `lvr_pipeline/export.py`、`packaging.py`、`distribution.py`：三格式月檔、原月檔年度 ZIP、維護包、公開取得／驗證及預期 parent 指標提交。
-- `tests/`：既有解析／補字測試，以及 P0～P2 的合成驗收測試。
+- `lvr_pipeline/tgos.py`、`backfill.py`：P3 配額保留、人工狀態、回傳匯入、別名事件與受影響月／年回補。
+- `tests/`：既有解析／補字測試，以及 P0～P3 的合成驗收測試。
 - `data/registry/garbled_override.csv`：既有人工補字規則。
 - `data/reference/`：路名參考資料與來源紀錄。
 
@@ -75,9 +78,10 @@ python -m lvr_pipeline.1_normalize
 
 - [完整企劃草案](docs/drafts/taiwan-lvr-geodata-完整企劃.md)：離線首版 output、月／年下載、GitHub 公開交接及完整 phases／tasks／test points。
 - [task 結果範本](docs/task-result-template.md)：agent 記錄前置版本、命令、測試、輸出雜湊及交接位置。
-- [完整資料處理流程](docs/data-processing-flow.md)：九個子流程，P0～P2 已驗收，TGOS／回補／地址更新仍待實作。
+- [完整資料處理流程](docs/data-processing-flow.md)：九個子流程，含已實作 P3 路徑與仍待人工執行的邊界。
+- [P3 執行證據](docs/p3-evidence.json)：最新地址來源、真實離線重建、測試與 TGOS 未執行狀態。
 - [P2 驗收](docs/p2-offline-output.md)：已發布首版、實測資源、測試與已實作命令。
-- [cloud 操作](docs/cloud-runbook.md)：取得公開維護包，不提供 raw 重產離線 output。
+- [cloud 操作](docs/cloud-runbook.md)：取得維護包、固定離線地址來源、建立 TGOS 批次、匯入與回補。
 - [發布操作](docs/release-runbook.md)：draft 傳送核對、不可變 Release 與 main 指標提交。
 - [新版資料處理流程草稿](docs/drafts/taiwan-lvr-geodata-新版資料處理流程.md)：Google Drive 文件的完整內容快照，後續將重寫。
 - [舊文件參考索引](docs/legacy/README.md)：保留可再利用的舊文件原文，列出已知過時內容。

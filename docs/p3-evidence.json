@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "recorded_at": "2026-10-05",
+  "address_source": {
+    "repository": "https://github.com/monkey1wizard/taiwan-address-data",
+    "previous_commit": "752c87d36a8e52d9b71680115c1c19d1a6d3e4ec",
+    "commit": "02887978ef19c1067e339787bae976a72d4723af",
+    "checkout_clean": true,
+    "road_file_count": 27176,
+    "road_bytes": 1575111184,
+    "license_status": "pending_upstream_evidence"
+  },
+  "offline_index": {
+    "snapshot_id": "p3-address-02887978",
+    "input_rows": 10624627,
+    "valid_rows": 9491547,
+    "invalid_rows_retained": 1133080,
+    "county_codes_in_scope": 22,
+    "artifact_bytes": 599884131,
+    "elapsed_seconds": 310.482613,
+    "peak_rss_bytes": 409104384
+  },
+  "address_state": {
+    "pool_snapshot_id": "p3-115q1-pool-02887978",
+    "state_snapshot_id": "p3-115q1-offline-02887978",
+    "unique_address_rows": 56022,
+    "address_occurrence_rows": 102881,
+    "located": 48882,
+    "conflict": 2269,
+    "unmatched": 4871,
+    "outside_scope": 0,
+    "unmatched_table_rows": 7140,
+    "evidence_rows": 925672,
+    "artifact_bytes": 138105103,
+    "elapsed_seconds": 35.194282,
+    "peak_rss_bytes": 1248325632,
+    "producer_worktree_dirty": true,
+    "public_release_eligible": false
+  },
+  "tests": {
+    "command": "python -m pytest -q",
+    "platform": "Windows",
+    "passed": 218,
+    "failed": 0,
+    "elapsed_seconds": 165.17,
+    "p3_synthetic_cases": 7,
+    "linux_status": "pending_github_actions"
+  },
+  "tgos_operation": {
+    "eligible_candidates": 4871,
+    "real_batch_created": false,
+    "reason": "shared_account_external_usage_not_confirmed",
+    "real_upload_completed": false,
+    "real_response_imported": false,
+    "real_backfill_published": false
+  }
+}

@@ -1,0 +1,668 @@
+"""Durable TGOS reservations, human handoff, and strict result imports."""
+
+from __future__ import annotations
+
+import codecs
+import csv
+from datetime import date, datetime, timedelta, timezone
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import tempfile
+
+from .address_state import load_p2
+from .address_v2 import building_key_v2
+from .normalize import normalize_address
+from .parquet_io import BatchWriter, rows
+from .processing import Stage, bindings, canonical_json, digest
+from .snapshots import SnapshotStore
+from .sources import sha256_file
+from .p2_contracts import valid_coordinate
+
+DAILY_LIMIT = 10_000
+TAIWAN_BOUNDS = (118.0, 123.5, 21.5, 26.5)
+TAIPEI_TZ = timezone(timedelta(hours=8))
+DYNAMIC_SCHEMAS = {"tgos-batch", "tgos-query", "tgos-result", "alias-event"}
+
+
+def _quality(path: Path) -> dict:
+    return json.loads((Path(path) / "quality.json").read_text(encoding="utf-8"))
+
+
+def _service_today() -> date:
+    return datetime.now(TAIPEI_TZ).date()
+
+
+def load_state(path: Path):
+    stage = _quality(path)["stage"]
+    if stage not in {"offline-state", "tgos-state"}:
+        raise ValueError("TGOS input must be an offline or TGOS state")
+    return (*load_p2(path, stage), stage)
+
+
+def _artifact_paths(path: Path, manifest: dict) -> dict[str, Path]:
+    return {
+        item["schema"]: Path(path) / item["path"]
+        for item in manifest["artifacts"]
+        if item["schema"]
+    }
+
+
+def _table(path: Path | None) -> list[dict]:
+    return list(rows(path)) if path and path.exists() else []
+
+
+def _require_latest(path: Path, stage: str) -> None:
+    if stage != "tgos-state":
+        return
+    current = SnapshotStore(Path(path).parent.parent).current()
+    if not current or current["snapshot_id"] != Path(path).name:
+        raise ValueError("TGOS state is stale; use the latest snapshot")
+
+
+def _write_table(stage: Stage, name: str, dataset: str, values: list[dict]):
+    writer = BatchWriter(stage.build / name, dataset)
+    for row in values:
+        writer.add(row)
+    writer.close()
+    return name, writer.path, dataset, writer.row_count
+
+
+def _write_state(
+    source: Path,
+    work_dir: Path,
+    *,
+    action: str,
+    batches: list[dict],
+    queries: list[dict],
+    results: list[dict],
+    aliases: list[dict],
+    alias_events: list[dict],
+    address_rows: list[dict] | None = None,
+    evidence_rows: list[dict] | None = None,
+    unmatched_rows: list[dict] | None = None,
+    extra_report: dict | None = None,
+    run_id: str | None = None,
+):
+    manifest, report, source_stage = load_state(source)
+    _require_latest(source, source_stage)
+    source_hash = sha256_file(Path(source) / "manifest.json")
+    binding = bindings(
+        "tgos-state",
+        {"action": action, "daily_limit": DAILY_LIMIT},
+        [source_hash, digest(batches), digest(queries), digest(results), digest(alias_events)],
+    )
+    stage = Stage(Path(work_dir) / "tgos-state", "tgos-state", binding, run_id)
+    if stage.reused:
+        return stage.path
+    source_artifacts = _artifact_paths(source, manifest)
+    artifacts = []
+    replacements = {
+        "address-result": address_rows,
+        "offline-row": evidence_rows,
+        "unmatched-address": unmatched_rows,
+    }
+    names = {
+        "address-result": "address_index.parquet",
+        "offline-row": "address_observations.parquet",
+        "unmatched-address": "unmatched_addresses.parquet",
+        "address-pool": "unique_addresses.parquet",
+        "address-occurrence": "address_occurrences.parquet",
+        "tgos-ledger": "tgos_results.parquet",
+    }
+    for dataset, path in source_artifacts.items():
+        if dataset in DYNAMIC_SCHEMAS or dataset == "verified-alias":
+            continue
+        replacement = replacements.get(dataset)
+        if replacement is None:
+            count = next(
+                item["row_count"]
+                for item in manifest["artifacts"]
+                if item["schema"] == dataset
+            )
+            artifacts.append((names.get(dataset, path.name), path, dataset, count))
+        else:
+            artifacts.append(_write_table(stage, names[dataset], dataset, replacement))
+    artifacts.extend(
+        [
+            _write_table(stage, "verified_aliases.parquet", "verified-alias", aliases),
+            _write_table(stage, "tgos_batches.parquet", "tgos-batch", batches),
+            _write_table(stage, "tgos_queries.parquet", "tgos-query", queries),
+            _write_table(stage, "tgos_imports.parquet", "tgos-result", results),
+            _write_table(stage, "alias_events.parquet", "alias-event", alias_events),
+        ]
+    )
+    counts = {}
+    for _, _, dataset, count in artifacts:
+        counts[dataset] = counts.get(dataset, 0) + count
+    next_report = {
+        **report,
+        "source_state_manifest_sha256": source_hash,
+        "tgos_started": bool(batches or results),
+        "tgos_batch_count": len(batches),
+        "tgos_result_count": len(results),
+        "dataset_counts": counts,
+        **(extra_report or {}),
+    }
+    return stage.finish(artifacts, next_report)
+
+
+def _round_robin(values: list[dict]) -> list[dict]:
+    families = {}
+    for row in sorted(values, key=lambda x: (x["address_family"], x["building_key"])):
+        families.setdefault(row["address_family"], []).append(row)
+    output = []
+    while families:
+        for key in sorted(list(families)):
+            output.append(families[key].pop(0))
+            if not families[key]:
+                del families[key]
+    return output
+
+
+def _csv_bytes(queries: list[dict]) -> bytes:
+    stream = io.StringIO(newline="")
+    writer = csv.DictWriter(stream, fieldnames=["Address"], lineterminator="\r\n")
+    writer.writeheader()
+    for row in queries:
+        writer.writerow({"Address": row["address"]})
+    return codecs.BOM_UTF8 + stream.getvalue().encode("utf-8")
+
+
+def _write_exchange(root: Path, batch: dict, queries: list[dict], payload: bytes) -> Path:
+    target = Path(root) / batch["batch_id"]
+    manifest = {
+        "schema_version": "1.0",
+        "batch_id": batch["batch_id"],
+        "service_date": batch["service_date"],
+        "address_count": batch["address_count"],
+        "csv": "addresses.csv",
+        "csv_sha256": hashlib.sha256(payload).hexdigest(),
+        "encoding": "UTF-8-sig",
+        "upload_mode": "addrCompare",
+        "coordinate_system": "WGS84",
+        "return_fields": ["Address", "Response_Address", "Response_X", "Response_Y"],
+        "queries": [
+            {
+                "ordinal": row["ordinal"],
+                "query_fingerprint": row["query_fingerprint"],
+                "building_key": row["building_key"],
+                "address": row["address"],
+            }
+            for row in queries
+        ],
+    }
+    if target.exists():
+        if (
+            sha256_file(target / "addresses.csv") != manifest["csv_sha256"]
+            or json.loads((target / "manifest.json").read_text(encoding="utf-8"))
+            != manifest
+        ):
+            raise ValueError("Existing TGOS exchange differs")
+        return target
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="tgos-exchange-", dir=target.parent) as tmp:
+        staging = Path(tmp) / batch["batch_id"]
+        staging.mkdir()
+        (staging / "addresses.csv").write_bytes(payload)
+        (staging / "manifest.json").write_text(
+            canonical_json(manifest) + "\n", encoding="utf-8"
+        )
+        os.replace(staging, target)
+    return target
+
+
+def prepare_tgos(
+    source: Path,
+    work_dir: Path,
+    exchange_dir: Path,
+    *,
+    service_date: str,
+    external_used: int,
+    limit: int = DAILY_LIMIT,
+    retry_fingerprints: list[str] | None = None,
+    retry_reason: str | None = None,
+    run_id: str | None = None,
+):
+    day = date.fromisoformat(service_date)
+    if day > _service_today():
+        raise ValueError("Future TGOS service date is forbidden")
+    if isinstance(external_used, bool) or not 0 <= external_used <= DAILY_LIMIT:
+        raise ValueError("External TGOS quota must be between 0 and 10000")
+    if isinstance(limit, bool) or not 1 <= limit <= DAILY_LIMIT:
+        raise ValueError("TGOS file limit must be between 1 and 10000")
+    manifest, report, stage_name = load_state(source)
+    _require_latest(source, stage_name)
+    if stage_name == "offline-state" and SnapshotStore(Path(work_dir) / "tgos-state").current():
+        raise ValueError("TGOS work directory already has state; use its latest snapshot")
+    paths = _artifact_paths(source, manifest)
+    batches = _table(paths.get("tgos-batch"))
+    queries = _table(paths.get("tgos-query"))
+    results = _table(paths.get("tgos-result"))
+    aliases = _table(paths.get("verified-alias"))
+    events = _table(paths.get("alias-event"))
+    same_day_batches = [row for row in batches if row["service_date"] == service_date]
+    known_external_used = max(
+        (row["external_used"] for row in same_day_batches), default=0
+    )
+    if external_used < known_external_used:
+        raise ValueError("External TGOS quota cannot decrease for a service date")
+    reserved = sum(
+        row["address_count"]
+        for row in same_day_batches
+        if row["quota_consumed"]
+    )
+    available = min(limit, DAILY_LIMIT - external_used - reserved)
+    if available <= 0:
+        raise ValueError("No TGOS quota remains for this service date")
+    retry_fingerprints = set(retry_fingerprints or [])
+    if retry_fingerprints and not retry_reason:
+        raise ValueError("Approved TGOS retries require a reason")
+    query_history = {}
+    for row in queries:
+        query_history.setdefault(row["query_fingerprint"], []).append(row)
+    unknown_retries = retry_fingerprints - set(query_history)
+    if unknown_retries:
+        raise ValueError("Approved TGOS retry does not match query history")
+    retryable = {"failed", "rejected", "cancelled"}
+    if any(
+        not any(row["status"] in retryable for row in query_history[fingerprint])
+        for fingerprint in retry_fingerprints
+    ):
+        raise ValueError("TGOS retry is not in a retryable state")
+    prior = set(query_history) - retry_fingerprints
+    candidates = []
+    for row in rows(paths["address-result"]):
+        if row["status"] not in {"unmatched", "outside_scope"}:
+            continue
+        fingerprint = digest([row["building_key"], row["canonical_address"]])
+        if fingerprint not in prior:
+            candidates.append({**row, "query_fingerprint": fingerprint})
+    retry_candidates = [
+        row for row in candidates if row["query_fingerprint"] in retry_fingerprints
+    ]
+    if {row["query_fingerprint"] for row in retry_candidates} != retry_fingerprints:
+        raise ValueError("Approved TGOS retry is no longer an eligible candidate")
+    if len(retry_candidates) > available:
+        raise ValueError("Remaining TGOS quota cannot fit all approved retries")
+    new_candidates = [
+        row for row in candidates if row["query_fingerprint"] not in retry_fingerprints
+    ]
+    selected = _round_robin(retry_candidates) + _round_robin(new_candidates)[
+        : available - len(retry_candidates)
+    ]
+    if not selected:
+        raise ValueError("No eligible TGOS candidates remain")
+    source_hash = sha256_file(Path(source) / "manifest.json")
+    batch_id = run_id or f"tgos-{service_date}-{digest([source_hash, service_date, external_used, [x['query_fingerprint'] for x in selected]])[:12]}"
+    batch_queries = [
+        {
+            "batch_id": batch_id,
+            "ordinal": ordinal,
+            "query_fingerprint": row["query_fingerprint"],
+            "key_version": "v2",
+            "building_key": row["building_key"],
+            "address": row["canonical_address"],
+            "county_code": row["county_code"],
+            "address_family": row["address_family"],
+            "status": "prepared",
+            "result_id": None,
+        }
+        for ordinal, row in enumerate(selected, 1)
+    ]
+    if len({row["address"] for row in batch_queries}) != len(batch_queries):
+        raise ValueError("TGOS batch Address values must be one-to-one")
+    payload = _csv_bytes(batch_queries)
+    predecessors = {
+        row["batch_id"]
+        for fingerprint in retry_fingerprints
+        for row in query_history[fingerprint]
+        if row["status"] in retryable
+    }
+    batch = {
+        "batch_id": batch_id,
+        "service_date": service_date,
+        "status": "prepared",
+        "address_count": len(batch_queries),
+        "external_used": external_used,
+        "quota_consumed": True,
+        "source_state_sha256": source_hash,
+        "csv_sha256": hashlib.sha256(payload).hexdigest(),
+        "response_sha256": None,
+        "predecessor_batch_id": next(iter(predecessors)) if len(predecessors) == 1 else None,
+        "reason": retry_reason,
+    }
+    state = _write_state(
+        source,
+        work_dir,
+        action="prepare",
+        batches=batches + [batch],
+        queries=queries + batch_queries,
+        results=results,
+        aliases=aliases,
+        alias_events=events,
+        extra_report={"last_tgos_batch_id": batch_id},
+        run_id=run_id,
+    )
+    exchange = _write_exchange(exchange_dir, batch, batch_queries, payload)
+    return state, exchange
+
+
+def transition_batch(
+    source: Path,
+    work_dir: Path,
+    batch_id: str,
+    status: str,
+    *,
+    reason: str | None = None,
+    run_id: str | None = None,
+):
+    if status not in {"submitted", "submission_unknown", "cancelled"}:
+        raise ValueError("Unsupported TGOS transition")
+    manifest, _, stage_name = load_state(source)
+    _require_latest(source, stage_name)
+    paths = _artifact_paths(source, manifest)
+    batches = _table(paths.get("tgos-batch"))
+    queries = _table(paths.get("tgos-query"))
+    target = next((row for row in batches if row["batch_id"] == batch_id), None)
+    if not target:
+        raise ValueError("Unknown TGOS batch")
+    if target["status"] == status:
+        return Path(source)
+    allowed = {
+        "prepared": {"submitted", "submission_unknown", "cancelled"},
+        "submission_unknown": {"submitted", "cancelled"},
+        "submitted": {"cancelled"},
+    }
+    if status not in allowed.get(target["status"], set()):
+        raise ValueError("Invalid TGOS batch transition")
+    original = target["status"]
+    target["status"] = status
+    target["reason"] = reason
+    if status == "cancelled" and original == "prepared":
+        target["quota_consumed"] = False
+    for row in queries:
+        if row["batch_id"] == batch_id and row["status"] in {
+            "prepared",
+            "submission_unknown",
+            "submitted",
+        }:
+            row["status"] = status
+    return _write_state(
+        source,
+        work_dir,
+        action="transition-" + status,
+        batches=batches,
+        queries=queries,
+        results=_table(paths.get("tgos-result")),
+        aliases=_table(paths.get("verified-alias")),
+        alias_events=_table(paths.get("alias-event")),
+        extra_report={"last_tgos_batch_id": batch_id},
+        run_id=run_id,
+    )
+
+
+def _tgos_coordinate(x: str, y: str):
+    if not x.strip() and not y.strip():
+        return None
+    if not x.strip() or not y.strip():
+        raise ValueError("Partial TGOS coordinate pair")
+    lng, lat = float(x), float(y)
+    west, east, south, north = TAIWAN_BOUNDS
+    if not valid_coordinate(lng, lat) or not (west <= lng <= east and south <= lat <= north):
+        raise ValueError("TGOS coordinate is outside declared WGS84 Taiwan bounds")
+    return lng, lat
+
+
+def _alias_would_cycle(aliases: list[dict], alias_key: str, target_key: str) -> bool:
+    mapping = {row["alias_key"]: row["target_key"] for row in aliases}
+    mapping[alias_key] = target_key
+    current = alias_key
+    seen = set()
+    while current in mapping:
+        if current in seen:
+            return True
+        seen.add(current)
+        current = mapping[current]
+    return False
+
+
+def _rebuild_resolution(pool_rows: list[dict], evidence_rows: list[dict], source_commit: str):
+    coordinates = {}
+    for row in evidence_rows:
+        if row["validity"] == "valid" and row["building_key"]:
+            coordinates.setdefault(row["building_key"], {}).setdefault(
+                (row["lng"], row["lat"]), []
+            ).append(row["evidence_id"])
+    address_rows = []
+    unmatched = []
+    statuses = {name: 0 for name in ["located", "conflict", "unmatched", "outside_scope"]}
+    for row in pool_rows:
+        points = coordinates.get(row["building_key"], {})
+        count = len(points)
+        status = "located" if count == 1 else "conflict" if count > 1 else "unmatched"
+        point = next(iter(points)) if status == "located" else (None, None)
+        evidence_ids = next(iter(points.values())) if status == "located" else []
+        result = {
+            "key_version": row["key_version"],
+            "building_key": row["building_key"],
+            "canonical_address": row["canonical_address"],
+            "county_code": row["county_code"],
+            "town_code": row["town_code"],
+            "address_family": row["address_family"],
+            "status": status,
+            "lng": point[0],
+            "lat": point[1],
+            "evidence_id": min(evidence_ids) if evidence_ids else None,
+            "evidence_count": sum(len(v) for v in points.values()),
+            "coordinate_count": count,
+            "source_commit": source_commit,
+        }
+        statuses[status] += 1
+        address_rows.append(result)
+        if status != "located":
+            unmatched.append(result)
+    return address_rows, unmatched, statuses
+
+
+def import_tgos(
+    source: Path,
+    work_dir: Path,
+    batch_id: str,
+    response: Path,
+    *,
+    run_id: str | None = None,
+):
+    manifest, report, stage_name = load_state(source)
+    _require_latest(source, stage_name)
+    paths = _artifact_paths(source, manifest)
+    batches = _table(paths.get("tgos-batch"))
+    queries = _table(paths.get("tgos-query"))
+    results = _table(paths.get("tgos-result"))
+    aliases = _table(paths.get("verified-alias"))
+    events = _table(paths.get("alias-event"))
+    batch = next((row for row in batches if row["batch_id"] == batch_id), None)
+    if not batch or batch["status"] not in {"submitted", "submission_unknown", "completed"}:
+        raise ValueError("TGOS batch is not importable")
+    response_hash = sha256_file(response)
+    if batch["status"] == "completed" and batch["response_sha256"] == response_hash:
+        return Path(source)
+    submitted = {row["address"]: row for row in queries if row["batch_id"] == batch_id}
+    if len(submitted) != batch["address_count"]:
+        raise ValueError("TGOS submitted Address values are not one-to-one")
+    with Path(response).open(encoding="utf-8-sig", newline="") as stream:
+        reader = csv.DictReader(stream)
+        required = {"Address", "Response_Address", "Response_X", "Response_Y"}
+        if not reader.fieldnames or not required.issubset(reader.fieldnames):
+            raise ValueError("TGOS response columns missing")
+        returned = list(reader)
+    addresses = [row["Address"] for row in returned]
+    if len(addresses) != len(set(addresses)):
+        raise ValueError("Duplicate Address in TGOS response")
+    if set(addresses) != set(submitted):
+        raise ValueError("TGOS response Address set differs from submitted batch")
+    evidence = _table(paths["offline-row"])
+    prior_coordinates = {
+        row["building_key"]: (row["lng"], row["lat"])
+        for row in rows(paths["address-result"])
+        if row["status"] == "located"
+    }
+    new_results = []
+    result_by_query = {}
+    for line, row in enumerate(returned, 2):
+        query = submitted[row["Address"]]
+        reason = None
+        alias_target = None
+        try:
+            coordinate = _tgos_coordinate(row["Response_X"], row["Response_Y"])
+            status = "succeeded" if coordinate else "failed"
+            if coordinate and not row["Response_Address"].strip():
+                raise ValueError("Successful TGOS row lacks Response_Address")
+            if coordinate:
+                response_address = normalize_address(row["Response_Address"])
+                target_key = building_key_v2(response_address)
+                if not target_key:
+                    raise ValueError("TGOS response is not a complete address")
+                if target_key != query["building_key"]:
+                    target = json.loads(target_key[3:])
+                    original = json.loads(query["building_key"][3:])
+                    if (
+                        target["county"] != original["county"]
+                        or target["town"] != original["town"]
+                    ):
+                        raise ValueError("TGOS response crosses administrative scope")
+                    existing = next(
+                        (
+                            item
+                            for item in aliases
+                            if item["alias_key"] == query["building_key"]
+                        ),
+                        None,
+                    )
+                    if existing and existing["target_key"] != target_key:
+                        raise ValueError("TGOS alias conflicts with existing verified alias")
+                    if _alias_would_cycle(
+                        aliases, query["building_key"], target_key
+                    ):
+                        raise ValueError("TGOS alias would create a cycle")
+                    if not existing:
+                        alias_target = target_key
+        except (TypeError, ValueError) as exc:
+            coordinate = None
+            status = "rejected"
+            reason = str(exc)
+        result_id = digest([batch_id, query["query_fingerprint"], response_hash, line])
+        result = {
+            "result_id": result_id,
+            "batch_id": batch_id,
+            "query_fingerprint": query["query_fingerprint"],
+            "address": row["Address"],
+            "response_address": row["Response_Address"].strip() or None,
+            "lng": coordinate[0] if coordinate else None,
+            "lat": coordinate[1] if coordinate else None,
+            "status": status,
+            "response_sha256": response_hash,
+            "source_row_number": line,
+            "reason": reason,
+        }
+        new_results.append(result)
+        result_by_query[query["query_fingerprint"]] = result
+        if status == "succeeded":
+            evidence_id = digest(["tgos", result_id])
+            evidence.append(
+                {
+                    "evidence_id": evidence_id,
+                    "key_version": "v2",
+                    "building_key": query["building_key"],
+                    "normalized_address": query["address"],
+                    "county_code": query["county_code"],
+                    "town_code": json.loads(query["building_key"][3:])["town"],
+                    "lng": coordinate[0],
+                    "lat": coordinate[1],
+                    "validity": "valid",
+                    "source_kind": "tgos_result",
+                    "source_ref": batch_id,
+                    "input_sha256": response_hash,
+                    "source_row_number": line,
+                }
+            )
+            if alias_target:
+                aliases.append({"key_version": "v2", "alias_key": query["building_key"], "target_key": alias_target, "evidence_ref": result_id})
+                events.append({"event_id": digest(["verified", query["building_key"], alias_target, result_id]), "key_version": "v2", "alias_key": query["building_key"], "target_key": alias_target, "action": "verified", "evidence_ref": result_id})
+    results.extend(new_results)
+    for row in queries:
+        result = result_by_query.get(row["query_fingerprint"])
+        if result:
+            if result["status"] == "succeeded" and row["building_key"] in prior_coordinates and prior_coordinates[row["building_key"]] != (result["lng"], result["lat"]):
+                row["status"] = "conflict"
+            else:
+                row["status"] = result["status"]
+            row["result_id"] = result["result_id"]
+    batch["status"] = "completed"
+    batch["response_sha256"] = response_hash
+    pool = _table(paths["address-pool"])
+    address_rows, unmatched, statuses = _rebuild_resolution(pool, evidence, report["address_source_commit"])
+    before = report["status_counts"]
+    return _write_state(
+        source,
+        work_dir,
+        action="import",
+        batches=batches,
+        queries=queries,
+        results=results,
+        aliases=sorted(aliases, key=lambda x: x["alias_key"]),
+        alias_events=events,
+        address_rows=address_rows,
+        evidence_rows=evidence,
+        unmatched_rows=unmatched,
+        extra_report={
+            "last_tgos_batch_id": batch_id,
+            "last_tgos_response_sha256": response_hash,
+            "status_counts_before_import": before,
+            "status_counts": statuses,
+        },
+        run_id=run_id,
+    )
+
+
+def revoke_alias(
+    source: Path,
+    work_dir: Path,
+    alias_key: str,
+    *,
+    reason: str,
+    run_id: str | None = None,
+):
+    manifest, _, stage_name = load_state(source)
+    _require_latest(source, stage_name)
+    paths = _artifact_paths(source, manifest)
+    aliases = _table(paths.get("verified-alias"))
+    target = next((row for row in aliases if row["alias_key"] == alias_key), None)
+    if not target:
+        raise ValueError("Verified alias not found")
+    aliases = [row for row in aliases if row["alias_key"] != alias_key]
+    events = _table(paths.get("alias-event"))
+    events.append(
+        {
+            "event_id": digest(["revoked", alias_key, target["target_key"], reason]),
+            "key_version": "v2",
+            "alias_key": alias_key,
+            "target_key": target["target_key"],
+            "action": "revoked",
+            "evidence_ref": reason,
+        }
+    )
+    return _write_state(
+        source,
+        work_dir,
+        action="revoke-alias",
+        batches=_table(paths.get("tgos-batch")),
+        queries=_table(paths.get("tgos-query")),
+        results=_table(paths.get("tgos-result")),
+        aliases=aliases,
+        alias_events=events,
+        extra_report={"last_revoked_alias": alias_key},
+        run_id=run_id,
+    )

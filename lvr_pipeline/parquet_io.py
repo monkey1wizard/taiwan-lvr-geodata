@@ -203,6 +203,20 @@ def verify_relations(groups: dict[str, list[Path]], *, source_scope: dict | None
                 reject("SELECT count(*) FROM (SELECT building_key,count(*) coordinate_count,sum(n) evidence_count FROM (SELECT building_key,lng,lat,count(*) n FROM offline_row WHERE validity='valid' GROUP BY 1,2,3) GROUP BY 1) e FULL JOIN address_result a USING(building_key) WHERE coalesce(e.coordinate_count,0)<>coalesce(a.coordinate_count,0) OR coalesce(e.evidence_count,0)<>coalesce(a.evidence_count,0)", "Resolution counts differ from evidence")
             if "unmatched-address" in groups and "address-result" in groups:
                 reject("SELECT count(*) FROM ((SELECT * FROM address_result WHERE status<>'located' EXCEPT SELECT * FROM unmatched_address) UNION ALL (SELECT * FROM unmatched_address EXCEPT SELECT * FROM address_result WHERE status<>'located'))", "Unmatched selection differs from state")
+            if "tgos-query" in groups:
+                if "tgos-batch" not in groups:
+                    raise ValueError("TGOS queries require batches")
+                reject("SELECT count(*) FROM tgos_query q ANTI JOIN tgos_batch b USING(batch_id)", "TGOS query lacks batch")
+                reject("SELECT count(*) FROM (SELECT batch_id,address FROM tgos_query GROUP BY 1,2 HAVING count(*)>1)", "TGOS batch Address is ambiguous")
+                reject("SELECT count(*) FROM (SELECT batch_id,count(*) n FROM tgos_query GROUP BY 1) q JOIN tgos_batch b USING(batch_id) WHERE q.n<>b.address_count", "TGOS batch count differs from queries")
+            if "tgos-result" in groups:
+                if "tgos-query" not in groups:
+                    raise ValueError("TGOS results require queries")
+                reject("SELECT count(*) FROM tgos_result r ANTI JOIN tgos_query q USING(batch_id,query_fingerprint)", "TGOS result lacks submitted query")
+            if "verified-alias" in groups:
+                reject("SELECT count(*) FROM verified_alias WHERE alias_key=target_key", "Verified alias points to itself")
+            if "alias-event" in groups and "verified-alias" in groups:
+                reject("SELECT count(*) FROM verified_alias a WHERE NOT EXISTS (SELECT 1 FROM alias_event e WHERE e.alias_key=a.alias_key AND e.target_key=a.target_key AND e.action='verified')", "Verified alias lacks event evidence")
             if "observation" in groups and "exclusion" in groups:
                 reject("SELECT count(*) FROM observation JOIN exclusion USING(raw_record_id)", "Observation also excluded")
             if "disposition" in groups:

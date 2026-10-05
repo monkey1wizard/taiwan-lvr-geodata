@@ -86,11 +86,12 @@ def package_output(
     start = time.perf_counter()
     converted, state = Path(converted), Path(state)
     cm, cr = load_snapshot(converted, "converted")
-    sm, sr = load_p2(state, "offline-state")
+    state_stage = json.loads((state / "quality.json").read_text(encoding="utf-8"))["stage"]
+    if state_stage not in {"offline-state", "tgos-state"}:
+        raise ValueError("Unsupported address state stage")
+    sm, sr = load_p2(state, state_stage)
     if sr["converted_snapshot_sha256"] != sha256_file(converted / "manifest.json"):
         raise ValueError("Offline state refers to different converted observations")
-    if sr["tgos_started"]:
-        raise ValueError("P2 packaging cannot discard P3 query state")
     if not notices.get("publication_authorized") or not notices.get("sources"):
         raise ValueError("Public source attribution and authorization required")
     if sr["offline_source"]["legacy_base"] and not notices.get(
@@ -268,7 +269,8 @@ def package_output(
         "schema_version": "1.0",
         "key_version": "v2",
         "snapshot_id": identifier,
-        "tgos_started": False,
+        "tgos_started": sr["tgos_started"],
+        "state_stage": state_stage,
         "converted": f"converted/snapshots/{converted.name}",
         "state": f"state/snapshots/{state.name}",
         "converted_manifest_sha256": sha256_file(converted / "manifest.json"),
@@ -331,7 +333,7 @@ def package_output(
         "source_batches": cr["batches"],
         "source_sha256": cr["source_sha256"],
         "scope_limited": True,
-        "tgos_started": False,
+        "tgos_started": sr["tgos_started"],
         "retained_rows": cr["retained_rows"],
         "status_counts": sr["status_counts"],
         "months": months,
@@ -356,8 +358,8 @@ def verify_output(root: Path):
         raise ValueError("Unsupported public snapshot contract")
     if digest(manifest["producer_config"]) != manifest["bindings"]["config_sha256"]:
         raise ValueError("Output producer configuration mismatch")
-    if manifest["tgos_started"] is not False or manifest["scope_limited"] is not True:
-        raise ValueError("Unsupported P2 scope/state")
+    if not isinstance(manifest["tgos_started"], bool) or manifest["scope_limited"] is not True:
+        raise ValueError("Unsupported output scope/state")
     names = set()
     paths = set()
     monthly = {}
@@ -449,7 +451,7 @@ def extract_handoff(archive_path: Path, target: Path):
     if (
         handoff["schema_version"] != "1.0"
         or handoff["key_version"] != "v2"
-        or handoff["tgos_started"] is not False
+        or not isinstance(handoff["tgos_started"], bool)
     ):
         raise ValueError(
             "Incomplete or incompatible handoff; rebuild required when source fields are unavailable"
@@ -462,7 +464,10 @@ def extract_handoff(archive_path: Path, target: Path):
         ):
             raise ValueError("Handoff manifest differs")
     cm, _ = load_snapshot(target / handoff["converted"], "converted")
-    _, sr = load_p2(target / handoff["state"], "offline-state")
+    state_stage = handoff.get("state_stage", "offline-state")
+    if state_stage not in {"offline-state", "tgos-state"}:
+        raise ValueError("Unsupported handoff state stage")
+    _, sr = load_p2(target / handoff["state"], state_stage)
     required = {
         "address-result",
         "address-pool",
