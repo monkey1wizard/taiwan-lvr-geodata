@@ -101,6 +101,13 @@ def test_first_actual_transaction_without_english_row_is_not_dropped(tmp_path):
     assert all(row["source_row_number"]==2 for row in dataset(converted,"observation"))
 
 
+def test_address_marker_alone_does_not_drop_a_transaction(tmp_path):
+    _,_,converted=pipeline(tmp_path,[{"address":"Address"}],categories=("sales",))
+    report=load_snapshot(converted,"converted")[1]
+    assert report["input_rows"]==1 and report["excluded_rows"]==1
+    assert dataset(converted,"disposition")[0]["reason"]=="no_doorplate"
+
+
 def test_source_dispositions_and_diagnostics_are_not_double_counted(tmp_path):
     records=[{}, {"target":"土地"},{"target":"車位"},{"address":"臺北市中正區測試段123地號"},
              {"address":"沒有門牌"},{"date":"1140230"},{"date":"1151101"},

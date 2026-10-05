@@ -100,7 +100,11 @@ def ingest(raw_dir: Path, manifest: dict, batches: list[str], work_dir: Path, *,
                                 if values == header:
                                     report["repeated_headers"] += 1
                                     continue
-                                if len(values) == len(header) and values[header.index("土地位置建物門牌")].strip().lower() in ENGLISH_ADDRESSES:
+                                if (len(values) == len(header)
+                                    and values[header.index("土地位置建物門牌")].strip().lower() in ENGLISH_ADDRESSES
+                                    and values[header.index("交易標的")].strip().lower() in {"target", "transaction sign"}
+                                    and all(not values[header.index(field)].strip().isdigit()
+                                            for field in FIELD_ALIASES[category]["date"] if field in header)):
                                     report["english_rows"] += 1
                                     continue
                                 valid = len(values) == len(header)
