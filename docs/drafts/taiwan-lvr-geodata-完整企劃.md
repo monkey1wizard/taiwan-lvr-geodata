@@ -162,7 +162,7 @@ unique_addresses.parquet 以 key_version/building_key 合併所有批次與類�
 
 ### 7. TGOS 輪次與人工交接
 
-沿用 docs/legacy/RESUBMIT_RUNBOOK.md 的 addrCompare 網頁批次流程：人工上傳 UTF-8-sig CSV、等待 email 通知、下載結果，每日 10,000 筆且每片最多 10,000 行。既有帳號不使用即時 QueryAddr。上傳設定為 WGS84 經緯度 EPSG:4326、分單／雙號比對、誤差不限、僅回傳一筆、其餘不勾。依共用帳號的已提交／保留筆數及操作員服務日期紀錄管理，不能讓每個 agent 各算一份。這些是既有專案操作條件，不再列為 OQ。
+沿用 docs/legacy/RESUBMIT_RUNBOOK.md 的 addrCompare 網頁批次流程：人工上傳 UTF-8-sig CSV、等待 email 通知、下載結果，每日 10,000 筆且每片最多 10,000 行。既有帳號不使用即時 QueryAddr。座標系選擇 WGS84 經緯度 EPSG:4326。在 addrCompare 的「模糊比對規則設定」區塊開啟「分單／雙號比對」，誤差選擇「不限」，回傳筆數選擇「僅回傳一筆」，其餘選項不勾選。依共用帳號的已提交／保留筆數及操作員服務日期紀錄管理，不能讓每個 agent 各算一份。這些是既有專案操作條件，不再列為 OQ。
 
 從最新已驗證快照保留一輪地址。CSV 使用 UTF-8 BOM，欄位為 id、Address、Response_Address、Response_X、Response_Y。id 是穩定批次列識別，另附 manifest 對照 key_version/building_key 及查詢指紋。地址家族與家族內拆分順序都固定。
 

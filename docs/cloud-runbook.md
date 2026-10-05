@@ -46,7 +46,18 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline prepare-tgos \
 
 相同查詢不會自動重送。操作員核准重試 failed、rejected 或 cancelled 查詢時，從前次 manifest 取得 fingerprint，另加 `--retry-query-fingerprint FINGERPRINT --retry-reason REASON`。程式會記錄前次批次；沒有原因、查無歷史或狀態不可重試時拒絕建立批次。conflict 留在人工覆核，不送 TGOS 重試。
 
-人工在 addrCompare 使用 WGS84、分單／雙號比對、誤差不限、僅回傳一筆，其餘不勾。依實際結果記錄狀態：
+### addrCompare 上傳設定
+
+座標系選擇 **WGS84 經緯度（EPSG:4326）**。
+
+在 **「模糊比對規則設定」** 區塊套用下列設定：
+
+- 開啟「分單／雙號比對」。
+- 誤差選擇「不限」。
+- 回傳筆數選擇「僅回傳一筆」。
+- 其餘選項不勾選。
+
+上傳後，依實際結果記錄狀態：
 
 ```bash
 uv run --locked --python 3.13.16 python -m lvr_pipeline set-tgos-status \
