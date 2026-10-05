@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "dataset_id": "155472",
+  "provider": "臺北市政府民政局",
+  "dataset_title": "臺北市門牌位置資訊",
+  "dataset_url": "https://data.gov.tw/dataset/155472",
+  "download_url": "https://data.taipei/api/dataset/b7c8e724-1e98-45ee-a0bd-f3840623ed97/resource/ce76ca0c-7f94-4935-ab47-1d2a41ca2abb/download",
+  "source_modified_at": "2026-10-02T11:20:44+08:00",
+  "verified_at": "2026-10-05",
+  "bytes": 124662109,
+  "sha256": "7212058161f10a13d52ee46e74155526ca4ebf182b151562ba0e533f882a89ab",
+  "county_code": "63",
+  "administrative_code_profile": "MOI municipality eight-digit town code to DGBAS seven-digit code, declared by pinned updater",
+  "crs": "EPSG:3826",
+  "coordinate_columns": ["橫座標", "縱座標"],
+  "crs_evidence": "Pinned taiwan-address-data updater declares EPSG:3826 for this dataset. Taipei government control-point documentation identifies the city's TWD97 plane-coordinate system. This profile is explicit; numeric ranges never select CRS or swap axes.",
+  "license": "政府資料開放授權條款第1版",
+  "license_url": "https://data.gov.tw/license"
+}

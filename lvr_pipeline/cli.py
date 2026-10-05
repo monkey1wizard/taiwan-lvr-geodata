@@ -6,6 +6,7 @@ import csv
 import json
 from pathlib import Path
 import time
+import subprocess
 
 import duckdb
 from jsonschema import ValidationError
@@ -19,6 +20,8 @@ from .processing import peak_rss_bytes, load_snapshot
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="python -m lvr_pipeline")
     sub = parser.add_subparsers(dest="command", required=True)
+    from .p2_cli import configure, run as run_p2
+    configure(sub)
     for command in ["ingest", "normalize", "export-converted", "verify-converted"]:
         p = sub.add_parser(command)
         if command in {"normalize", "verify-converted"}:
@@ -39,6 +42,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     start = time.perf_counter()
     try:
+        if args.command not in {"ingest", "normalize", "export-converted", "verify-converted"}:
+            return run_p2(args)
         if args.command == "verify-converted":
             _, report = load_snapshot(args.input, "converted")
             print(json.dumps({"snapshot": str(args.input), "verified": True, "dataset_counts": report["dataset_counts"]}, ensure_ascii=False))
@@ -67,6 +72,6 @@ def main(argv=None):
         print(json.dumps({"snapshot": str(path), "internal_only": True,
                           "elapsed_seconds": round(time.perf_counter() - start, 6), "process_peak_rss_bytes": peak_rss_bytes()}, ensure_ascii=False))
         return 0
-    except (OSError, ValueError, KeyError, RuntimeError, csv.Error, duckdb.Error, ValidationError, MemoryError) as exc:
+    except (OSError, ValueError, KeyError, RuntimeError, subprocess.CalledProcessError, csv.Error, duckdb.Error, ValidationError, MemoryError) as exc:
         print(json.dumps({"error": str(exc), "completed": False}, ensure_ascii=False))
         return 1

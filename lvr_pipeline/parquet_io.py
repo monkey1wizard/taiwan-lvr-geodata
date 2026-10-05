@@ -46,6 +46,15 @@ SCHEMAS = {
 }
 
 
+def dataset_schema(name):
+    if name in SCHEMAS:
+        return SCHEMAS[name]
+    from .p2_contracts import SCHEMAS as offline_schemas
+    if name not in offline_schemas:
+        raise ValueError("Unknown dataset schema")
+    return offline_schemas[name]
+
+
 class BatchWriter:
     def __init__(self, path: Path, dataset: str, batch_rows: int = 1024, *, max_bytes: int = 8 * 2**20):
         if isinstance(batch_rows, bool) or not 1 <= batch_rows <= 100_000:
@@ -57,7 +66,7 @@ class BatchWriter:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if self.path.exists():
             raise FileExistsError(self.path)
-        self.schema = SCHEMAS[dataset]
+        self.schema = dataset_schema(dataset)
         self.writer = pq.ParquetWriter(self.path, self.schema, compression="zstd")
         self.buffer = []
         self.row_count = self.max_buffer_rows = 0
@@ -106,12 +115,15 @@ def rows(path: Path, batch_rows: int = 1024):
 
 def inspect_parquet(path: Path, dataset: str) -> int:
     parquet = pq.ParquetFile(path)
-    if dataset not in SCHEMAS or not parquet.schema_arrow.equals(SCHEMAS[dataset], check_metadata=True):
+    if not parquet.schema_arrow.equals(dataset_schema(dataset), check_metadata=True):
         raise ValueError("Parquet Arrow schema/metadata mismatch")
     count = 0
     for batch in batches(path):
         values = batch.to_pylist()
-        if dataset in {"ingest-record", "disposition"}:
+        if dataset not in SCHEMAS:
+            from .p2_contracts import validate_rows as validate_offline
+            validate_offline(values,dataset)
+        elif dataset in {"ingest-record", "disposition"}:
             for row in values:
                 if row["raw_record_id"] != observation_id(row["input_sha256"], row["member_path"], row["source_row_number"]):
                     raise ValueError("Raw/disposition identity mismatch")
@@ -147,6 +159,12 @@ def verify_relations(groups: dict[str, list[Path]], *, source_scope: dict | None
                 name = dataset.replace("-", "_")
                 db.read_parquet([str(path) for path in paths]).create_view(name)
                 counts[dataset] = db.sql(f'SELECT count(*) FROM "{name}"').fetchone()[0]
+                if dataset not in SCHEMAS:
+                    from .p2_contracts import PRIMARY
+                    columns=','.join('"'+key+'"' for key in PRIMARY[dataset])
+                    if db.sql(f'SELECT count(*) FROM (SELECT {columns} FROM "{name}" GROUP BY {columns} HAVING count(*) > 1)').fetchone()[0]:
+                        raise ValueError(f"Duplicate offline identity in {dataset}")
+                    continue
                 primary = "component_id" if dataset == "address-component" else "raw_record_id"
                 if dataset != "diagnostic":
                     if db.sql(f'SELECT count(*) FROM (SELECT "{primary}" FROM "{name}" GROUP BY 1 HAVING count(*) > 1)').fetchone()[0]:
@@ -175,6 +193,16 @@ def verify_relations(groups: dict[str, list[Path]], *, source_scope: dict | None
                     raise ValueError("Components require observations")
                 reject("SELECT count(*) FROM address_component c ANTI JOIN observation o USING(raw_record_id)", "Orphan component")
                 reject("SELECT count(*) FROM (SELECT raw_record_id, ordinal FROM address_component GROUP BY 1,2 HAVING count(*)>1)", "Duplicate component ordinal")
+            if "address-occurrence" in groups and "address-pool" in groups:
+                reject("SELECT count(*) FROM address_occurrence a ANTI JOIN address_pool p USING(key_version,building_key) WHERE a.building_key IS NOT NULL", "Occurrence absent from address pool")
+            if "address-result" in groups and "address-pool" in groups:
+                reject("SELECT count(*) FROM address_result a ANTI JOIN address_pool p USING(key_version,building_key)", "Result absent from address pool")
+                reject("SELECT count(*) FROM address_pool p ANTI JOIN address_result a USING(key_version,building_key)", "Address pool missing result")
+            if "address-result" in groups and "offline-row" in groups:
+                reject("SELECT count(*) FROM address_result a LEFT JOIN offline_row e USING(evidence_id) WHERE a.status='located' AND (e.evidence_id IS NULL OR e.validity<>'valid' OR e.building_key<>a.building_key OR e.lng<>a.lng OR e.lat<>a.lat)", "Located evidence mismatch")
+                reject("SELECT count(*) FROM (SELECT building_key,count(*) coordinate_count,sum(n) evidence_count FROM (SELECT building_key,lng,lat,count(*) n FROM offline_row WHERE validity='valid' GROUP BY 1,2,3) GROUP BY 1) e FULL JOIN address_result a USING(building_key) WHERE coalesce(e.coordinate_count,0)<>coalesce(a.coordinate_count,0) OR coalesce(e.evidence_count,0)<>coalesce(a.evidence_count,0)", "Resolution counts differ from evidence")
+            if "unmatched-address" in groups and "address-result" in groups:
+                reject("SELECT count(*) FROM ((SELECT * FROM address_result WHERE status<>'located' EXCEPT SELECT * FROM unmatched_address) UNION ALL (SELECT * FROM unmatched_address EXCEPT SELECT * FROM address_result WHERE status<>'located'))", "Unmatched selection differs from state")
             if "observation" in groups and "exclusion" in groups:
                 reject("SELECT count(*) FROM observation JOIN exclusion USING(raw_record_id)", "Observation also excluded")
             if "disposition" in groups:

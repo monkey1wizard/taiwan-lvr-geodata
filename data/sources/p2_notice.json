@@ -1,0 +1,31 @@
+{
+  "publication_authorized": true,
+  "legacy_coordinates_authorized": false,
+  "record_grain": "source_observation",
+  "coordinate_scope": ["63"],
+  "sources": [
+    {
+      "provider": "內政部地政司",
+      "title": "不動產成交案件實際資訊資料供應系統，115q1 本機提供輸入",
+      "url": "https://plvr.land.moi.gov.tw/DownloadOpenData",
+      "license": "政府資料開放授權條款第1版",
+      "license_url": "https://data.gov.tw/license",
+      "provenance_limit": "Input bytes are pinned by the P1 manifest. Historical acquisition time and exact download URI were not supplied. This release does not claim a newly downloaded official quarterly file."
+    },
+    {
+      "provider": "臺北市政府民政局",
+      "title": "臺北市門牌位置資訊",
+      "version": "2026-10-02, SHA-256 7212058161f10a13d52ee46e74155526ca4ebf182b151562ba0e533f882a89ab",
+      "url": "https://data.gov.tw/dataset/155472",
+      "license": "政府資料開放授權條款第1版",
+      "license_url": "https://data.gov.tw/license",
+      "usage": "Derived WGS84 coordinates for exact address-key matches. No legacy address CSV rows are redistributed."
+    }
+  ],
+  "administrative_reference": {
+    "repository": "https://github.com/monkey1wizard/taiwan-address-data",
+    "commit": "752c87d36a8e52d9b71680115c1c19d1a6d3e4ec",
+    "usage": "Explicit administrative name/code aliases and road-name candidate references. Legacy coordinate permissions remain unproven and those coordinates are excluded."
+  },
+  "limitations": "Selected 115q1 source observations only. Transaction months and years are scope_limited. Unknown transaction identity remains null. Unlocated and conflicting addresses remain in state. Approximate polygons are bounding boxes, not cadastral boundaries. TGOS has not started. No provider endorsement or accuracy warranty is implied."
+}
