@@ -18,6 +18,12 @@ from __future__ import annotations
 
 import re
 
+
+def building_key_v2(addr: str) -> str | None:
+    """Return the conservative versioned key without changing legacy callers."""
+    from .address_v2 import building_key_v2 as key
+    return key(addr)
+
 # ── 縣市代碼表 ────────────────────────────────────────────────────────────────
 
 _COUNTY_CODE: dict[str, str] = {
