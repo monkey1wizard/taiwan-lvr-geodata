@@ -44,16 +44,16 @@
   "tests": {
     "command": "python -m pytest -q",
     "platform": "Windows",
-    "passed": 218,
+    "passed": 219,
     "failed": 0,
-    "elapsed_seconds": 165.17,
-    "p3_synthetic_cases": 7,
+    "elapsed_seconds": 178.10,
+    "p3_synthetic_cases": 8,
     "linux": {
       "status": "passed",
-      "passed": 218,
-      "elapsed_seconds": 83.99,
-      "run_id": 37307639333,
-      "url": "https://github.com/monkey1wizard/taiwan-lvr-geodata/actions/runs/37307639333"
+      "passed": 219,
+      "elapsed_seconds": 53.18,
+      "run_id": 37323148690,
+      "url": "https://github.com/monkey1wizard/taiwan-lvr-geodata/actions/runs/37323148690"
     }
   },
   "tgos_operation": {
@@ -66,17 +66,22 @@
     "batch_rows": 4871,
     "unique_addresses": 4871,
     "csv_columns": [
-      "Address"
+      "id",
+      "Address",
+      "Response_Address",
+      "Response_X",
+      "Response_Y"
     ],
     "csv_encoding": "UTF-8-sig",
-    "csv_bytes": 210605,
-    "csv_sha256": "a46e7b48167adc23e65919d341793b54a8badf07ed57496aea2b62ec3ad960ad",
+    "csv_bytes": 248508,
+    "csv_sha256": "8c367bbd60437466d0cfe915cc2a91ac73663ef73059da282a4a614511972099",
     "csv_path": "data/tgos/p3-tgos-20261005-001/addresses.csv",
     "manifest_path": "data/tgos/p3-tgos-20261005-001/manifest.json",
-    "state_snapshot_id": "p3-tgos-20261005-001",
-    "state_artifact_bytes": 138605334,
-    "state_elapsed_seconds": 0.054846,
-    "state_peak_rss_bytes": 292671488,
+    "state_snapshot_id": "p3-tgos-20261005-001-format-fix-clean",
+    "state_artifact_bytes": 138605333,
+    "state_elapsed_seconds": 10.191693,
+    "state_peak_rss_bytes": 316751872,
+    "producer_worktree_dirty": false,
     "state_verified": true,
     "real_upload_completed": false,
     "real_response_imported": false,

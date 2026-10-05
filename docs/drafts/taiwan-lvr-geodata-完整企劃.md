@@ -4,7 +4,7 @@
 >
 > 月份依交易／租賃日期 tx_yyyymm 劃分，保留 YYYYMM_category 檔名。使用者可獨立下載月／類別／格式，也可選年度包。GitHub 公開及舊 TGOS 操作條件已確定，不再保留原三個 OQ。
 >
-> P0／P1 的 T-01～T-07、P2 的 T-08～T-13、T-22、T-23，以及 P3 的 T-14 已驗收。P3 完整測試在 Windows 與 GitHub Ubuntu 各為 218 個通過。115q1 首版公開離線 output 已保存於不可變 GitHub Release。新版地址來源已完成乾淨版本的真實離線重建，留下 4,871 個 TGOS 候選。第一個真實批次 `p3-tgos-20261005-001` 已準備完成，等待操作員上傳。見 [P0](../p0-foundations.md)、[P1](../p1-conversion.md)、[P2 驗收](../p2-offline-output.md)與 [P3 執行證據](../p3-evidence.json)。所有程式在本機正式目錄 main commit／push，cloud 不需要 GAL、`.dev` 或另產生提示。
+> P0／P1 的 T-01～T-07、P2 的 T-08～T-13、T-22、T-23，以及 P3 的 T-14 已驗收。P3 完整測試在 Windows 與 GitHub Ubuntu 各為 219 個通過。115q1 首版公開離線 output 已保存於不可變 GitHub Release。新版地址來源已完成乾淨版本的真實離線重建，留下 4,871 個 TGOS 候選。第一個真實批次 `p3-tgos-20261005-001` 已準備完成，等待操作員上傳。見 [P0](../p0-foundations.md)、[P1](../p1-conversion.md)、[P2 驗收](../p2-offline-output.md)與 [P3 執行證據](../p3-evidence.json)。所有程式在本機正式目錄 main commit／push，cloud 不需要 GAL、`.dev` 或另產生提示。
 
 ## 審核狀態
 

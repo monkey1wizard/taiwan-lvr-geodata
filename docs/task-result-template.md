@@ -113,10 +113,11 @@ T-14 的持久 TGOS 狀態與配額規則已通過合成整合驗收。T-15 的�
 | `python -m lvr_pipeline build-offline-index … --run-id p3-address-02887978-clean` | pass | 599,884,131 bytes；381.85 秒；RSS 峰值 602,394,624 bytes；producer 工作樹乾淨 |
 | `python -m lvr_pipeline build-address-pool … --run-id p3-115q1-pool-02887978-clean` | pass | 56,022 個地址鍵、102,881 個成員；19.75 秒；producer 工作樹乾淨 |
 | `python -m lvr_pipeline resolve-offline … --run-id p3-115q1-offline-02887978-clean` | pass | located 48,882、conflict 2,269、unmatched 4,871；44.22 秒；producer 工作樹乾淨 |
-| `python -m pytest -q` | pass，218 tests | Windows 165.17 秒；GitHub Ubuntu 83.99 秒；全部測試使用合成輸入 |
+| `python -m pytest -q` | pass，219 tests | Windows 178.10 秒；GitHub Ubuntu 53.18 秒；全部測試使用合成輸入 |
 | `prepare-tgos … --service-date 2026-10-05 --external-used 0 --run-id p3-tgos-20261005-001` | fail | Windows sandbox 無法存取暫存目錄，未提交快照或交付檔案 |
-| `prepare-tgos … --service-date 2026-10-05 --external-used 0 --run-id p3-tgos-20261005-001` | pass | 改由獲准的本機環境重跑；4,871 筆，只有 `Address` 欄，UTF-8-sig，210,605 bytes，SHA-256 `a46e7b48167adc23e65919d341793b54a8badf07ed57496aea2b62ec3ad960ad` |
-| `verify-tgos-state --state data/work/tgos-state/snapshots/p3-tgos-20261005-001` | pass | 批次狀態為 `prepared`，批次數 1；located 48,882、conflict 2,269、unmatched 4,871 |
+| `prepare-tgos … --service-date 2026-10-05 --external-used 0 --run-id p3-tgos-20261005-001` | fail | 產生的檔案只有 `Address` 欄。TGOS 拒絕上傳，因為標頭未遵守既有五欄契約。未送出任何查詢。 |
+| `repair-tgos-exchange --state data/work/tgos-state/snapshots/p3-tgos-20261005-001-format-fix --batch p3-tgos-20261005-001 --run-id p3-tgos-20261005-001-format-fix-clean` | pass | 4,871 筆，標頭固定為 `id,Address,Response_Address,Response_X,Response_Y`，後三欄留空，UTF-8-sig；批次仍為 `prepared`，沒有新增配額保留 |
+| `verify-tgos-state --state data/work/tgos-state/snapshots/p3-tgos-20261005-001-format-fix-clean` | pass | 批次狀態為 `prepared`，批次數 1；located 48,882、conflict 2,269、unmatched 4,871 |
 | `import-tgos` 真實回傳 | not-run | 尚無人工下載的真實回傳檔 |
 | `backfill-output` 真實輸出 | not-run | 合成測試證明只改受影響月份並保留前版；真實匯入是前置條件 |
 

@@ -14,7 +14,7 @@ P1 建立內部 Parse／Normalize 階段快照。P2 完成離線地址處理後�
 
 月輸出、年度包及維護狀態已保存於不可變 Release，約 582.4 MiB。Git 只保存程式、來源描述及小型發布指標。cloud agent 已可取得維護包並重產離線 output。人工程序沿用 addrCompare 每日／每片最多 10,000 筆與 WGS84；地址 repo 回饋仍待 P4。
 
-P3 已完成持久 TGOS 配額／批次狀態、UTF-8-sig 人工交換、嚴格回傳匯入及受影響月／年回補程式。Windows 與 GitHub Ubuntu 各 218 個測試通過。最新 `taiwan-address-data` commit `02887978…` 的乾淨版本真實離線重建留下 4,871 個 TGOS 候選。第一個真實批次 `p3-tgos-20261005-001` 已準備完成，尚未人工上傳或回補發布。見 [P3 執行證據](docs/p3-evidence.json)與 [cloud 操作](docs/cloud-runbook.md)。
+P3 已完成持久 TGOS 配額／批次狀態、UTF-8-sig 人工交換、嚴格回傳匯入及受影響月／年回補程式。Windows 與 GitHub Ubuntu 各 219 個測試通過。最新 `taiwan-address-data` commit `02887978…` 的乾淨版本真實離線重建留下 4,871 個 TGOS 候選。第一個真實批次 `p3-tgos-20261005-001` 已準備完成，使用 TGOS 要求的五欄 CSV，尚未人工上傳或回補發布。見 [P3 執行證據](docs/p3-evidence.json)與 [cloud 操作](docs/cloud-runbook.md)。
 
 ## 本機開發與 Git
 
