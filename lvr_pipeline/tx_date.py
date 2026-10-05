@@ -3,6 +3,30 @@
 """民國日期字串 → tx_yyyymm (int)。"""
 from __future__ import annotations
 
+from datetime import date
+import re
+
+
+def validated_roc_to_tx_yyyymm(value: str, *, run_cutoff_yyyymm: int) -> int | None:
+    """Validate a full calendar date using a recorded run cutoff, not today."""
+    if not isinstance(run_cutoff_yyyymm, int) or isinstance(run_cutoff_yyyymm, bool):
+        raise ValueError("Expected a fixed YYYYMM cutoff")
+    try:
+        date(run_cutoff_yyyymm // 100, run_cutoff_yyyymm % 100, 1)
+    except ValueError as exc:
+        raise ValueError("Invalid YYYYMM cutoff") from exc
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9]{7}", value.strip()):
+        return None
+    value = value.strip()
+    if int(value[:3]) < 1:
+        return None
+    try:
+        parsed = date(int(value[:3]) + 1911, int(value[3:5]), int(value[5:]))
+    except ValueError:
+        return None
+    month = parsed.year * 100 + parsed.month
+    return month if month <= run_cutoff_yyyymm else None
+
 
 def roc_to_tx_yyyymm(s, max_yyyymm: int | None = None) -> int | None:
     """民國年月日字串（7 碼 YYYmmDD）→ 西元 YYYYMM (int)；無效回 None。

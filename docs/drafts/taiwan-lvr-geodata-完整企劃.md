@@ -4,7 +4,7 @@
 >
 > 月份依交易／租賃日期 tx_yyyymm 劃分，保留 YYYYMM_category 檔名。使用者可獨立下載月／類別／格式，也可選年度包。GitHub 公開及舊 TGOS 操作條件已確定，不再保留原三個 OQ。
 >
-> P0 的 T-01～T-04 已實作；TP-01～TP-04、TP-10 的 P0 樣本驗證通過。Windows 與 GitHub Ubuntu 均通過 145 個測試，見 [P0 紀錄](https://github.com/monkey1wizard/taiwan-lvr-geodata/blob/codex/phase-0-foundations/docs/p0-foundations.md)。草稿 PR #1 尚未合併。其餘 tasks 為 Planned，其餘 test points 為 NotRun。cloud 執行不需要 GAL、.dev 或另產生執行提示。本機雙語鏡像只供維護。執行後使用 repo 內的 `docs/task-result-template.md` 記錄版本、命令、測試、月／年輸出及交接位置。
+> P0 的 T-01～T-04 已實作；TP-01～TP-04、TP-10 的 P0 樣本驗證通過。Windows 與 GitHub Ubuntu 均通過 145 個測試，見 [P0 紀錄](../p0-foundations.md)。草稿 PR #1 尚未合併。其餘 tasks 為 Planned，其餘 test points 為 NotRun。cloud 執行不需要 GAL、.dev 或另產生執行提示。本機雙語鏡像只供維護。執行後使用 repo 內的 `docs/task-result-template.md` 記錄版本、命令、測試、月／年輸出及交接位置。
 
 ## 審核狀態
 
@@ -444,7 +444,7 @@ P0 → P1 → P2 交付使用者要求的首版公開離線 output，不等待 T
 
 T-01～T-04 已實作，見 P0 紀錄及草稿 PR #1；其餘 tasks 為 Planned。前置條件指已驗收的交付成果，不只代表程式已寫完。可先驗收樣本實作，再處理真實資料部署。以下路徑是責任範圍。P0 檔案已建立，其餘路徑仍屬規劃。
 
-勾選表示該 task 已實作並通過本階段驗證，不表示 PR 已合併。T-01～T-04 的證據見 [P0 紀錄](https://github.com/monkey1wizard/taiwan-lvr-geodata/blob/codex/phase-0-foundations/docs/p0-foundations.md)。尚未完成的 tasks 保留未勾選。
+勾選表示該 task 已實作並通過本階段驗證，不表示 PR 已合併。T-01～T-04 的證據見 [P0 紀錄](../p0-foundations.md)。尚未完成的 tasks 保留未勾選。
 
 - [x] **T-01／P0**
   - 前置條件與適用門檻：無 task 前置，只用樣本。
