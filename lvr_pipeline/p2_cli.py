@@ -78,6 +78,12 @@ def configure(sub):
     p = sub.add_parser("repair-tgos-exchange")
     p.add_argument("--state", type=Path, required=True)
     p.add_argument("--batch", required=True)
+    p.add_argument(
+        "--date-file",
+        type=Path,
+        default=Path("data/tgos/date.json"),
+        help="Date log used only for the exchange folder name",
+    )
     p.add_argument("--work-dir", type=Path, default=Path("data/work"))
     p.add_argument("--exchange-dir", type=Path, default=Path("data/tgos"))
     p.add_argument("--run-id")
@@ -192,11 +198,12 @@ def run(args):
         path, exchange = prepare_tgos(
             args.state,
             args.work_dir,
-            args.exchange_dir / log_date,
+            args.exchange_dir,
             limit=args.limit,
             retry_fingerprints=args.retry_query_fingerprint,
             retry_reason=args.retry_reason,
             ledger=args.ledger,
+            exchange_date=log_date,
             run_id=args.run_id,
         )
         print(json.dumps({"path": str(path), "exchange": str(exchange), "completed": True}, ensure_ascii=False))
@@ -211,11 +218,13 @@ def run(args):
             run_id=args.run_id,
         )
     elif command == "repair-tgos-exchange":
+        log_date = _tgos_log_date(args.date_file)
         path, exchange = repair_prepared_exchange(
             args.state,
             args.work_dir,
             args.exchange_dir,
             args.batch,
+            exchange_date=log_date,
             run_id=args.run_id,
         )
         print(

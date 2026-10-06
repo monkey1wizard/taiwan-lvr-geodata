@@ -8,8 +8,9 @@ import hashlib
 import io
 import json
 import os
-from pathlib import Path
 import tempfile
+from datetime import date
+from pathlib import Path
 
 from .address_state import load_p2
 from .address_v2 import building_key_v2
@@ -24,6 +25,13 @@ DAILY_LIMIT = 10_000
 TAIWAN_BOUNDS = (118.0, 123.5, 21.5, 26.5)
 DYNAMIC_SCHEMAS = {"tgos-batch", "tgos-query", "tgos-result", "alias-event"}
 TGOS_CSV_FIELDS = ["id", "Address", "Response_Address", "Response_X", "Response_Y"]
+
+
+def exchange_folder_name(batch_id: str, log_date: str) -> str:
+    """Return the date-log-only folder name for a TGOS exchange."""
+    compact_date = date.fromisoformat(log_date).strftime("%Y%m%d")
+    identifier = batch_id.removeprefix("tgos-")
+    return f"{compact_date}-{identifier}"
 
 
 def _quality(path: Path) -> dict:
@@ -181,8 +189,14 @@ def _write_exchange(
     payload: bytes,
     *,
     replace: bool = False,
+    folder_date: str | None = None,
 ) -> Path:
-    target = Path(root) / batch["batch_id"]
+    folder = (
+        exchange_folder_name(batch["batch_id"], folder_date)
+        if folder_date
+        else batch["batch_id"]
+    )
+    target = Path(root) / folder
     manifest = {
         "schema_version": "1.0",
         "batch_id": batch["batch_id"],
@@ -241,6 +255,7 @@ def repair_prepared_exchange(
     exchange_dir: Path,
     batch_id: str,
     *,
+    exchange_date: str | None = None,
     run_id: str | None = None,
 ):
     manifest, _, stage_name = load_state(source)
@@ -275,7 +290,12 @@ def repair_prepared_exchange(
         run_id=run_id,
     )
     exchange = _write_exchange(
-        exchange_dir, batch, batch_queries, payload, replace=True
+        exchange_dir,
+        batch,
+        batch_queries,
+        payload,
+        replace=True,
+        folder_date=exchange_date,
     )
     return state, exchange
 
@@ -316,6 +336,7 @@ def prepare_tgos(
     retry_fingerprints: list[str] | None = None,
     retry_reason: str | None = None,
     ledger: Path | None = None,
+    exchange_date: str | None = None,
     run_id: str | None = None,
 ):
     if isinstance(limit, bool) or not 1 <= limit <= DAILY_LIMIT:
@@ -421,7 +442,13 @@ def prepare_tgos(
         extra_report={"last_tgos_batch_id": batch_id},
         run_id=run_id,
     )
-    exchange = _write_exchange(exchange_dir, batch, batch_queries, payload)
+    exchange = _write_exchange(
+        exchange_dir,
+        batch,
+        batch_queries,
+        payload,
+        folder_date=exchange_date,
+    )
     return state, exchange
 
 

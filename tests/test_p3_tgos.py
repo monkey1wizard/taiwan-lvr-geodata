@@ -84,7 +84,10 @@ def test_quota_is_reserved_before_utf8_sig_handoff(tmp_path):
         state,
         tmp_path / "work",
         tmp_path / "exchange",
+        exchange_date="2026-10-07",
     )
+    batch_id = list(rows(prepared / "tgos_batches.parquet"))[0]["batch_id"]
+    assert exchange.name == f"20261007-{batch_id.removeprefix('tgos-')}"
     assert (exchange / "addresses.csv").read_bytes().startswith(b"\xef\xbb\xbf")
     assert (exchange / "addresses.csv").read_text(encoding="utf-8-sig").splitlines() == [
         "id,Address,Response_Address,Response_X,Response_Y",
