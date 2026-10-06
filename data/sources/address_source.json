@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "repository": "https://github.com/monkey1wizard/taiwan-address-data",
-  "commit": "02887978ef19c1067e339787bae976a72d4723af",
+  "commit": "3ff9be0265b22a4910abf2bd4e3e96c7653fb6f0",
   "source_kind": "legacy_base",
   "roads": [
     {
@@ -135925,8 +135925,8 @@
   "source_metadata": [
     {
       "path": "README.md",
-      "size_bytes": 6051,
-      "sha256": "d1b3a5347951357d921351c9e07bb495dba20c504fadd6abb961c02bf6508b48"
+      "size_bytes": 6771,
+      "sha256": "9d42af96bf3753a9d50a60402f6e36d7c4db81295b4b1276c70b4093c5bf546d"
     },
     {
       "path": "update_log.csv",
