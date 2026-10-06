@@ -101,6 +101,7 @@ taiwan-lvr-geodata/
 | 要找的內容 | 文件 |
 | --- | --- |
 | 月檔、年度包及涵蓋限制 | [本頁下載說明](#下載資料) |
+| 從原始資料到離線交付、TGOS 回補的完整流程 | [完整資料處理流程](docs/architecture.md#完整資料處理流程) |
 | 來源、操作、資料規格、地址規則與 TGOS | [資料架構與處理](docs/architecture.md) |
 | 開發、驗證、發布與復原 | [CONTRIBUTING](CONTRIBUTING.md) |
 | 目標目錄、流程與工作順序 | [重建企劃](docs/plans/重建企劃.md) |
