@@ -12,10 +12,23 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import time
 import uuid
 
 from .contracts import validate_relations, validate_rows
 from .sources import sha256_file
+
+
+def _replace(source: Path, target: Path, attempts: int = 8) -> None:
+    """os.replace that waits out short Windows locks, such as a virus scan."""
+    for attempt in range(attempts):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if os.name != "nt" or attempt == attempts - 1:
+                raise
+            time.sleep(0.25 * 2 ** attempt)
 
 
 def _identifier(value: str) -> str:
@@ -161,7 +174,7 @@ class SnapshotStore:
                                    "schema": schema, "sha256": sha256_file(target), "size_bytes": target.stat().st_size})
         temporary = directory / f"draft-{uuid.uuid4().hex}.tmp"
         _json_write(temporary, draft)
-        os.replace(temporary, draft_path)
+        _replace(temporary, draft_path)
 
     def verify(self, directory: Path, *, draft: bool = False) -> dict:
         manifest = _read_json(directory / ("draft.json" if draft else "manifest.json"))
@@ -237,7 +250,7 @@ class SnapshotStore:
             pointer = {"snapshot_id": identifier, "manifest_sha256": sha256_file(final / "manifest.json")}
             temporary = self.root / f"pointer-{uuid.uuid4().hex}.tmp"
             _json_write(temporary, pointer)
-            os.replace(temporary, self.root / "current.json")
+            _replace(temporary, self.root / "current.json")
             return pointer
 
     def reusable(self, snapshot_id: str, bindings: dict) -> bool:

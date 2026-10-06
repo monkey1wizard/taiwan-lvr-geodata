@@ -139,3 +139,26 @@ def test_manifest_row_count_rechecked(tmp_path):
     path.write_text(json.dumps(data),encoding="utf-8")
     with pytest.raises(ValueError,match="count"):
         store.publish("first",expected_parent=None)
+
+
+def test_replace_waits_out_short_windows_lock(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from lvr_pipeline import snapshots
+
+    calls = []
+
+    def flaky(source, target):
+        calls.append(source)
+        if len(calls) < 3:
+            raise PermissionError("locked")
+
+    monkeypatch.setattr(snapshots, "os", SimpleNamespace(name="nt", replace=flaky))
+    monkeypatch.setattr(snapshots.time, "sleep", lambda _: None)
+    snapshots._replace(tmp_path / "a", tmp_path / "b")
+    assert len(calls) == 3
+
+    monkeypatch.setattr(snapshots, "os", SimpleNamespace(name="posix", replace=flaky))
+    calls.clear()
+    with pytest.raises(PermissionError):
+        snapshots._replace(tmp_path / "a", tmp_path / "b")
+    assert len(calls) == 1
