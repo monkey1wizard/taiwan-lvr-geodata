@@ -2,7 +2,7 @@
 
 from lvr_pipeline.address_patch import _split_legacy, export_address_patch, verify_address_patch
 from lvr_pipeline.parquet_io import rows
-from lvr_pipeline.tgos import _service_today, import_tgos, prepare_tgos, transition_batch
+from lvr_pipeline.tgos import import_tgos, prepare_tgos, transition_batch
 from test_p3_tgos import fixture_state, response
 
 
@@ -12,8 +12,6 @@ def imported_state(tmp_path, response_address):
         state,
         tmp_path / "work",
         tmp_path / "exchange",
-        service_date=_service_today().isoformat(),
-        external_used=0,
         limit=1,
     )
     query = list(rows(prepared / "tgos_queries.parquet"))[0]

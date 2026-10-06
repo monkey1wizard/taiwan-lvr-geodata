@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import codecs
 import csv
-from datetime import date, datetime, timedelta, timezone
 import hashlib
 import io
 import json
@@ -23,17 +22,12 @@ from .p2_contracts import valid_coordinate
 
 DAILY_LIMIT = 10_000
 TAIWAN_BOUNDS = (118.0, 123.5, 21.5, 26.5)
-TAIPEI_TZ = timezone(timedelta(hours=8))
 DYNAMIC_SCHEMAS = {"tgos-batch", "tgos-query", "tgos-result", "alias-event"}
 TGOS_CSV_FIELDS = ["id", "Address", "Response_Address", "Response_X", "Response_Y"]
 
 
 def _quality(path: Path) -> dict:
     return json.loads((Path(path) / "quality.json").read_text(encoding="utf-8"))
-
-
-def _service_today() -> date:
-    return datetime.now(TAIPEI_TZ).date()
 
 
 def load_state(path: Path):
@@ -192,7 +186,6 @@ def _write_exchange(
     manifest = {
         "schema_version": "1.0",
         "batch_id": batch["batch_id"],
-        "service_date": batch["service_date"],
         "address_count": batch["address_count"],
         "csv": "addresses.csv",
         "csv_sha256": hashlib.sha256(payload).hexdigest(),
@@ -287,9 +280,7 @@ def repair_prepared_exchange(
     return state, exchange
 
 
-def _carry_ledger(
-    ledger: Path, service_dates: dict[str, str] | None = None
-) -> tuple[list[dict], list[dict]]:
+def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict]]:
     """Carry sent batches and queries so they are not resent.
 
     Earlier results, evidence and aliases are dropped. Completed batches go
@@ -313,18 +304,6 @@ def _carry_ledger(
         if query["batch_id"] in reopened:
             query["status"] = "submitted"
             query["result_id"] = None
-    service_dates = service_dates or {}
-    unknown = set(service_dates) - {batch["batch_id"] for batch in batches}
-    if unknown:
-        raise ValueError("Service date correction names an unknown ledger batch")
-    for batch in batches:
-        corrected = service_dates.get(batch["batch_id"])
-        if corrected and corrected != batch["service_date"]:
-            if date.fromisoformat(corrected) > _service_today():
-                raise ValueError("Future TGOS service date is forbidden")
-            note = f"service date corrected from {batch['service_date']}"
-            batch["reason"] = f"{batch['reason']}; {note}" if batch["reason"] else note
-            batch["service_date"] = corrected
     return batches, queries
 
 
@@ -333,22 +312,12 @@ def prepare_tgos(
     work_dir: Path,
     exchange_dir: Path,
     *,
-    service_date: str,
-    external_used: int,
     limit: int = DAILY_LIMIT,
     retry_fingerprints: list[str] | None = None,
     retry_reason: str | None = None,
     ledger: Path | None = None,
-    ledger_service_dates: dict[str, str] | None = None,
     run_id: str | None = None,
 ):
-    day = date.fromisoformat(service_date)
-    if ledger_service_dates and ledger is None:
-        raise ValueError("Service date corrections require a TGOS ledger")
-    if day > _service_today():
-        raise ValueError("Future TGOS service date is forbidden")
-    if isinstance(external_used, bool) or not 0 <= external_used <= DAILY_LIMIT:
-        raise ValueError("External TGOS quota must be between 0 and 10000")
     if isinstance(limit, bool) or not 1 <= limit <= DAILY_LIMIT:
         raise ValueError("TGOS file limit must be between 1 and 10000")
     manifest, report, stage_name = load_state(source)
@@ -364,21 +333,8 @@ def prepare_tgos(
     if ledger is not None:
         if stage_name != "offline-state":
             raise ValueError("A TGOS ledger can only seed a fresh offline state")
-        batches, queries = _carry_ledger(ledger, ledger_service_dates)
-    same_day_batches =[row for row in batches if row["service_date"] == service_date]
-    known_external_used = max(
-        (row["external_used"] for row in same_day_batches), default=0
-    )
-    if external_used < known_external_used:
-        raise ValueError("External TGOS quota cannot decrease for a service date")
-    reserved = sum(
-        row["address_count"]
-        for row in same_day_batches
-        if row["quota_consumed"]
-    )
-    available = min(limit, DAILY_LIMIT - external_used - reserved)
-    if available <= 0:
-        raise ValueError("No TGOS quota remains for this service date")
+        batches, queries = _carry_ledger(ledger)
+    available = limit
     retry_fingerprints = set(retry_fingerprints or [])
     if retry_fingerprints and not retry_reason:
         raise ValueError("Approved TGOS retries require a reason")
@@ -418,7 +374,7 @@ def prepare_tgos(
     if not selected:
         raise ValueError("No eligible TGOS candidates remain")
     source_hash = sha256_file(Path(source) / "manifest.json")
-    batch_id = run_id or f"tgos-{service_date}-{digest([source_hash, service_date, external_used, [x['query_fingerprint'] for x in selected]])[:12]}"
+    batch_id = run_id or f"tgos-{digest([source_hash, [x['query_fingerprint'] for x in selected]])[:12]}"
     batch_queries = [
         {
             "batch_id": batch_id,
@@ -445,11 +401,8 @@ def prepare_tgos(
     }
     batch = {
         "batch_id": batch_id,
-        "service_date": service_date,
         "status": "prepared",
         "address_count": len(batch_queries),
-        "external_used": external_used,
-        "quota_consumed": True,
         "source_state_sha256": source_hash,
         "csv_sha256": hashlib.sha256(payload).hexdigest(),
         "response_sha256": None,
@@ -503,8 +456,6 @@ def transition_batch(
     original = target["status"]
     target["status"] = status
     target["reason"] = reason
-    if status == "cancelled" and original == "prepared":
-        target["quota_consumed"] = False
     for row in queries:
         if row["batch_id"] == batch_id and row["status"] in {
             "prepared",

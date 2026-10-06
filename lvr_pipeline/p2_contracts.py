@@ -100,11 +100,8 @@ SCHEMAS = {
         "tgos-batch",
         [
             ("batch_id", S, False),
-            ("service_date", S, False),
             ("status", S, False),
             ("address_count", I, False),
-            ("external_used", I, False),
-            ("quota_consumed", B, False),
             ("source_state_sha256", S, False),
             ("csv_sha256", S, True),
             ("response_sha256", S, True),
@@ -295,8 +292,6 @@ def validate_rows(values, dataset):
                 "completed",
             }:
                 raise ValueError("Invalid TGOS batch status")
-            if not 0 <= row["external_used"] <= 10_000:
-                raise ValueError("Invalid external TGOS quota")
             if not 1 <= row["address_count"] <= 10_000:
                 raise ValueError("Invalid TGOS batch size")
         if dataset == "tgos-query" and row["status"] not in {

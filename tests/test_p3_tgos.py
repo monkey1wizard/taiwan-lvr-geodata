@@ -1,17 +1,16 @@
 """P3 TGOS quota, exchange, strict import, and backfill acceptance."""
 
 import csv
-from datetime import timedelta
 import json
 
 import pytest
 
 from lvr_pipeline.backfill import backfill_output
+from lvr_pipeline.p2_cli import _tgos_log_date
 from lvr_pipeline.packaging import package_output, verify_output
 from lvr_pipeline.parquet_io import rows
 from lvr_pipeline.tgos import (
     _round_robin,
-    _service_today,
     import_tgos,
     load_state,
     prepare_tgos,
@@ -28,6 +27,18 @@ NOTICE = {
     "legacy_coordinates_authorized": True,
     "sources": ["synthetic"],
 }
+
+
+def test_tgos_date_file_is_log_only(tmp_path):
+    date_file = tmp_path / "date.json"
+    date_file.write_text('{"date":"2026-10-07"}', encoding="utf-8")
+    assert _tgos_log_date(date_file) == "2026-10-07"
+
+    date_file.write_text(
+        '{"date":"2026-10-07","limit":10000}', encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="only the date field"):
+        _tgos_log_date(date_file)
 
 
 def fixture_state(tmp_path):
@@ -69,13 +80,10 @@ def response(path, values):
 
 def test_quota_is_reserved_before_utf8_sig_handoff(tmp_path):
     _, state, address = fixture_state(tmp_path)
-    day = _service_today().isoformat()
     prepared, exchange = prepare_tgos(
         state,
         tmp_path / "work",
         tmp_path / "exchange",
-        service_date=day,
-        external_used=9_999,
     )
     assert (exchange / "addresses.csv").read_bytes().startswith(b"\xef\xbb\xbf")
     assert (exchange / "addresses.csv").read_text(encoding="utf-8-sig").splitlines() == [
@@ -107,14 +115,12 @@ def test_quota_is_reserved_before_utf8_sig_handoff(tmp_path):
     _, report, stage = load_state(prepared)
     assert stage == "tgos-state" and report["tgos_batch_count"] == 1
     batch = list(rows(prepared / "tgos_batches.parquet"))[0]
-    assert batch["status"] == "prepared" and batch["quota_consumed"] is True
+    assert batch["status"] == "prepared"
     with pytest.raises(ValueError, match="latest snapshot"):
         prepare_tgos(
             state,
             tmp_path / "work",
             tmp_path / "exchange",
-            service_date=day,
-            external_used=0,
         )
 
 
@@ -124,8 +130,6 @@ def test_prepared_exchange_can_be_repaired_without_new_reservation(tmp_path):
         state,
         tmp_path / "work",
         tmp_path / "exchange",
-        service_date=_service_today().isoformat(),
-        external_used=0,
         limit=1,
     )
     batch_id = list(rows(prepared / "tgos_batches.parquet"))[0]["batch_id"]
@@ -151,23 +155,14 @@ def test_prepared_exchange_can_be_repaired_without_new_reservation(tmp_path):
     assert batches[0]["address_count"] == 1
 
 
-def test_future_dates_and_exhausted_shared_quota_fail(tmp_path):
+def test_invalid_batch_limit_fails(tmp_path):
     _, state, _ = fixture_state(tmp_path)
-    with pytest.raises(ValueError, match="Future"):
+    with pytest.raises(ValueError, match="file limit"):
         prepare_tgos(
             state,
-            tmp_path / "work",
+            tmp_path / "quota-work",
             tmp_path / "exchange",
-            service_date=(_service_today() + timedelta(days=1)).isoformat(),
-            external_used=0,
-        )
-    with pytest.raises(ValueError, match="No TGOS quota"):
-        prepare_tgos(
-            state,
-            tmp_path / "work",
-            tmp_path / "exchange",
-            service_date=_service_today().isoformat(),
-            external_used=10_000,
+            limit=0,
         )
 
 
@@ -186,8 +181,6 @@ def test_ten_thousand_cap_fairness_and_cancellation_state(tmp_path):
         state,
         tmp_path / "work",
         tmp_path / "exchange",
-        service_date=_service_today().isoformat(),
-        external_used=0,
         limit=1,
     )
     batch_id = list(rows(prepared / "tgos_batches.parquet"))[0]["batch_id"]
@@ -196,14 +189,12 @@ def test_ten_thousand_cap_fairness_and_cancellation_state(tmp_path):
     )
     batch = list(rows(cancelled / "tgos_batches.parquet"))[0]
     query = list(rows(cancelled / "tgos_queries.parquet"))[0]
-    assert batch["quota_consumed"] is False and query["status"] == "cancelled"
+    assert batch["status"] == "cancelled" and query["status"] == "cancelled"
     with pytest.raises(ValueError, match="No eligible"):
         prepare_tgos(
             cancelled,
             tmp_path / "work",
             tmp_path / "exchange",
-            service_date=_service_today().isoformat(),
-            external_used=0,
         )
 
     fingerprint = query["query_fingerprint"]
@@ -211,8 +202,6 @@ def test_ten_thousand_cap_fairness_and_cancellation_state(tmp_path):
         cancelled,
         tmp_path / "work",
         tmp_path / "exchange",
-        service_date=_service_today().isoformat(),
-        external_used=0,
         retry_fingerprints=[fingerprint],
         retry_reason="operator approved corrected retry",
     )
@@ -221,34 +210,12 @@ def test_ten_thousand_cap_fairness_and_cancellation_state(tmp_path):
     assert batches[-1]["reason"] == "operator approved corrected retry"
 
 
-def test_external_shared_quota_cannot_decrease(tmp_path):
-    _, state, _ = fixture_state(tmp_path)
-    prepared, _ = prepare_tgos(
-        state,
-        tmp_path / "work",
-        tmp_path / "exchange",
-        service_date=_service_today().isoformat(),
-        external_used=5,
-        limit=1,
-    )
-    with pytest.raises(ValueError, match="cannot decrease"):
-        prepare_tgos(
-            prepared,
-            tmp_path / "work",
-            tmp_path / "exchange",
-            service_date=_service_today().isoformat(),
-            external_used=4,
-        )
-
-
 def test_strict_import_is_idempotent_and_rejects_axis_guessing(tmp_path):
     _, state, address = fixture_state(tmp_path)
     prepared, _ = prepare_tgos(
         state,
         tmp_path / "work",
         tmp_path / "exchange",
-        service_date=_service_today().isoformat(),
-        external_used=0,
         limit=1,
     )
     batch_id = list(rows(prepared / "tgos_batches.parquet"))[0]["batch_id"]
@@ -279,8 +246,6 @@ def test_strict_import_is_idempotent_and_rejects_axis_guessing(tmp_path):
         state,
         other / "work",
         other / "exchange",
-        service_date=_service_today().isoformat(),
-        external_used=0,
         limit=1,
     )
     batch_id = list(rows(prepared / "tgos_batches.parquet"))[0]["batch_id"]
@@ -302,8 +267,6 @@ def _submit_first(tmp_path, state, work):
         state,
         work,
         tmp_path / "exchange",
-        service_date=_service_today().isoformat(),
-        external_used=0,
         limit=1,
     )
     query = list(rows(prepared / "tgos_queries.parquet"))[0]
@@ -344,8 +307,6 @@ def test_ledger_prevents_resend_and_reopens_results_for_revalidation(tmp_path):
         state,
         tmp_path / "new",
         tmp_path / "exchange",
-        service_date=_service_today().isoformat(),
-        external_used=1,
         ledger=old,
     )
     batches = list(rows(seeded / "tgos_batches.parquet"))
@@ -358,34 +319,6 @@ def test_ledger_prevents_resend_and_reopens_results_for_revalidation(tmp_path):
 
     reimported = import_tgos(seeded, tmp_path / "new", first["batch_id"], result)
     assert load_state(reimported)[1]["status_counts"]["located"] == 2
-
-
-def test_ledger_batch_service_date_can_be_corrected_with_reason(tmp_path):
-    _, state, _ = fixture_two_unmatched(tmp_path)
-    old, first = _submit_first(tmp_path, state, tmp_path / "old")
-    today = _service_today()
-    earlier = (today - timedelta(days=1)).isoformat()
-
-    def seed(work, dates):
-        return prepare_tgos(
-            state,
-            tmp_path / work,
-            tmp_path / "exchange",
-            service_date=today.isoformat(),
-            external_used=0,
-            ledger=old,
-            ledger_service_dates=dates,
-            run_id=work,
-        )
-
-    with pytest.raises(ValueError, match="unknown ledger batch"):
-        seed("unknown", {"missing": earlier})
-    with pytest.raises(ValueError, match="Future"):
-        seed("future", {first["batch_id"]: (today + timedelta(days=1)).isoformat()})
-    seeded, _ = seed("moved", {first["batch_id"]: earlier})
-    carried = list(rows(seeded / "tgos_batches.parquet"))[0]
-    assert carried["service_date"] == earlier
-    assert carried["reason"] == f"service date corrected from {today.isoformat()}"
 
 
 def test_verified_alias_can_be_revoked(tmp_path):
@@ -423,8 +356,6 @@ def test_backfill_changes_only_affected_month_and_keeps_previous_readable(tmp_pa
         state,
         tmp_path / "work",
         tmp_path / "exchange",
-        service_date=_service_today().isoformat(),
-        external_used=0,
         limit=1,
     )
     batch_id = list(rows(prepared / "tgos_batches.parquet"))[0]["batch_id"]

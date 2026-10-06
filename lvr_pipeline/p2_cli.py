@@ -1,6 +1,7 @@
 """Offline indexing, output packaging and public handoff commands."""
 
 import json
+from datetime import date
 from pathlib import Path
 
 from .address_pool import build_pool
@@ -21,14 +22,11 @@ from .tgos import (
 )
 
 
-def _pairs(values: list[str]) -> dict[str, str]:
-    pairs = {}
-    for value in values:
-        key, separator, item = value.partition("=")
-        if not separator or not key or not item or key in pairs:
-            raise ValueError("Expected unique BATCH=YYYY-MM-DD values")
-        pairs[key] = item
-    return pairs
+def _tgos_log_date(path: Path) -> str:
+    value = json.loads(Path(path).read_text(encoding="utf-8"))
+    if set(value) != {"date"}:
+        raise ValueError("TGOS date file must contain only the date field")
+    return date.fromisoformat(value["date"]).isoformat()
 
 
 def configure(sub):
@@ -64,14 +62,16 @@ def configure(sub):
     p.add_argument("--input", type=Path, required=True)
     p = sub.add_parser("prepare-tgos")
     p.add_argument("--state", type=Path, required=True)
-    p.add_argument("--service-date", required=True)
-    p.add_argument("--external-used", type=int, required=True)
+    p.add_argument(
+        "--date-file",
+        type=Path,
+        default=Path("data/tgos/date.json"),
+        help="Date log used only for the exchange folder name",
+    )
     p.add_argument("--limit", type=int, default=10_000)
     p.add_argument("--retry-query-fingerprint", action="append", default=[])
     p.add_argument("--retry-reason")
     p.add_argument("--ledger", type=Path, help="Earlier TGOS state whose sent queries must not be resent")
-    p.add_argument("--ledger-service-date", action="append", default=[], metavar="BATCH=YYYY-MM-DD",
-                   help="Correct the service date on which a carried ledger batch used quota")
     p.add_argument("--work-dir", type=Path, default=Path("data/work"))
     p.add_argument("--exchange-dir", type=Path, default=Path("data/tgos"))
     p.add_argument("--run-id")
@@ -188,17 +188,15 @@ def run(args):
         print(json.dumps({"verified": True, "status_counts": report["status_counts"]}))
         return 0
     elif command == "prepare-tgos":
+        log_date = _tgos_log_date(args.date_file)
         path, exchange = prepare_tgos(
             args.state,
             args.work_dir,
-            args.exchange_dir,
-            service_date=args.service_date,
-            external_used=args.external_used,
+            args.exchange_dir / log_date,
             limit=args.limit,
             retry_fingerprints=args.retry_query_fingerprint,
             retry_reason=args.retry_reason,
             ledger=args.ledger,
-            ledger_service_dates=_pairs(args.ledger_service_date),
             run_id=args.run_id,
         )
         print(json.dumps({"path": str(path), "exchange": str(exchange), "completed": True}, ensure_ascii=False))
