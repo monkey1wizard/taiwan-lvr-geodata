@@ -164,6 +164,30 @@ def test_multiline_csv_keeps_physical_line_provenance(tmp_path):
     assert [row["source_line_end"] for row in dataset(converted,"disposition")]==[4,5]
 
 
+def test_unclosed_quote_fails_only_its_line_and_keeps_later_rows(tmp_path):
+    raw,_=make_source(tmp_path,[{},{"unknown":"MARK"},{},{}],categories=("sales",))
+    path=raw/"115q1_lvr_landcsv.zip"
+    with zipfile.ZipFile(path) as archive:
+        text=archive.read("a_lvr_land_a.csv").decode("utf-8-sig").replace("MARK",'"6號')
+    with zipfile.ZipFile(path,"w") as archive:
+        archive.writestr("a_lvr_land_a.csv",codecs_bom(text))
+    manifest={"inputs":[describe_zip(path)]}
+    work=tmp_path/"work"
+    ingested=ingest(raw,manifest,["115q1"],work,code_commit=CODE)
+    report=load_snapshot(ingested,"ingest")[1]
+    assert report["line_mode_members"]==[{"batch":"115q1","path":"a_lvr_land_a.csv"}]
+    assert report["input_rows"]==4 and report["parse_failed_rows"]==1
+    records=dataset(ingested,"ingest-record")
+    failed=[row for row in records if row["row_status"]=="failed"]
+    assert [row["source_row_number"] for row in failed]==[4]
+    assert json.loads(failed[0]["raw_values_json"])[0].endswith('"6號')
+    assert [row["source_row_number"] for row in records if row["row_status"]=="parsed"]==[3,5,6]
+
+
+def codecs_bom(text):
+    return "﻿".encode("utf-8")+text.encode("utf-8")
+
+
 def test_known_empty_batch_is_a_zero_scope_not_missing_input(tmp_path):
     raw=tmp_path/"raw"
     raw.mkdir()

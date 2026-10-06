@@ -297,58 +297,89 @@ def test_strict_import_is_idempotent_and_rejects_axis_guessing(tmp_path):
     assert load_state(imported)[1]["status_counts"]["unmatched"] == 1
 
 
-def test_alias_cycle_is_rejected_and_verified_alias_can_be_revoked(tmp_path):
-    _, state, addresses = fixture_two_unmatched(tmp_path)
-    day = _service_today().isoformat()
+def _submit_first(tmp_path, state, work):
     prepared, _ = prepare_tgos(
         state,
-        tmp_path / "work",
+        work,
         tmp_path / "exchange",
-        service_date=day,
+        service_date=_service_today().isoformat(),
         external_used=0,
         limit=1,
     )
-    first_query = list(rows(prepared / "tgos_queries.parquet"))[0]
-    first_response_address = next(
-        address for address in addresses if address != first_query["address"]
-    )
-    batch_id = first_query["batch_id"]
-    submitted = transition_batch(prepared, tmp_path / "work", batch_id, "submitted")
-    result = tmp_path / "first.csv"
-    response(
-        result,
-        [{"Address": first_query["address"], "Response_Address": first_response_address, "Response_X": "121.51", "Response_Y": "25.01"}],
-    )
-    imported = import_tgos(submitted, tmp_path / "work", batch_id, result)
-    aliases = list(rows(imported / "verified_aliases.parquet"))
-    assert len(aliases) == 1
+    query = list(rows(prepared / "tgos_queries.parquet"))[0]
+    submitted = transition_batch(prepared, work, query["batch_id"], "submitted")
+    return submitted, query
 
-    prepared, _ = prepare_tgos(
-        imported,
-        tmp_path / "work",
-        tmp_path / "exchange",
-        service_date=day,
-        external_used=0,
-        limit=1,
-    )
-    second_query = list(rows(prepared / "tgos_queries.parquet"))[-1]
-    batch_id = second_query["batch_id"]
-    submitted = transition_batch(prepared, tmp_path / "work", batch_id, "submitted")
-    result = tmp_path / "second.csv"
+
+@pytest.mark.parametrize("returned", ["臺北市中正區測試路22號", "臺北市中正區測試路21號之1", "臺北市中正區別路21號"])
+def test_response_for_another_door_is_isolated(tmp_path, returned):
+    _, state, _ = fixture_two_unmatched(tmp_path)
+    submitted, query = _submit_first(tmp_path, state, tmp_path / "work")
+    if returned.endswith("22號") and query["address"].endswith("22號"):
+        returned = returned.replace("22號", "21號")
+    result = tmp_path / "result.csv"
     response(
         result,
-        [{"Address": second_query["address"], "Response_Address": first_query["address"], "Response_X": "121.52", "Response_Y": "25.02"}],
+        [{"Address": query["address"], "Response_Address": returned, "Response_X": "121.51", "Response_Y": "25.01"}],
     )
-    imported = import_tgos(submitted, tmp_path / "work", batch_id, result)
+    imported = import_tgos(submitted, tmp_path / "work", query["batch_id"], result)
     imports = list(rows(imported / "tgos_imports.parquet"))
-    assert imports[-1]["status"] == "rejected"
-    assert imports[-1]["reason"] == "TGOS alias would create a cycle"
+    assert imports[0]["status"] == "rejected"
+    assert imports[0]["reason"] == "TGOS response address differs from submitted address"
+    assert list(rows(imported / "verified_aliases.parquet")) == []
+    assert load_state(imported)[1]["status_counts"]["located"] == 1
 
-    revoked = revoke_alias(
-        imported,
+
+def test_ledger_prevents_resend_and_reopens_results_for_revalidation(tmp_path):
+    _, state, _ = fixture_two_unmatched(tmp_path)
+    submitted, first = _submit_first(tmp_path, state, tmp_path / "old")
+    result = tmp_path / "result.csv"
+    response(
+        result,
+        [{"Address": first["address"], "Response_Address": first["address"], "Response_X": "121.51", "Response_Y": "25.01"}],
+    )
+    old = import_tgos(submitted, tmp_path / "old", first["batch_id"], result)
+
+    seeded, _ = prepare_tgos(
+        state,
+        tmp_path / "new",
+        tmp_path / "exchange",
+        service_date=_service_today().isoformat(),
+        external_used=1,
+        ledger=old,
+    )
+    batches = list(rows(seeded / "tgos_batches.parquet"))
+    queries = list(rows(seeded / "tgos_queries.parquet"))
+    assert [row["status"] for row in batches] == ["submitted", "prepared"]
+    assert batches[0]["response_sha256"] is None
+    assert [row["address"] for row in queries].count(first["address"]) == 1
+    assert list(rows(seeded / "tgos_imports.parquet")) == []
+    assert load_state(seeded)[1]["status_counts"]["located"] == 1
+
+    reimported = import_tgos(seeded, tmp_path / "new", first["batch_id"], result)
+    assert load_state(reimported)[1]["status_counts"]["located"] == 2
+
+
+def test_verified_alias_can_be_revoked(tmp_path):
+    _, state, _ = fixture_two_unmatched(tmp_path)
+    submitted, _ = _submit_first(tmp_path, state, tmp_path / "work")
+    alias = {"key_version": "v2", "alias_key": "v2:a", "target_key": "v2:b", "evidence_ref": "manual"}
+    from lvr_pipeline.tgos import _artifact_paths, _write_state
+
+    manifest, _, _ = load_state(submitted)
+    paths = _artifact_paths(submitted, manifest)
+    seeded = _write_state(
+        submitted,
         tmp_path / "work",
-        aliases[0]["alias_key"],
-        reason="operator rejected equivalence",
+        action="seed-alias",
+        batches=list(rows(paths["tgos-batch"])),
+        queries=list(rows(paths["tgos-query"])),
+        results=[],
+        aliases=[alias],
+        alias_events=[{"event_id": "seed", "key_version": "v2", "alias_key": "v2:a", "target_key": "v2:b", "action": "verified", "evidence_ref": "manual"}],
+    )
+    revoked = revoke_alias(
+        seeded, tmp_path / "work", "v2:a", reason="operator rejected equivalence"
     )
     assert list(rows(revoked / "verified_aliases.parquet")) == []
     actions = [row["action"] for row in rows(revoked / "alias_events.parquet")]

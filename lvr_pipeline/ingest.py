@@ -42,6 +42,59 @@ def select_inputs(manifest: dict, batches: list[str]) -> list[dict]:
     return selected
 
 
+def _strict_parses(archive: zipfile.ZipFile, path: str) -> bool:
+    with archive.open(path) as binary:
+        try:
+            for _ in _StrictReader(binary):
+                pass
+        except csv.Error:
+            return False
+    return True
+
+
+class _StrictReader:
+    def __init__(self, binary):
+        self._reader = csv.reader(io.TextIOWrapper(binary, encoding="utf-8-sig", newline=""), strict=True)
+
+    @property
+    def line_num(self):
+        return self._reader.line_num
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self._reader)
+
+
+class _LineReader:
+    """Parse each physical line alone, for members whose quoting is broken.
+
+    A source field such as `"6號` opens a quote that never closes, so a strict
+    reader joins every later line into one field. Here a broken line yields its
+    raw text as a single value; the caller then records it as a failed row.
+    """
+
+    def __init__(self, binary):
+        self._lines = io.TextIOWrapper(binary, encoding="utf-8-sig", newline="")
+        self.line_num = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        line = next(self._lines)
+        self.line_num += 1
+        text = line.rstrip("\r\n")
+        if not text:
+            return []
+        try:
+            values = next(csv.reader([text], strict=True))
+        except csv.Error:
+            return [text]
+        return values
+
+
 def ingest(raw_dir: Path, manifest: dict, batches: list[str], work_dir: Path, *, batch_rows=1024, run_id=None, code_commit=None) -> Path:
     selected = select_inputs(manifest, batches)
     for entry in selected:
@@ -77,8 +130,12 @@ def ingest(raw_dir: Path, manifest: dict, batches: list[str], work_dir: Path, *,
                     for member in entry["members"]:
                         if member["category"] != category:
                             continue
+                        line_mode = not _strict_parses(archive, member["path"])
+                        if line_mode:
+                            report.setdefault("line_mode_members", []).append(
+                                {"batch": entry["batch"], "path": member["path"]})
                         with archive.open(member["path"]) as binary:
-                            reader = csv.reader(io.TextIOWrapper(binary, encoding="utf-8-sig", newline=""), strict=True)
+                            reader = (_LineReader if line_mode else _StrictReader)(binary)
                             header = next(reader)
                             if len(set(header)) != len(header) or any(not field for field in header):
                                 raise ValueError("Duplicate/empty CSV columns")

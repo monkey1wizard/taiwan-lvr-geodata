@@ -287,6 +287,32 @@ def repair_prepared_exchange(
     return state, exchange
 
 
+def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict]]:
+    """Carry sent batches and queries so they are not resent.
+
+    Earlier results, evidence and aliases are dropped. Completed batches go
+    back to submitted, so their stored responses can be imported again under
+    the current address checks.
+    """
+    manifest, _, stage_name = load_state(ledger)
+    if stage_name != "tgos-state":
+        raise ValueError("TGOS ledger must be a TGOS state")
+    paths = _artifact_paths(ledger, manifest)
+    batches = _table(paths.get("tgos-batch"))
+    queries = _table(paths.get("tgos-query"))
+    reopened = set()
+    for batch in batches:
+        if batch["status"] == "completed":
+            batch["status"] = "submitted"
+            batch["response_sha256"] = None
+            reopened.add(batch["batch_id"])
+    for query in queries:
+        if query["batch_id"] in reopened:
+            query["status"] = "submitted"
+            query["result_id"] = None
+    return batches, queries
+
+
 def prepare_tgos(
     source: Path,
     work_dir: Path,
@@ -297,6 +323,7 @@ def prepare_tgos(
     limit: int = DAILY_LIMIT,
     retry_fingerprints: list[str] | None = None,
     retry_reason: str | None = None,
+    ledger: Path | None = None,
     run_id: str | None = None,
 ):
     day = date.fromisoformat(service_date)
@@ -316,7 +343,11 @@ def prepare_tgos(
     results = _table(paths.get("tgos-result"))
     aliases = _table(paths.get("verified-alias"))
     events = _table(paths.get("alias-event"))
-    same_day_batches = [row for row in batches if row["service_date"] == service_date]
+    if ledger is not None:
+        if stage_name != "offline-state":
+            raise ValueError("A TGOS ledger can only seed a fresh offline state")
+        batches, queries = _carry_ledger(ledger)
+    same_day_batches =[row for row in batches if row["service_date"] == service_date]
     known_external_used = max(
         (row["external_used"] for row in same_day_batches), default=0
     )
@@ -489,19 +520,6 @@ def _tgos_coordinate(x: str, y: str):
     return lng, lat
 
 
-def _alias_would_cycle(aliases: list[dict], alias_key: str, target_key: str) -> bool:
-    mapping = {row["alias_key"]: row["target_key"] for row in aliases}
-    mapping[alias_key] = target_key
-    current = alias_key
-    seen = set()
-    while current in mapping:
-        if current in seen:
-            return True
-        seen.add(current)
-        current = mapping[current]
-    return False
-
-
 def _rebuild_resolution(pool_rows: list[dict], evidence_rows: list[dict], source_commit: str):
     coordinates = {}
     for row in evidence_rows:
@@ -587,7 +605,6 @@ def import_tgos(
     for line, row in enumerate(returned, 2):
         query = submitted[row["Address"]]
         reason = None
-        alias_target = None
         try:
             coordinate = _tgos_coordinate(row["Response_X"], row["Response_Y"])
             status = "succeeded" if coordinate else "failed"
@@ -598,30 +615,10 @@ def import_tgos(
                 target_key = building_key_v2(response_address)
                 if not target_key:
                     raise ValueError("TGOS response is not a complete address")
+                # A success flag or a shared district does not prove the same
+                # door number; only an identical address identity is adopted.
                 if target_key != query["building_key"]:
-                    target = json.loads(target_key[3:])
-                    original = json.loads(query["building_key"][3:])
-                    if (
-                        target["county"] != original["county"]
-                        or target["town"] != original["town"]
-                    ):
-                        raise ValueError("TGOS response crosses administrative scope")
-                    existing = next(
-                        (
-                            item
-                            for item in aliases
-                            if item["alias_key"] == query["building_key"]
-                        ),
-                        None,
-                    )
-                    if existing and existing["target_key"] != target_key:
-                        raise ValueError("TGOS alias conflicts with existing verified alias")
-                    if _alias_would_cycle(
-                        aliases, query["building_key"], target_key
-                    ):
-                        raise ValueError("TGOS alias would create a cycle")
-                    if not existing:
-                        alias_target = target_key
+                    raise ValueError("TGOS response address differs from submitted address")
         except (TypeError, ValueError) as exc:
             coordinate = None
             status = "rejected"
@@ -661,9 +658,6 @@ def import_tgos(
                     "source_row_number": line,
                 }
             )
-            if alias_target:
-                aliases.append({"key_version": "v2", "alias_key": query["building_key"], "target_key": alias_target, "evidence_ref": result_id})
-                events.append({"event_id": digest(["verified", query["building_key"], alias_target, result_id]), "key_version": "v2", "alias_key": query["building_key"], "target_key": alias_target, "action": "verified", "evidence_ref": result_id})
     results.extend(new_results)
     for row in queries:
         result = result_by_query.get(row["query_fingerprint"])

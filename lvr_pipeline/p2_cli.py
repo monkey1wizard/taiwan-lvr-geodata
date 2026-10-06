@@ -59,6 +59,7 @@ def configure(sub):
     p.add_argument("--limit", type=int, default=10_000)
     p.add_argument("--retry-query-fingerprint", action="append", default=[])
     p.add_argument("--retry-reason")
+    p.add_argument("--ledger", type=Path, help="Earlier TGOS state whose sent queries must not be resent")
     p.add_argument("--work-dir", type=Path, default=Path("data/work"))
     p.add_argument("--exchange-dir", type=Path, default=Path("data/tgos"))
     p.add_argument("--run-id")
@@ -184,6 +185,7 @@ def run(args):
             limit=args.limit,
             retry_fingerprints=args.retry_query_fingerprint,
             retry_reason=args.retry_reason,
+            ledger=args.ledger,
             run_id=args.run_id,
         )
         print(json.dumps({"path": str(path), "exchange": str(exchange), "completed": True}, ensure_ascii=False))
