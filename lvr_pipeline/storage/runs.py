@@ -262,6 +262,100 @@ class SnapshotStore:
         return manifest["bindings"] == bindings
 
 
+RUN_BINDING_KEYS = {"code_commit", "raw_manifest_sha256", "address_source_sha256", "rules_sha256",
+                    "contract_version", "key_version", "cutoff_yyyymm", "scope"}
+DEFAULT_RUNS_ROOT = Path(__file__).resolve().parents[2] / "data" / "runs"
+
+
+def _check_run_bindings(bindings: dict) -> dict:
+    if not isinstance(bindings, dict) or set(bindings) != RUN_BINDING_KEYS:
+        raise ValueError("Incomplete run bindings")
+    if not isinstance(bindings["code_commit"], str) or not re.fullmatch(r"[0-9a-f]{40}", bindings["code_commit"]):
+        raise ValueError("Invalid code commit")
+    for key in ["raw_manifest_sha256", "address_source_sha256", "rules_sha256"]:
+        if not isinstance(bindings[key], str) or not re.fullmatch(r"[0-9a-f]{64}", bindings[key]):
+            raise ValueError("Invalid binding hash")
+    for key in ["contract_version", "key_version", "scope"]:
+        if not isinstance(bindings[key], str) or not bindings[key]:
+            raise ValueError("Invalid run binding text")
+    if not isinstance(bindings["cutoff_yyyymm"], str) or not re.fullmatch(r"[0-9]{6}", bindings["cutoff_yyyymm"]):
+        raise ValueError("Invalid cutoff")
+    return bindings
+
+
+class RunStore:
+    """One run directory: an immutable manifest of bindings, one SnapshotStore per stage, and checkpoints.json."""
+
+    def __init__(self, root: Path, run_id: str, bindings: dict):
+        self.root = Path(root) / _identifier(run_id)
+        self.run_id = run_id
+        self.bindings = _check_run_bindings(bindings)
+
+    @classmethod
+    def open(cls, root: Path | None, run_id: str, bindings: dict) -> "RunStore":
+        run = cls(DEFAULT_RUNS_ROOT if root is None else root, run_id, bindings)
+        run.root.mkdir(parents=True, exist_ok=True)
+        with run._lock():
+            manifest = run.root / "manifest.json"
+            if not manifest.exists():
+                temporary = run.root / f"manifest-{uuid.uuid4().hex}.tmp"
+                _json_write(temporary, {"run_id": run_id, "bindings": run.bindings})
+                _replace(temporary, manifest)
+            elif _read_json(manifest)["bindings"] != run.bindings:
+                raise ValueError(f"Run {run_id} exists with different bindings; use a new run_id")
+        return run
+
+    @contextmanager
+    def _lock(self):
+        lock = self.root / ".run-lock"
+        try:
+            lock.mkdir()
+        except FileExistsError as exc:
+            raise RuntimeError("Run writer busy or stale lock; inspect before retry") from exc
+        try:
+            yield
+        finally:
+            lock.rmdir()
+
+    def stage(self, name: str) -> SnapshotStore:
+        return SnapshotStore(self.root / _identifier(name))
+
+    def checkpoints(self) -> dict:
+        path = self.root / "checkpoints.json"
+        return _read_json(path)["stages"] if path.exists() else {}
+
+    def commit(self, stage: str, snapshot_id: str) -> dict:
+        store = self.stage(stage)
+        directory = store.root / "snapshots" / _identifier(snapshot_id)
+        with self._lock():
+            manifest = store.verify(directory)
+            if manifest["snapshot_id"] != snapshot_id:
+                raise ValueError("Snapshot identity mismatch")
+            entry = {"snapshot_id": snapshot_id, "manifest_sha256": sha256_file(directory / "manifest.json")}
+            stages = {**self.checkpoints(), stage: entry}
+            temporary = self.root / f"checkpoints-{uuid.uuid4().hex}.tmp"
+            _json_write(temporary, {"run_id": self.run_id, "stages": stages})
+            _replace(temporary, self.root / "checkpoints.json")
+            return entry
+
+    def reusable(self, stage: str, bindings: dict) -> bool:
+        """True only if the stage is checkpointed, the bindings equal the run's, and the files re-hash cleanly."""
+        try:
+            if _check_run_bindings(bindings) != self.bindings:
+                return False
+            entry = self.checkpoints().get(_identifier(stage))
+            if entry is None:
+                return False
+            store = self.stage(stage)
+            directory = store.root / "snapshots" / _identifier(entry["snapshot_id"])
+            if sha256_file(directory / "manifest.json") != entry["manifest_sha256"]:
+                return False
+            store.verify(directory)
+            return True
+        except (ValueError, OSError, KeyError):
+            return False
+
+
 ROOT = Path(__file__).resolve().parents[2]
 PRODUCER_CONFIGS = {}
 
