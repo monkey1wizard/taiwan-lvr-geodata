@@ -16,37 +16,14 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-# Every `from lvr_pipeline... import` used by tests/, scripts/ and lvr_pipeline/
-# (.github has none), plus the schema helpers R-03 must keep re-exporting.
+# Interfaces R-02 (docs/records/R02盤點.md, 程式去向) marks 保留相容, plus the contracts
+# re-exports required by plan 5.7 and the tx_date function named in AGENTS.md.
 RETAINED_SYMBOLS = {
-    "lvr_pipeline": ["snapshots"],
     "lvr_pipeline.address": ["_CITY_RE", "_dedup_prefix", "arab_to_cjk", "building_key", "building_key_v2",
                              "is_garbled", "norm", "parse"],
-    "lvr_pipeline.address_patch": ["_split_legacy", "export_address_patch", "verify_address_patch"],
-    "lvr_pipeline.address_pool": ["build_pool"],
-    "lvr_pipeline.address_state": ["load_p2", "resolve_offline"],
-    "lvr_pipeline.address_v2": ["building_key_v2"],
-    "lvr_pipeline.backfill": ["backfill_output"],
     "lvr_pipeline.contracts": ["SCHEMAS", "SCHEMA_VERSION", "component_id", "observation_id", "schema_validator",
                               "validate_relations", "validate_rows"],
-    "lvr_pipeline.converted": ["export_converted"],
-    "lvr_pipeline.distribution": ["GitHubRelease", "commit_pointer", "fetch_output", "publish_release"],
-    "lvr_pipeline.export": ["geometry", "read_wkb", "wkb"],
-    "lvr_pipeline.garbled": ["fix_garbled", "load_garbled"],
-    "lvr_pipeline.garbled_resolve": ["_find_candidates", "_make_road_pattern", "build_offline_road_set",
-                                     "load_35321", "resolve"],
-    "lvr_pipeline.ingest": ["ingest"],
-    "lvr_pipeline.normalize": ["normalize", "normalize_address", "normalize_record"],
-    "lvr_pipeline.offline_lookup": ["AdministrativeNames", "build_index"],
-    "lvr_pipeline.p2_cli": ["_tgos_log_date"],
-    "lvr_pipeline.packaging": ["extract_handoff", "package_output", "verify_output", "write_json"],
-    "lvr_pipeline.parquet_io": ["BatchWriter", "SCHEMAS", "inspect_parquet", "rows", "verify_relations"],
-    "lvr_pipeline.processing": ["digest", "load_snapshot"],
-    "lvr_pipeline.snapshots": ["SnapshotStore"],
-    "lvr_pipeline.sources": ["CATEGORIES", "TRANSACTION_MEMBER", "describe_zip", "sha256_file", "verify_raw"],
-    "lvr_pipeline.tgos": ["_artifact_paths", "_round_robin", "_write_state", "import_tgos", "load_state",
-                          "prepare_tgos", "repair_prepared_exchange", "revoke_alias", "transition_batch"],
-    "lvr_pipeline.tx_date": ["roc_to_tx_yyyymm", "validated_roc_to_tx_yyyymm"],
+    "lvr_pipeline.tx_date": ["validated_roc_to_tx_yyyymm"],
 }
 
 SUBCOMMANDS = {
