@@ -45,10 +45,10 @@ def peak_rss_bytes() -> int:
 def bindings(stage: str, parameters: dict, input_hashes: list[str], code_commit: str | None = None) -> dict:
     if code_commit is None:
         code_commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
-    files = [*sorted((ROOT / "lvr_pipeline").glob("*.py")), *sorted((ROOT / "schemas").glob("*.json")), ROOT / "uv.lock"]
+    files = [*sorted((ROOT / "lvr_pipeline").glob("*.py")), *sorted((ROOT / "lvr_pipeline" / "contracts").glob("*.py")), *sorted((ROOT / "lvr_pipeline" / "contracts" / "json").glob("*.json")), ROOT / "uv.lock"]
     # Text normalization makes source fingerprints portable across CRLF/LF checkouts.
     code = {file.relative_to(ROOT).as_posix(): hashlib.sha256(file.read_text(encoding="utf-8").encode("utf-8")).hexdigest() for file in files}
-    dirty = bool(subprocess.check_output(["git", "-C", str(ROOT), "status", "--porcelain", "--", "lvr_pipeline", "schemas", "uv.lock"], text=True).strip())
+    dirty = bool(subprocess.check_output(["git", "-C", str(ROOT), "status", "--porcelain", "--", "lvr_pipeline", "uv.lock"], text=True).strip())
     config = {"stage": stage, "parameters": parameters, "producer_files": code, "working_tree_source_dirty": dirty}
     fingerprint = digest(config)
     PRODUCER_CONFIGS[fingerprint] = config

@@ -255,7 +255,7 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline verify-converted --input
 
 ## 資料規格
 
-本文件說明既有資料語意與重建必須保留的契約。現行 JSON 結構位於 [schemas](../schemas)，Arrow 表格契約位於 [p2_contracts.py](../lvr_pipeline/p2_contracts.py)。企劃中的 `lvr_pipeline/contracts/` 尚未建立，不可當成現行路徑。
+本文件說明既有資料語意與重建必須保留的契約。現行 JSON 結構位於 [contracts/json](../lvr_pipeline/contracts/json)，Arrow 表格契約位於 [p2_contracts.py](../lvr_pipeline/p2_contracts.py)。`lvr_pipeline/contracts/` 已於 R03-3 建立，目前只含驗證函式與 JSON Schema；Arrow 結構仍在 `p2_contracts.py` 與 `parquet_io.py`。
 
 ### 來源觀測與識別
 

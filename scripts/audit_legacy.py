@@ -100,7 +100,10 @@ def git_files(root: Path) -> list[str]:
 
 
 def module_names(path: Path) -> set[str]:
-    return {item.name for item in path.glob("*.py") if item.is_file()}
+    # A module later converted to a package (e.g. contracts/) still counts as the same top-level module.
+    names = {item.name for item in path.glob("*.py") if item.is_file()}
+    names |= {f"{item.name}.py" for item in path.iterdir() if item.is_dir() and (item / "__init__.py").is_file()}
+    return names
 
 
 def heading_anchors(path: Path) -> set[str]:

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-SCHEMAS = Path(__file__).resolve().parents[1] / "schemas"
+SCHEMAS = Path(__file__).parent / "json"
 SCHEMA_VERSION = "1.0"
 
 
@@ -48,14 +48,14 @@ def validate_rows(rows: list[dict], schema_name: str) -> None:
         if schema_name == "observation":
             if row["raw_record_id"] != observation_id(row["input_sha256"], row["member_path"], row["source_row_number"]):
                 raise ValueError("Observation identity does not match source lineage")
-            from .tx_date import validated_roc_to_tx_yyyymm
+            from ..tx_date import validated_roc_to_tx_yyyymm
             expected_month = validated_roc_to_tx_yyyymm(row["tx_date_raw"], run_cutoff_yyyymm=row["run_cutoff_yyyymm"])
             if row["tx_yyyymm"] != expected_month:
                 raise ValueError("Transaction month does not match the fixed date rule")
         if schema_name == "address-component":
             if row["component_id"] != component_id(row["raw_record_id"], row["ordinal"]):
                 raise ValueError("Component identity mismatch")
-            from .address import building_key_v2
+            from ..address import building_key_v2
             # A component held for review has no key until its members are proven.
             expected = building_key_v2(row["normalized_address"]) if row["expansion_status"] == "confirmed" else None
             if row["building_key"] != expected:

@@ -70,9 +70,8 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline fetch-output --manifest-
 taiwan-lvr-geodata/
 ├── README.md          唯一專案入口與下載說明
 ├── CONTRIBUTING.md    開發、驗證、發布與復原
-├── lvr_pipeline/      資料處理程式與命令
+├── lvr_pipeline/      資料處理程式與命令（contracts/json/ 為現行 JSON Schema）
 ├── config/            設定範例
-├── schemas/           現行資料契約
 ├── scripts/           安裝、樣本與驗證工具
 ├── tests/             合成資料測試
 ├── docs/              操作文件、規格、計畫與歷史證據
