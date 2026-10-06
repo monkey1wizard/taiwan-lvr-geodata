@@ -8,7 +8,7 @@
 | --- | --- |
 | 日期、執行者 | 2026-10-07，Codex，Asia/Taipei |
 | 工作 R 編號、驗收 V 編號 | 快速資料路徑及 R-09 前置修正。不是 V-12 完整驗收 |
-| 程式提交、規則與契約版本 | 實作提交 `d8766d5223fb1534f7e7874364bd8f7474294411`。地址鍵 `building_key_v2` |
+| 程式提交、規則與契約版本 | 日期解耦提交 `d8766d5223fb1534f7e7874364bd8f7474294411`；資料夾標準提交 `85195fd43b8706605f9dfdd97094146c0696aa15`。地址鍵 `building_key_v2` |
 | 環境、工具版本 | Windows 11，專案 `.venv` Python |
 | 輸入位置、固定版本、SHA-256 | `data/work/offline-state/snapshots/fast-all58-v5-offline`，manifest SHA-256 `95ffc9edc1c8a7c0101b7d999e37cfd1a5869b4b7e237d245876d17600a2bb98` |
 | 選定批次、類別、月份、截止日期 | 全歷史離線狀態中的未命中地址。日期紀錄為 `2026-10-07`，只用於輸出資料夾名稱 |
@@ -26,6 +26,7 @@
 | CSV、manifest 及 Parquet 欄位核對 | 日期只存在獨立紀錄及資料夾名稱 | CSV 10,000 筆且地址不重複。manifest 與 `tgos-batch` 沒有日期欄位 | 0 | pass | 同上 |
 | `rtk .venv/Scripts/python.exe -m pytest tests/test_p3_tgos.py -q` | 新路徑規則與既有 TGOS 行為通過 | 12 passed in 78.74s | 0 | pass | 2026-10-07 路徑標準修正的終端輸出 |
 | `rtk .venv/Scripts/python.exe -m pytest` | 全部合成測試通過 | 230 passed in 220.08s | 0 | pass | 2026-10-07 路徑標準修正的終端輸出 |
+| `bash scripts/setup.sh` | Linux 安裝及合成測試通過 | GitHub Actions 在 Ubuntu 完成，工作耗時 1m54s | 0 | pass | [run 37499201169](https://github.com/monkey1wizard/taiwan-lvr-geodata/actions/runs/37499201169)，驗證提交 `85195fd43b8706605f9dfdd97094146c0696aa15` |
 | 核對 `data/tgos/20261007-0358ee6e90df/` | 搬移後內容與批次識別不變 | `addresses.csv` 516,746 bytes，SHA-256 仍為 `a6b3cc96d73ab95ddbf1d88ec2ac2c45ee86ee38d89ddcc805508e2ea832f734`；manifest 批次 ID 仍為 `tgos-0358ee6e90df` | 0 | pass | 本機交換目錄 |
 
 ## 資料核對與資源
