@@ -9,7 +9,7 @@ import duckdb
 
 from .address import building_key_v2
 from .offline_lookup import load_pinned_source
-from .parquet_io import BatchWriter, rows
+from .parquet_io import BatchWriter, duckdb_config, rows
 from .processing import Stage, bindings, digest, load_snapshot
 from .sources import sha256_file
 
@@ -42,7 +42,7 @@ def build_pool(
         if index_report["address_source_commit"] != descriptor["commit"]:
             raise ValueError("Candidate evidence pin mismatch")
         input_hashes.append(sha256_file(Path(index_path) / "manifest.json"))
-        probe_db = duckdb.connect(config={"threads": "2", "memory_limit": "256MB"})
+        probe_db = duckdb.connect(config=duckdb_config())
         probe_db.read_parquet(
             str(Path(index_path) / "offline_rows.parquet")
         ).create_view("evidence")
@@ -128,12 +128,7 @@ def build_pool(
     ]
     with tempfile.TemporaryDirectory(prefix="pool-", dir=stage.build) as spill:
         with duckdb.connect(
-            config={
-                "threads": "2",
-                "memory_limit": "256MB",
-                "temp_directory": spill,
-                "max_temp_directory_size": "1GiB",
-            }
+            config=duckdb_config(spill)
         ) as db:
             db.read_parquet(str(occurrence.path)).create_view("occurrence")
             db.read_parquet(observation_paths).create_view("observations")

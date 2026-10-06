@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import tempfile
 
@@ -149,12 +150,21 @@ def inspect_parquet(path: Path, dataset: str) -> int:
     return count
 
 
+def duckdb_config(spill=None) -> dict:
+    """DuckDB limits; defaults stay small, full-history runs may raise them."""
+    config = {"threads": os.environ.get("LVR_DUCKDB_THREADS", "2"),
+              "memory_limit": os.environ.get("LVR_DUCKDB_MEMORY_LIMIT", "256MB")}
+    if spill is not None:
+        config["temp_directory"] = str(spill)
+        config["max_temp_directory_size"] = os.environ.get("LVR_DUCKDB_TEMP_LIMIT", "1GiB")
+    return config
+
+
 def verify_relations(groups: dict[str, list[Path]], *, source_scope: dict | None = None, cutoff: int | None = None) -> dict:
     """Validate across all partitions without collecting IDs or rows in Python."""
     counts = {}
     with tempfile.TemporaryDirectory(prefix="lvr-relations-") as spill:
-        with duckdb.connect(config={"threads": "2", "memory_limit": "256MB", "temp_directory": spill,
-                                    "max_temp_directory_size": "1GiB"}) as db:
+        with duckdb.connect(config=duckdb_config(spill)) as db:
             for dataset, paths in groups.items():
                 name = dataset.replace("-", "_")
                 db.read_parquet([str(path) for path in paths]).create_view(name)

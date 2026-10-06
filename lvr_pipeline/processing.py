@@ -81,7 +81,8 @@ class Stage:
                   "build_elapsed_seconds": round(time.perf_counter() - self.start, 6),
                   "build_process_peak_rss_bytes": peak_rss_bytes(),
                   "artifact_bytes": sum(path.stat().st_size for _, path, _, _ in artifacts),
-                  "validation_duckdb_memory_limit": "256MB", "validation_duckdb_temp_limit": "1GiB"}
+                  "validation_duckdb_memory_limit": os.environ.get("LVR_DUCKDB_MEMORY_LIMIT", "256MB"),
+                  "validation_duckdb_temp_limit": os.environ.get("LVR_DUCKDB_TEMP_LIMIT", "1GiB")}
         report_path = self.build / "quality.json"
         report_path.write_text(canonical_json(report) + "\n", encoding="utf-8")
         for name, path, dataset, count in artifacts:

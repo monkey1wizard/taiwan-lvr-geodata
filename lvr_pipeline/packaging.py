@@ -14,6 +14,7 @@ import zipfile
 import duckdb
 
 from .address_state import load_p2
+from .parquet_io import duckdb_config
 from .export import export_month, verify_month
 from .processing import (
     bindings,
@@ -121,12 +122,7 @@ def package_output(
     assets.append(artifact(staging, staging / "NOTICE.json", kind="notice"))
     with tempfile.TemporaryDirectory(prefix="export-", dir=staging) as spill:
         with duckdb.connect(
-            config={
-                "threads": "2",
-                "memory_limit": "256MB",
-                "temp_directory": spill,
-                "max_temp_directory_size": "1GiB",
-            }
+            config=duckdb_config(spill)
         ) as db:
             observations = [
                 str(converted / x["path"])

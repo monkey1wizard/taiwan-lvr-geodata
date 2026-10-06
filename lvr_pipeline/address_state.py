@@ -6,7 +6,7 @@ import tempfile
 
 import duckdb
 
-from .parquet_io import BatchWriter
+from .parquet_io import BatchWriter, duckdb_config
 from .processing import Stage, bindings, digest
 from .snapshots import SnapshotStore
 from .sources import sha256_file
@@ -71,12 +71,7 @@ def resolve_offline(
     }
     with tempfile.TemporaryDirectory(prefix="state-", dir=stage.build) as spill:
         with duckdb.connect(
-            config={
-                "threads": "2",
-                "memory_limit": "256MB",
-                "temp_directory": spill,
-                "max_temp_directory_size": "1GiB",
-            }
+            config=duckdb_config(spill)
         ) as db:
             db.read_parquet(
                 str(Path(pool_path) / "unique_addresses.parquet")
