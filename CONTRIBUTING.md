@@ -11,7 +11,7 @@
 | 現行位置 | 責任 | 重建方向 |
 | --- | --- | --- |
 | `lvr_pipeline/` | 解析、正規化、地址處理、輸出及 CLI | 依企劃拆分責任，共用核心規則 |
-| `lvr_pipeline/contracts/`、`p2_contracts.py` | JSON 與 Arrow 契約 | 收斂至 contracts |
+| `lvr_pipeline/contracts/` | JSON 與 Arrow 契約 | 收斂至 contracts |
 | `data/sources/`、`data/reference/`、`data/registry/` | 來源描述與小型規則 | 經盤點後移至 config |
 | `data/work/` | 既有階段快照 | 定義版本及續跑契約後遷移 |
 | `scripts/`、`tests/` | 安裝、驗證與合成測試 | 保留有效驗證，按責任整理 |

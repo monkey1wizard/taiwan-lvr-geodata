@@ -36,7 +36,6 @@ CURRENT_MODULES = {
     "normalize.py",
     "offline_lookup.py",
     "p2_cli.py",
-    "p2_contracts.py",
     "packaging.py",
     "parquet_io.py",
     "processing.py",

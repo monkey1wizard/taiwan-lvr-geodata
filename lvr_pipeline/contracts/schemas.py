@@ -1,14 +1,46 @@
-"""Typed offline state contracts, independent of consumer geometry formats."""
+"""Single source of Arrow dataset schemas and primary keys.
 
-import json
-import math
+``P1_DATASETS`` names the transaction datasets; every other name is an offline,
+address or TGOS dataset. No name appears in both groups.
+"""
+from __future__ import annotations
 
 import pyarrow as pa
 
-from .parquet_io import _schema
+def _schema(name, fields):
+    return pa.schema([pa.field(key, kind, nullable=nullable) for key, kind, nullable in fields],
+                     metadata={b"lvr.dataset": name.encode(), b"lvr.schema_version": b"1.0"})
+
 
 S, I, F, B = pa.string(), pa.int64(), pa.float64(), pa.bool_()
-SCHEMAS = {
+P1_SCHEMAS = {
+    "ingest-record": _schema("ingest-record", [(key, kind, False) for key, kind in [
+        ("raw_record_id", S), ("input_sha256", S), ("src_batch", S), ("category", S),
+        ("member_path", S), ("source_row_number", I), ("source_line_end", I),
+        ("raw_fields_json", S), ("raw_values_json", S), ("header_json", S), ("row_status", S)]]),
+    "observation": _schema("observation", [
+        ("raw_record_id", S, False), ("schema_version", S, False), ("category", S, False),
+        ("src_batch", S, False), ("source_serial", S, True), ("input_sha256", S, False),
+        ("member_path", S, False), ("source_row_number", I, False), ("record_grain", S, False),
+        ("transaction_key", S, True), ("raw_address", S, False), ("tx_date_raw", S, True),
+        ("tx_yyyymm", I, True), ("run_cutoff_yyyymm", I, False), ("amount_minor", I, True),
+        ("area_m2_decimal", S, True), ("props_json", S, False), ("parse_status", S, False),
+        ("currency", S, False), ("amount_scale", I, False)]),
+    "address-component": _schema("address-component", [
+        ("raw_record_id", S, False), ("component_id", S, False), ("ordinal", I, False),
+        ("normalized_address", S, False), ("key_version", S, False), ("building_key", S, True),
+        ("legacy_building_key", S, True), ("expansion_status", S, False)]),
+    "exclusion": _schema("exclusion", [("raw_record_id", S, False), ("reason", S, False), ("source_ref", S, False)]),
+    "diagnostic": _schema("diagnostic", [("raw_record_id", S, False), ("code", S, False),
+                                           ("detail", S, False), ("source_ref", S, False)]),
+    "disposition": _schema("disposition", [(key, kind, False) for key, kind in [
+        ("raw_record_id", S), ("input_sha256", S), ("src_batch", S), ("category", S),
+        ("member_path", S), ("source_row_number", I), ("source_line_end", I),
+        ("raw_fields_json", S), ("raw_values_json", S), ("header_json", S), ("row_status", S),
+        ("outcome", S), ("reason", S)]])
+}
+
+OFFLINE_SCHEMAS = {
     "offline-row": _schema(
         "offline-row",
         [
@@ -215,122 +247,21 @@ PRIMARY = {
     "address-patch-provenance": ["patch_id", "evidence_id"],
     "address-patch-quarantine": ["candidate_id"],
 }
-SCHEMAS["unmatched-address"] = _schema(
+OFFLINE_SCHEMAS["unmatched-address"] = _schema(
     "unmatched-address",
-    [(f.name, f.type, f.nullable) for f in SCHEMAS["address-result"]],
+    [(f.name, f.type, f.nullable) for f in OFFLINE_SCHEMAS["address-result"]],
 )
 PRIMARY["unmatched-address"] = PRIMARY["address-result"]
 
-
-def validate_rows(values, dataset):
-    if dataset == "unmatched-address":
-        if any(row["status"] == "located" for row in values):
-            raise ValueError("Located row in unmatched pool")
-        dataset = "address-result"
-    for row in values:
-        schema = SCHEMAS[dataset]
-        if any(row[f.name] is None and not f.nullable for f in schema):
-            raise ValueError("Null in offline contract")
-        if "key_version" in row and row["key_version"] != "v2":
-            raise ValueError("Unsupported offline key version")
-        if row.get("building_key") is not None:
-            if not row["building_key"].startswith("v2:"):
-                raise ValueError("Invalid offline key")
-            key = json.loads(row["building_key"][3:])
-            row_county = row.get("county_code", row.get("county"))
-            if row_county is not None and key["county"] != row_county:
-                raise ValueError("Offline key county differs")
-        if dataset == "offline-row" and row["validity"] not in {
-            "valid",
-            "invalid_address",
-            "invalid_admin",
-            "invalid_coordinate",
-        }:
-            raise ValueError("Invalid offline evidence status")
-        if dataset == "address-result" and row["status"] not in {
-            "located",
-            "conflict",
-            "unmatched",
-            "outside_scope",
-        }:
-            raise ValueError("Invalid address resolution status")
-        if dataset == "address-result":
-            expected = (
-                "located"
-                if row["coordinate_count"] == 1
-                else "conflict"
-                if row["coordinate_count"] > 1
-                else None
-            )
-            if (
-                row["coordinate_count"] < 0
-                or row["evidence_count"] < row["coordinate_count"]
-            ):
-                raise ValueError("Invalid evidence counts")
-            if (expected and row["status"] != expected) or (
-                not expected and row["status"] not in {"unmatched", "outside_scope"}
-            ):
-                raise ValueError("Resolution and evidence counts disagree")
-            if (row["status"] == "located") != (row["evidence_id"] is not None):
-                raise ValueError("Located evidence required")
-        if "lng" in row:
-            coordinate = row["lng"], row["lat"]
-            if (coordinate[0] is None) != (coordinate[1] is None):
-                raise ValueError("Partial coordinate pair")
-            if coordinate[0] is not None and not valid_coordinate(*coordinate):
-                raise ValueError("Invalid coordinate")
-            if dataset == "address-result" and (row["status"] == "located") != (
-                coordinate[0] is not None
-            ):
-                raise ValueError("Resolution and coordinate disagree")
-        if dataset == "tgos-batch":
-            if row["status"] not in {
-                "prepared",
-                "submission_unknown",
-                "submitted",
-                "cancelled",
-                "completed",
-            }:
-                raise ValueError("Invalid TGOS batch status")
-            if not 1 <= row["address_count"] <= 10_000:
-                raise ValueError("Invalid TGOS batch size")
-        if dataset == "tgos-query" and row["status"] not in {
-            "prepared",
-            "submission_unknown",
-            "submitted",
-            "succeeded",
-            "failed",
-            "rejected",
-            "conflict",
-            "cancelled",
-        }:
-            raise ValueError("Invalid TGOS query status")
-        if dataset == "tgos-result" and row["status"] not in {
-            "succeeded",
-            "failed",
-            "rejected",
-        }:
-            raise ValueError("Invalid TGOS result status")
-        if dataset == "alias-event" and row["action"] not in {"verified", "revoked"}:
-            raise ValueError("Invalid alias event")
-        if dataset == "address-patch":
-            if row["key_version"] != "v2" or not row["building_key"].startswith("v2:"):
-                raise ValueError("Invalid address patch key")
-            if not all(row[key] for key in ["patch_id", "full_addr", "county", "town", "village", "number"]):
-                raise ValueError("Address patch lacks required administrative evidence")
-            if not valid_coordinate(row["x"], row["y"]):
-                raise ValueError("Invalid address patch coordinate")
-        if dataset == "address-patch-provenance":
-            if row["source_kind"] != "tgos_result":
-                raise ValueError("Unsupported address patch source")
-        if dataset == "address-patch-quarantine" and not row["reason"]:
-            raise ValueError("Address patch quarantine reason required")
+overlap = set(P1_SCHEMAS) & set(OFFLINE_SCHEMAS)
+if overlap:
+    raise RuntimeError(f"Dataset defined twice: {sorted(overlap)}")
+P1_DATASETS = frozenset(P1_SCHEMAS)
+SCHEMAS = {**P1_SCHEMAS, **OFFLINE_SCHEMAS}
+del P1_SCHEMAS, OFFLINE_SCHEMAS
 
 
-def valid_coordinate(lng, lat):
-    return (
-        math.isfinite(lng)
-        and math.isfinite(lat)
-        and -180 <= lng <= 180
-        and -90 <= lat <= 90
-    )
+def dataset_schema(name):
+    if name not in SCHEMAS:
+        raise ValueError("Unknown dataset schema")
+    return SCHEMAS[name]

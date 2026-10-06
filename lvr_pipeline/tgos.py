@@ -19,7 +19,7 @@ from .parquet_io import BatchWriter, rows
 from .processing import Stage, bindings, canonical_json, digest
 from .snapshots import SnapshotStore
 from .sources import sha256_file
-from .p2_contracts import valid_coordinate
+from .contracts.validate import valid_coordinate
 
 DAILY_LIMIT = 10_000
 TAIWAN_BOUNDS = (118.0, 123.5, 21.5, 26.5)

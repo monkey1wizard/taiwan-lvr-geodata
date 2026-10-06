@@ -6,10 +6,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from functools import lru_cache
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
+
+from .schemas import SCHEMAS as DATASET_SCHEMAS
 
 SCHEMAS = Path(__file__).parent / "json"
 SCHEMA_VERSION = "1.0"
@@ -79,3 +82,117 @@ def validate_relations(observations: list[dict], components: list[dict], exclusi
         if identity in ordinals:
             raise ValueError("Duplicate expansion ordinal")
         ordinals.add(identity)
+
+
+def validate_dataset_rows(values, dataset):
+    if dataset == "unmatched-address":
+        if any(row["status"] == "located" for row in values):
+            raise ValueError("Located row in unmatched pool")
+        dataset = "address-result"
+    for row in values:
+        schema = DATASET_SCHEMAS[dataset]
+        if any(row[f.name] is None and not f.nullable for f in schema):
+            raise ValueError("Null in offline contract")
+        if "key_version" in row and row["key_version"] != "v2":
+            raise ValueError("Unsupported offline key version")
+        if row.get("building_key") is not None:
+            if not row["building_key"].startswith("v2:"):
+                raise ValueError("Invalid offline key")
+            key = json.loads(row["building_key"][3:])
+            row_county = row.get("county_code", row.get("county"))
+            if row_county is not None and key["county"] != row_county:
+                raise ValueError("Offline key county differs")
+        if dataset == "offline-row" and row["validity"] not in {
+            "valid",
+            "invalid_address",
+            "invalid_admin",
+            "invalid_coordinate",
+        }:
+            raise ValueError("Invalid offline evidence status")
+        if dataset == "address-result" and row["status"] not in {
+            "located",
+            "conflict",
+            "unmatched",
+            "outside_scope",
+        }:
+            raise ValueError("Invalid address resolution status")
+        if dataset == "address-result":
+            expected = (
+                "located"
+                if row["coordinate_count"] == 1
+                else "conflict"
+                if row["coordinate_count"] > 1
+                else None
+            )
+            if (
+                row["coordinate_count"] < 0
+                or row["evidence_count"] < row["coordinate_count"]
+            ):
+                raise ValueError("Invalid evidence counts")
+            if (expected and row["status"] != expected) or (
+                not expected and row["status"] not in {"unmatched", "outside_scope"}
+            ):
+                raise ValueError("Resolution and evidence counts disagree")
+            if (row["status"] == "located") != (row["evidence_id"] is not None):
+                raise ValueError("Located evidence required")
+        if "lng" in row:
+            coordinate = row["lng"], row["lat"]
+            if (coordinate[0] is None) != (coordinate[1] is None):
+                raise ValueError("Partial coordinate pair")
+            if coordinate[0] is not None and not valid_coordinate(*coordinate):
+                raise ValueError("Invalid coordinate")
+            if dataset == "address-result" and (row["status"] == "located") != (
+                coordinate[0] is not None
+            ):
+                raise ValueError("Resolution and coordinate disagree")
+        if dataset == "tgos-batch":
+            if row["status"] not in {
+                "prepared",
+                "submission_unknown",
+                "submitted",
+                "cancelled",
+                "completed",
+            }:
+                raise ValueError("Invalid TGOS batch status")
+            if not 1 <= row["address_count"] <= 10_000:
+                raise ValueError("Invalid TGOS batch size")
+        if dataset == "tgos-query" and row["status"] not in {
+            "prepared",
+            "submission_unknown",
+            "submitted",
+            "succeeded",
+            "failed",
+            "rejected",
+            "conflict",
+            "cancelled",
+        }:
+            raise ValueError("Invalid TGOS query status")
+        if dataset == "tgos-result" and row["status"] not in {
+            "succeeded",
+            "failed",
+            "rejected",
+        }:
+            raise ValueError("Invalid TGOS result status")
+        if dataset == "alias-event" and row["action"] not in {"verified", "revoked"}:
+            raise ValueError("Invalid alias event")
+        if dataset == "address-patch":
+            if row["key_version"] != "v2" or not row["building_key"].startswith("v2:"):
+                raise ValueError("Invalid address patch key")
+            if not all(row[key] for key in ["patch_id", "full_addr", "county", "town", "village", "number"]):
+                raise ValueError("Address patch lacks required administrative evidence")
+            if not valid_coordinate(row["x"], row["y"]):
+                raise ValueError("Invalid address patch coordinate")
+        if dataset == "address-patch-provenance":
+            if row["source_kind"] != "tgos_result":
+                raise ValueError("Unsupported address patch source")
+        if dataset == "address-patch-quarantine" and not row["reason"]:
+            raise ValueError("Address patch quarantine reason required")
+
+
+def valid_coordinate(lng, lat):
+    return (
+        math.isfinite(lng)
+        and math.isfinite(lat)
+        and -180 <= lng <= 180
+        and -90 <= lat <= 90
+    )

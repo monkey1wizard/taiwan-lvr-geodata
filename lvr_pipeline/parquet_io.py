@@ -11,49 +11,11 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from .contracts import observation_id, validate_rows
+from .contracts.schemas import P1_DATASETS, PRIMARY, SCHEMAS as ALL_SCHEMAS, dataset_schema
+from .contracts.validate import validate_dataset_rows
 
-
-def _schema(name, fields):
-    return pa.schema([pa.field(key, kind, nullable=nullable) for key, kind, nullable in fields],
-                     metadata={b"lvr.dataset": name.encode(), b"lvr.schema_version": b"1.0"})
-
-
-S, I = pa.string(), pa.int64()
-SCHEMAS = {
-    "ingest-record": _schema("ingest-record", [(key, kind, False) for key, kind in [
-        ("raw_record_id", S), ("input_sha256", S), ("src_batch", S), ("category", S),
-        ("member_path", S), ("source_row_number", I), ("source_line_end", I),
-        ("raw_fields_json", S), ("raw_values_json", S), ("header_json", S), ("row_status", S)]]),
-    "observation": _schema("observation", [
-        ("raw_record_id", S, False), ("schema_version", S, False), ("category", S, False),
-        ("src_batch", S, False), ("source_serial", S, True), ("input_sha256", S, False),
-        ("member_path", S, False), ("source_row_number", I, False), ("record_grain", S, False),
-        ("transaction_key", S, True), ("raw_address", S, False), ("tx_date_raw", S, True),
-        ("tx_yyyymm", I, True), ("run_cutoff_yyyymm", I, False), ("amount_minor", I, True),
-        ("area_m2_decimal", S, True), ("props_json", S, False), ("parse_status", S, False),
-        ("currency", S, False), ("amount_scale", I, False)]),
-    "address-component": _schema("address-component", [
-        ("raw_record_id", S, False), ("component_id", S, False), ("ordinal", I, False),
-        ("normalized_address", S, False), ("key_version", S, False), ("building_key", S, True),
-        ("legacy_building_key", S, True), ("expansion_status", S, False)]),
-    "exclusion": _schema("exclusion", [("raw_record_id", S, False), ("reason", S, False), ("source_ref", S, False)]),
-    "diagnostic": _schema("diagnostic", [("raw_record_id", S, False), ("code", S, False),
-                                           ("detail", S, False), ("source_ref", S, False)]),
-    "disposition": _schema("disposition", [(key, kind, False) for key, kind in [
-        ("raw_record_id", S), ("input_sha256", S), ("src_batch", S), ("category", S),
-        ("member_path", S), ("source_row_number", I), ("source_line_end", I),
-        ("raw_fields_json", S), ("raw_values_json", S), ("header_json", S), ("row_status", S),
-        ("outcome", S), ("reason", S)]])
-}
-
-
-def dataset_schema(name):
-    if name in SCHEMAS:
-        return SCHEMAS[name]
-    from .p2_contracts import SCHEMAS as offline_schemas
-    if name not in offline_schemas:
-        raise ValueError("Unknown dataset schema")
-    return offline_schemas[name]
+# Retained symbol: the transaction (P1) datasets only; all datasets live in contracts.schemas.
+SCHEMAS = {name: ALL_SCHEMAS[name] for name in P1_DATASETS}
 
 
 class BatchWriter:
@@ -121,9 +83,8 @@ def inspect_parquet(path: Path, dataset: str) -> int:
     count = 0
     for batch in batches(path):
         values = batch.to_pylist()
-        if dataset not in SCHEMAS:
-            from .p2_contracts import validate_rows as validate_offline
-            validate_offline(values,dataset)
+        if dataset not in P1_DATASETS:
+            validate_dataset_rows(values,dataset)
         elif dataset in {"ingest-record", "disposition"}:
             for row in values:
                 if row["raw_record_id"] != observation_id(row["input_sha256"], row["member_path"], row["source_row_number"]):
@@ -169,8 +130,7 @@ def verify_relations(groups: dict[str, list[Path]], *, source_scope: dict | None
                 name = dataset.replace("-", "_")
                 db.read_parquet([str(path) for path in paths]).create_view(name)
                 counts[dataset] = db.sql(f'SELECT count(*) FROM "{name}"').fetchone()[0]
-                if dataset not in SCHEMAS:
-                    from .p2_contracts import PRIMARY
+                if dataset not in P1_DATASETS:
                     columns=','.join('"'+key+'"' for key in PRIMARY[dataset])
                     if db.sql(f'SELECT count(*) FROM (SELECT {columns} FROM "{name}" GROUP BY {columns} HAVING count(*) > 1)').fetchone()[0]:
                         raise ValueError(f"Duplicate offline identity in {dataset}")

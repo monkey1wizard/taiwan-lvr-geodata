@@ -10,7 +10,7 @@ import subprocess
 from .address import _COUNTY_CODE, _CITY_RE, building_key_v2, norm
 from .normalize import normalize_address
 from .parquet_io import BatchWriter
-from .p2_contracts import valid_coordinate
+from .contracts.validate import valid_coordinate
 from .processing import Stage, bindings, digest
 from .sources import sha256_file
 
