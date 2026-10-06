@@ -1,7 +1,8 @@
-"""Offline indexing, output packaging and public handoff commands."""
+"""Command dispatch and the ingest, normalize and convert chain."""
+from __future__ import annotations
 
 import json
-from datetime import date
+import time
 from pathlib import Path
 
 from .address_pool import build_pool
@@ -18,139 +19,59 @@ from .tgos import (
     prepare_tgos,
     repair_prepared_exchange,
     revoke_alias,
+    tgos_log_date,
     transition_batch,
 )
+from .converted import export_converted
+from .ingest import ingest
+from .normalize import normalize
+from .storage.runs import peak_rss_bytes, load_snapshot
 
 
-def _tgos_log_date(path: Path) -> str:
-    value = json.loads(Path(path).read_text(encoding="utf-8"))
-    if set(value) != {"date"}:
-        raise ValueError("TGOS date file must contain only the date field")
-    return date.fromisoformat(value["date"]).isoformat()
+def _read(path):
+    return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def configure(sub):
-    p = sub.add_parser("pin-address-source")
-    p.add_argument("--address-dir", type=Path, required=True)
-    p.add_argument("--output", type=Path, default=Path("data/sources/address_source.json"))
-    p = sub.add_parser("build-offline-index")
-    p.add_argument("--address-dir", type=Path, required=True)
-    p.add_argument(
-        "--address-source", type=Path, default=Path("data/sources/address_source.json")
-    )
-    p.add_argument("--county", action="append")
-    p.add_argument("--official-source", type=Path)
-    p.add_argument("--official-file", type=Path)
-    p.add_argument("--work-dir", type=Path, default=Path("data/work"))
-    p.add_argument("--run-id")
-    p = sub.add_parser("build-address-pool")
-    p.add_argument("--input", type=Path, required=True)
-    p.add_argument("--address-dir", type=Path, required=True)
-    p.add_argument(
-        "--address-source", type=Path, default=Path("data/sources/address_source.json")
-    )
-    p.add_argument("--index", type=Path, required=True)
-    p.add_argument("--work-dir", type=Path, default=Path("data/work"))
-    p.add_argument("--run-id")
-    p = sub.add_parser("resolve-offline")
-    p.add_argument("--pool", type=Path, required=True)
-    p.add_argument("--index", type=Path, required=True)
-    p.add_argument("--prior-state", type=Path)
-    p.add_argument("--work-dir", type=Path, default=Path("data/work"))
-    p.add_argument("--run-id")
-    p = sub.add_parser("verify-offline-state")
-    p.add_argument("--input", type=Path, required=True)
-    p = sub.add_parser("prepare-tgos")
-    p.add_argument("--state", type=Path, required=True)
-    p.add_argument(
-        "--date-file",
-        type=Path,
-        default=Path("data/tgos/date.json"),
-        help="Date log used only for the exchange folder name",
-    )
-    p.add_argument("--limit", type=int, default=10_000)
-    p.add_argument("--retry-query-fingerprint", action="append", default=[])
-    p.add_argument("--retry-reason")
-    p.add_argument("--ledger", type=Path, help="Earlier TGOS state whose sent queries must not be resent")
-    p.add_argument("--work-dir", type=Path, default=Path("data/work"))
-    p.add_argument("--exchange-dir", type=Path, default=Path("data/tgos"))
-    p.add_argument("--run-id")
-    p = sub.add_parser("repair-tgos-exchange")
-    p.add_argument("--state", type=Path, required=True)
-    p.add_argument("--batch", required=True)
-    p.add_argument(
-        "--date-file",
-        type=Path,
-        default=Path("data/tgos/date.json"),
-        help="Date log used only for the exchange folder name",
-    )
-    p.add_argument("--work-dir", type=Path, default=Path("data/work"))
-    p.add_argument("--exchange-dir", type=Path, default=Path("data/tgos"))
-    p.add_argument("--run-id")
-    p = sub.add_parser("set-tgos-status")
-    p.add_argument("--state", type=Path, required=True)
-    p.add_argument("--batch", required=True)
-    p.add_argument("--status", choices=["submitted", "submission_unknown", "cancelled"], required=True)
-    p.add_argument("--reason")
-    p.add_argument("--work-dir", type=Path, default=Path("data/work"))
-    p.add_argument("--run-id")
-    p = sub.add_parser("import-tgos")
-    p.add_argument("--state", type=Path, required=True)
-    p.add_argument("--batch", required=True)
-    p.add_argument("--response", type=Path, required=True)
-    p.add_argument("--work-dir", type=Path, default=Path("data/work"))
-    p.add_argument("--run-id")
-    p = sub.add_parser("revoke-alias")
-    p.add_argument("--state", type=Path, required=True)
-    p.add_argument("--alias-key", required=True)
-    p.add_argument("--reason", required=True)
-    p.add_argument("--work-dir", type=Path, default=Path("data/work"))
-    p.add_argument("--run-id")
-    p = sub.add_parser("verify-tgos-state")
-    p.add_argument("--input", type=Path, required=True)
-    p = sub.add_parser("package-output")
-    p.add_argument("--input", type=Path, required=True)
-    p.add_argument("--state", type=Path, required=True)
-    p.add_argument("--notices", type=Path, required=True)
-    p.add_argument("--output-dir", type=Path, default=Path("data/output"))
-    p.add_argument("--run-id")
-    p = sub.add_parser("verify-output")
-    p.add_argument("--input", type=Path, required=True)
-    p = sub.add_parser("backfill-output")
-    p.add_argument("--input", type=Path, required=True)
-    p.add_argument("--state", type=Path, required=True)
-    p.add_argument("--previous", type=Path, required=True)
-    p.add_argument("--notices", type=Path, required=True)
-    p.add_argument("--output-dir", type=Path, default=Path("data/output"))
-    p.add_argument("--report", type=Path, required=True)
-    p.add_argument("--run-id", required=True)
-    p = sub.add_parser("export-address-patch")
-    p.add_argument("--state", type=Path, required=True)
-    p.add_argument("--area-file", type=Path, action="append", required=True)
-    p.add_argument("--work-dir", type=Path, default=Path("data/work"))
-    p.add_argument("--run-id")
-    p = sub.add_parser("verify-address-patch")
-    p.add_argument("--input", type=Path, required=True)
-    p = sub.add_parser("fetch-output")
-    p.add_argument("--manifest-url", required=True)
-    p.add_argument("--manifest-sha256", required=True)
-    p.add_argument("--target", type=Path, required=True)
-    p.add_argument("--month", type=int)
-    p.add_argument("--category", choices=["sales", "presale", "rent"])
-    p.add_argument("--format", choices=["geoparquet", "geojson", "ndjson"])
-    p.add_argument("--maintenance", action="store_true")
-    p = sub.add_parser("publish-output")
-    p.add_argument("--input", type=Path, required=True)
-    p.add_argument("--expected-parent", required=True)
-    p.add_argument("--checkout", type=Path, default=Path("."))
-    p.add_argument("--receipt", type=Path, required=True)
-    p = sub.add_parser("commit-release-pointer")
-    p.add_argument("--receipt", type=Path, required=True)
-    p.add_argument("--checkout", type=Path, default=Path("."))
+def _run_local_stage(args):
+    start = time.perf_counter()
+    if args.command == "verify-converted":
+        _, report = load_snapshot(args.input, "converted")
+        print(json.dumps({"snapshot": str(args.input), "verified": True, "dataset_counts": report["dataset_counts"]}, ensure_ascii=False))
+        return 0
+    if args.command == "ingest":
+        manifest = _read(args.manifest)
+        path = ingest(args.raw_dir, manifest, args.batch, args.work_dir, batch_rows=args.batch_rows, run_id=args.run_id)
+    elif args.command == "normalize":
+        path = normalize(args.input, args.work_dir, cutoff=args.cutoff, rules_path=args.garbled_rules,
+                         batch_rows=args.batch_rows, run_id=args.run_id)
+    else:
+        normalized = args.input
+        if normalized is not None:
+            _, existing = load_snapshot(normalized, "normalize")
+            if existing["cutoff"] != args.cutoff:
+                raise ValueError("Cutoff differs from normalized snapshot; rerun normalize to change it")
+            if args.batch:
+                raise ValueError("Cannot reselect batches from a normalized snapshot")
+        if normalized is None:
+            manifest = _read(args.manifest)
+            raw = ingest(args.raw_dir, manifest, args.batch, args.work_dir, batch_rows=args.batch_rows,
+                         run_id=args.run_id + "-ingest" if args.run_id else None)
+            normalized = normalize(raw, args.work_dir, cutoff=args.cutoff, rules_path=args.garbled_rules, batch_rows=args.batch_rows,
+                                   run_id=args.run_id + "-normalize" if args.run_id else None)
+        path = export_converted(normalized, args.work_dir, run_id=args.run_id)
+    print(json.dumps({"snapshot": str(path), "internal_only": True,
+                      "elapsed_seconds": round(time.perf_counter() - start, 6), "process_peak_rss_bytes": peak_rss_bytes()}, ensure_ascii=False))
+    return 0
 
 
 def run(args):
-    read = lambda path: json.loads(Path(path).read_text(encoding="utf-8"))
+    if args.command in {"ingest", "normalize", "export-converted", "verify-converted"}:
+        return _run_local_stage(args)
+    return _run_offline_and_output(args)
+
+
+def _run_offline_and_output(args):
+    read = _read
     command = args.command
     if command == "pin-address-source":
         descriptor = pin_address_source(args.address_dir, args.output)
@@ -194,7 +115,7 @@ def run(args):
         print(json.dumps({"verified": True, "status_counts": report["status_counts"]}))
         return 0
     elif command == "prepare-tgos":
-        log_date = _tgos_log_date(args.date_file)
+        log_date = tgos_log_date(args.date_file)
         path, exchange = prepare_tgos(
             args.state,
             args.work_dir,
@@ -218,7 +139,7 @@ def run(args):
             run_id=args.run_id,
         )
     elif command == "repair-tgos-exchange":
-        log_date = _tgos_log_date(args.date_file)
+        log_date = tgos_log_date(args.date_file)
         path, exchange = repair_prepared_exchange(
             args.state,
             args.work_dir,

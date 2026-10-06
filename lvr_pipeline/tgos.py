@@ -27,6 +27,13 @@ DYNAMIC_SCHEMAS = {"tgos-batch", "tgos-query", "tgos-result", "alias-event"}
 TGOS_CSV_FIELDS = ["id", "Address", "Response_Address", "Response_X", "Response_Y"]
 
 
+def tgos_log_date(path: Path) -> str:
+    value = json.loads(Path(path).read_text(encoding="utf-8"))
+    if set(value) != {"date"}:
+        raise ValueError("TGOS date file must contain only the date field")
+    return date.fromisoformat(value["date"]).isoformat()
+
+
 def exchange_folder_name(batch_id: str, log_date: str) -> str:
     """Return the date-log-only folder name for a TGOS exchange."""
     compact_date = date.fromisoformat(log_date).strftime("%Y%m%d")

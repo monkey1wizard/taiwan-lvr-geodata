@@ -29,7 +29,7 @@ RETAINED_SYMBOLS = {
 SUBCOMMANDS = {
     # lvr_pipeline.cli
     "ingest", "normalize", "export-converted", "verify-converted",
-    # registered by lvr_pipeline.p2_cli.configure
+    # registered by lvr_pipeline.cli
     "pin-address-source", "build-offline-index", "build-address-pool", "resolve-offline",
     "verify-offline-state", "prepare-tgos", "repair-tgos-exchange", "set-tgos-status", "import-tgos",
     "revoke-alias", "verify-tgos-state", "package-output", "verify-output", "backfill-output",

@@ -35,7 +35,6 @@ CURRENT_MODULES = {
     "ingest.py",
     "normalize.py",
     "offline_lookup.py",
-    "p2_cli.py",
     "packaging.py",
     "sources.py",
     "tgos.py",
@@ -97,11 +96,13 @@ def git_files(root: Path) -> list[str]:
 
 # New packages created by the rebuild are not part of the R-02 legacy inventory; only contracts replaced a legacy module.
 LEGACY_PACKAGES = {"contracts"}
+# New top-level modules created by the rebuild (not in the R-02 inventory document).
+NEW_MODULES = {"pipeline.py"}
 
 
 def module_names(path: Path) -> set[str]:
     # A module later converted to a package (e.g. contracts/) still counts as the same top-level module.
-    names = {item.name for item in path.glob("*.py") if item.is_file()}
+    names = {item.name for item in path.glob("*.py") if item.is_file() and item.name not in NEW_MODULES}
     names |= {f"{item.name}.py" for item in path.iterdir() if item.is_dir() and (item / "__init__.py").is_file() and item.name in LEGACY_PACKAGES}
     return names
 
