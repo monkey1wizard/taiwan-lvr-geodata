@@ -146,6 +146,16 @@ def test_explicit_lists_subdoors_patch_and_ambiguous_ranges(tmp_path):
     assert components[8]["building_key"]==components[2]["building_key"]
 
 
+def test_review_component_keeps_no_key_even_if_whole_text_has_one(tmp_path):
+    address="臺北市中正區測試路80十樓，測試三街232號"
+    from lvr_pipeline.address import building_key_v2
+    from lvr_pipeline.normalize import normalize_address
+    assert building_key_v2(normalize_address(address)) is not None
+    _,_,converted=pipeline(tmp_path,[{"address":address}],categories=("sales",))
+    component=dataset(converted,"address-component")[0]
+    assert component["expansion_status"]=="review" and component["building_key"] is None
+
+
 def test_malformed_column_count_is_retained_as_failed_source_line(tmp_path):
     _,_,converted=pipeline(tmp_path,[{"extra":["too many"]},{}],categories=("sales",))
     report=load_snapshot(converted,"converted")[1]
