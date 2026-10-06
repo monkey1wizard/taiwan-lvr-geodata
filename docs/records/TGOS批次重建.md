@@ -8,7 +8,7 @@
 | --- | --- |
 | 日期、執行者 | 2026-10-07，Codex，Asia/Taipei |
 | 工作 R 編號、驗收 V 編號 | 快速資料路徑及 R-09 前置修正。不是 V-12 完整驗收 |
-| 程式提交、規則與契約版本 | 基底提交 `7b8a195` 加本次未提交修改。地址鍵 `building_key_v2` |
+| 程式提交、規則與契約版本 | 實作提交 `d8766d5223fb1534f7e7874364bd8f7474294411`。地址鍵 `building_key_v2` |
 | 環境、工具版本 | Windows 11，專案 `.venv` Python |
 | 輸入位置、固定版本、SHA-256 | `data/work/offline-state/snapshots/fast-all58-v5-offline`，manifest SHA-256 `95ffc9edc1c8a7c0101b7d999e37cfd1a5869b4b7e237d245876d17600a2bb98` |
 | 選定批次、類別、月份、截止日期 | 全歷史離線狀態中的未命中地址。日期紀錄為 `2026-10-07`，只用於輸出資料夾名稱 |
