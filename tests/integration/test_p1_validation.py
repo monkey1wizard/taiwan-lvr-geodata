@@ -124,7 +124,7 @@ def test_disk_preflight_refuses_to_publish_insufficient_scope(tmp_path,monkeypat
 
 def test_arrow_contract_descriptor_matches_published_schema():
     from lvr_pipeline.parquet_io import SCHEMAS
-    root=Path(__file__).resolve().parents[1]
+    root=Path(__file__).resolve().parents[2]
     document=json.loads((root/"schemas/converted-parquet.json").read_text(encoding="utf-8"))
     for name,schema in SCHEMAS.items():
         assert document["datasets"][name]["fields"]==[

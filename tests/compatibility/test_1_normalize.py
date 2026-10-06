@@ -6,11 +6,11 @@ import os
 import sys
 import tempfile
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 _spec = importlib.util.spec_from_file_location(
     "_1_normalize",
-    os.path.join(os.path.dirname(__file__), "..", "lvr_pipeline", "1_normalize.py"),
+    os.path.join(os.path.dirname(__file__), "..", "..", "lvr_pipeline", "1_normalize.py"),
 )
 assert _spec is not None and _spec.loader is not None
 _mod = importlib.util.module_from_spec(_spec)

@@ -8,11 +8,11 @@ import importlib.util
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 _spec = importlib.util.spec_from_file_location(
     "_0_parse_raw",
-    os.path.join(os.path.dirname(__file__), "..", "lvr_pipeline", "0_parse_raw.py"),
+    os.path.join(os.path.dirname(__file__), "..", "..", "lvr_pipeline", "0_parse_raw.py"),
 )
 assert _spec is not None and _spec.loader is not None
 _mod = importlib.util.module_from_spec(_spec)
@@ -22,7 +22,7 @@ _classify = _mod._classify
 
 def test_no_garbled_references_in_0_parse_raw():
     """0_parse_raw must not contain any garbled-correction logic."""
-    src = os.path.join(os.path.dirname(__file__), "..", "lvr_pipeline", "0_parse_raw.py")
+    src = os.path.join(os.path.dirname(__file__), "..", "..", "lvr_pipeline", "0_parse_raw.py")
     with open(src, encoding="utf-8-sig") as f:
         content = f.read()
     for symbol in ("_fix_garbled", "_load_garbled", "GARBLED_PATH"):

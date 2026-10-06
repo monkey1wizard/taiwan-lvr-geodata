@@ -6,7 +6,7 @@ import pytest
 
 from lvr_pipeline.sources import describe_zip, verify_raw
 
-FIXTURES=Path(__file__).parent / "fixtures/p0"
+FIXTURES=Path(__file__).parents[1] / "fixtures/p0"
 
 
 def test_synthetic_manifest_and_english_row_not_header():
@@ -42,7 +42,7 @@ def test_missing_corrupt_and_hash_mismatch(tmp_path):
 
 def test_tracked_actual_inventory():
     import json
-    root=Path(__file__).resolve().parents[1]/"data/sources"
+    root=Path(__file__).resolve().parents[2]/"data/sources"
     raw=json.loads((root/"raw_manifest.json").read_text(encoding="utf-8"))
     address=json.loads((root/"address_source.json").read_text(encoding="utf-8"))
     assert raw["raw_count"] == len(raw["inputs"]) == 58

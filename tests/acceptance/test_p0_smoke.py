@@ -13,7 +13,7 @@ from lvr_pipeline.tx_date import validated_roc_to_tx_yyyymm
 
 
 def test_synthetic_source_to_committed_typed_rows(tmp_path):
-    path=Path(__file__).parent/"fixtures/p0/115q1_lvr_landcsv.zip"
+    path=Path(__file__).parents[1]/"fixtures/p0/115q1_lvr_landcsv.zip"
     manifest=describe_zip(path)
     verify_raw(path,manifest)
     observations,components=[],[]
@@ -51,6 +51,6 @@ def test_synthetic_source_to_committed_typed_rows(tmp_path):
 
 
 def test_address_fixture_retains_code_strings():
-    with (Path(__file__).parent/"fixtures/p0/addresses.csv").open(encoding="utf-8",newline="") as stream:
+    with (Path(__file__).parents[1]/"fixtures/p0/addresses.csv").open(encoding="utf-8",newline="") as stream:
         row=next(csv.DictReader(stream))
     assert len(row)==14 and row["COUNTY"]=="09020" and row["TOWN"]=="09020010"

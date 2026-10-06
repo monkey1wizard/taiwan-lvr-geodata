@@ -7,7 +7,7 @@ Test cases grounded in §8 V2 of the plan:
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from lvr_pipeline.tx_date import roc_to_tx_yyyymm
 
