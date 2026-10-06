@@ -360,6 +360,34 @@ def test_ledger_prevents_resend_and_reopens_results_for_revalidation(tmp_path):
     assert load_state(reimported)[1]["status_counts"]["located"] == 2
 
 
+def test_ledger_batch_service_date_can_be_corrected_with_reason(tmp_path):
+    _, state, _ = fixture_two_unmatched(tmp_path)
+    old, first = _submit_first(tmp_path, state, tmp_path / "old")
+    today = _service_today()
+    earlier = (today - timedelta(days=1)).isoformat()
+
+    def seed(work, dates):
+        return prepare_tgos(
+            state,
+            tmp_path / work,
+            tmp_path / "exchange",
+            service_date=today.isoformat(),
+            external_used=0,
+            ledger=old,
+            ledger_service_dates=dates,
+            run_id=work,
+        )
+
+    with pytest.raises(ValueError, match="unknown ledger batch"):
+        seed("unknown", {"missing": earlier})
+    with pytest.raises(ValueError, match="Future"):
+        seed("future", {first["batch_id"]: (today + timedelta(days=1)).isoformat()})
+    seeded, _ = seed("moved", {first["batch_id"]: earlier})
+    carried = list(rows(seeded / "tgos_batches.parquet"))[0]
+    assert carried["service_date"] == earlier
+    assert carried["reason"] == f"service date corrected from {today.isoformat()}"
+
+
 def test_verified_alias_can_be_revoked(tmp_path):
     _, state, _ = fixture_two_unmatched(tmp_path)
     submitted, _ = _submit_first(tmp_path, state, tmp_path / "work")

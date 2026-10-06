@@ -21,6 +21,16 @@ from .tgos import (
 )
 
 
+def _pairs(values: list[str]) -> dict[str, str]:
+    pairs = {}
+    for value in values:
+        key, separator, item = value.partition("=")
+        if not separator or not key or not item or key in pairs:
+            raise ValueError("Expected unique BATCH=YYYY-MM-DD values")
+        pairs[key] = item
+    return pairs
+
+
 def configure(sub):
     p = sub.add_parser("pin-address-source")
     p.add_argument("--address-dir", type=Path, required=True)
@@ -60,6 +70,8 @@ def configure(sub):
     p.add_argument("--retry-query-fingerprint", action="append", default=[])
     p.add_argument("--retry-reason")
     p.add_argument("--ledger", type=Path, help="Earlier TGOS state whose sent queries must not be resent")
+    p.add_argument("--ledger-service-date", action="append", default=[], metavar="BATCH=YYYY-MM-DD",
+                   help="Correct the service date on which a carried ledger batch used quota")
     p.add_argument("--work-dir", type=Path, default=Path("data/work"))
     p.add_argument("--exchange-dir", type=Path, default=Path("data/tgos"))
     p.add_argument("--run-id")
@@ -186,6 +198,7 @@ def run(args):
             retry_fingerprints=args.retry_query_fingerprint,
             retry_reason=args.retry_reason,
             ledger=args.ledger,
+            ledger_service_dates=_pairs(args.ledger_service_date),
             run_id=args.run_id,
         )
         print(json.dumps({"path": str(path), "exchange": str(exchange), "completed": True}, ensure_ascii=False))

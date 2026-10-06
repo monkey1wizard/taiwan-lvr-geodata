@@ -287,12 +287,15 @@ def repair_prepared_exchange(
     return state, exchange
 
 
-def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict]]:
+def _carry_ledger(
+    ledger: Path, service_dates: dict[str, str] | None = None
+) -> tuple[list[dict], list[dict]]:
     """Carry sent batches and queries so they are not resent.
 
     Earlier results, evidence and aliases are dropped. Completed batches go
     back to submitted, so their stored responses can be imported again under
-    the current address checks.
+    the current address checks. An operator may correct the service date on
+    which a carried batch actually used quota; the old date stays in reason.
     """
     manifest, _, stage_name = load_state(ledger)
     if stage_name != "tgos-state":
@@ -310,6 +313,18 @@ def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict]]:
         if query["batch_id"] in reopened:
             query["status"] = "submitted"
             query["result_id"] = None
+    service_dates = service_dates or {}
+    unknown = set(service_dates) - {batch["batch_id"] for batch in batches}
+    if unknown:
+        raise ValueError("Service date correction names an unknown ledger batch")
+    for batch in batches:
+        corrected = service_dates.get(batch["batch_id"])
+        if corrected and corrected != batch["service_date"]:
+            if date.fromisoformat(corrected) > _service_today():
+                raise ValueError("Future TGOS service date is forbidden")
+            note = f"service date corrected from {batch['service_date']}"
+            batch["reason"] = f"{batch['reason']}; {note}" if batch["reason"] else note
+            batch["service_date"] = corrected
     return batches, queries
 
 
@@ -324,9 +339,12 @@ def prepare_tgos(
     retry_fingerprints: list[str] | None = None,
     retry_reason: str | None = None,
     ledger: Path | None = None,
+    ledger_service_dates: dict[str, str] | None = None,
     run_id: str | None = None,
 ):
     day = date.fromisoformat(service_date)
+    if ledger_service_dates and ledger is None:
+        raise ValueError("Service date corrections require a TGOS ledger")
     if day > _service_today():
         raise ValueError("Future TGOS service date is forbidden")
     if isinstance(external_used, bool) or not 0 <= external_used <= DAILY_LIMIT:
@@ -346,7 +364,7 @@ def prepare_tgos(
     if ledger is not None:
         if stage_name != "offline-state":
             raise ValueError("A TGOS ledger can only seed a fresh offline state")
-        batches, queries = _carry_ledger(ledger)
+        batches, queries = _carry_ledger(ledger, ledger_service_dates)
     same_day_batches =[row for row in batches if row["service_date"] == service_date]
     known_external_used = max(
         (row["external_used"] for row in same_day_batches), default=0
