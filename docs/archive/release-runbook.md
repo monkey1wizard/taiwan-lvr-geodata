@@ -1,5 +1,9 @@
 # 公開快照發布與指標復原
 
+> 歷史文件：僅保留當時的設計、命令或量測，不是現行操作指示。舊完成勾選不代表重建驗收。TGOS T-16～T-18 須依新規則重驗，上游權威證明門檻的舊敘述也不作為現行要求。
+
+現行文件見[根目錄入口](../../README.md)及[重建企劃](../plans/重建企劃.md)。原位置：`docs/release-runbook.md`。
+
 P2 使用 GitHub 公開 Release 附件。程式、來源描述及小型版本指標進 Git，raw、官方地址 CSV、工作索引與生成 output 留在 Git 外。GitHub 的 Release 附件上限為每檔小於 2 GiB、每個 Release 最多 1,000 個附件，查核日期為 2026-10-05。見 [About releases](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases)。
 
 發布程式要求 repo 已啟用 [Release immutability](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases)。資料使用唯一版本標籤，先建立 draft、上傳完整附件，再從 GitHub 下載核對全部附件，最後公開成不可變 Release。缺憑證、傳送失敗或 hash 不一致時不更新 Git 指標。

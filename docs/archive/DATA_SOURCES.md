@@ -1,6 +1,10 @@
 # 資料來源與本機輸入
 
-Git 包含路名參考資料、人工補字規則及來源中繼資料。原始實價登錄 ZIP、第三方門牌座標列、舊定位成果與工作資料不納入 Git。本機 raw 可放在 `data/raw/`，P1 操作見[逐批轉換文件](p1-conversion.md)。
+> 歷史文件：僅保留當時的設計、命令或量測，不是現行操作指示。舊完成勾選不代表重建驗收。TGOS T-16～T-18 須依新規則重驗，上游權威證明門檻的舊敘述也不作為現行要求。
+
+現行文件見[根目錄入口](../../README.md)及[重建企劃](../plans/重建企劃.md)。原位置：`docs/DATA_SOURCES.md`。
+
+Git 包含路名參考資料、人工補字規則及來源中繼資料。原始實價登錄 ZIP、第三方門牌座標列、舊定位成果與工作資料不納入 Git。本機 raw 可放在 `data/raw/`，P1 操作見[逐批轉換文件](../records/P1轉換驗收.md)。
 
 ## 實價登錄原始 ZIP
 
@@ -15,7 +19,7 @@ Git 包含路名參考資料、人工補字規則及來源中繼資料。原始�
 ## 已搬入的路名資料
 
 - 檔案：`data/reference/roadnames_35321_20260618.csv`。
-- 來源紀錄：[`roadnames_35321.provenance.txt`](../data/reference/roadnames_35321.provenance.txt)。
+- 來源紀錄：[`roadnames_35321.provenance.txt`](../../data/reference/roadnames_35321.provenance.txt)。
 - 該紀錄標示資料集 ID 為 `35321`，下載日期為 2026-06-18。
 - 本次保留來源檔案與來源紀錄，沒有重新下載或更新資料。
 
@@ -29,4 +33,4 @@ Git 包含路名參考資料、人工補字規則及來源中繼資料。原始�
 
 新版草稿預計使用 `taiwan-address-data` 與 TGOS。這次只搬入可沿用的地址處理程式，尚未實作新版離線定位與 TGOS 流程。
 
-第三方門牌座標資料、TGOS 憑證與回傳結果沒有搬入。舊版來源與人工操作紀錄見 [legacy 索引](legacy/README.md)，只供重寫參考。
+第三方門牌座標資料、TGOS 憑證與回傳結果沒有搬入。舊版來源與人工操作紀錄見 legacy 索引（原連結已失效：`legacy/README.md`），只供重寫參考。

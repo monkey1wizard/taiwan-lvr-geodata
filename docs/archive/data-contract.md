@@ -1,5 +1,9 @@
 # P2～P4 觀測、地址狀態、TGOS、GIS 與 patch 契約
 
+> 歷史文件：僅保留當時的設計、命令或量測，不是現行操作指示。舊完成勾選不代表重建驗收。TGOS T-16～T-18 須依新規則重驗，上游權威證明門檻的舊敘述也不作為現行要求。
+
+現行文件見[根目錄入口](../../README.md)及[重建企劃](../plans/重建企劃.md)。原位置：`docs/data-contract.md`。
+
 P0／P1 的來源觀測契約在 `schemas/`。P2～P4 的內部 Arrow 契約在 `lvr_pipeline/p2_contracts.py`，公開 GeoParquet 契約在 `lvr_pipeline/export.py`。資料目前使用 schema_version 1.0 與 building key v2。P3 以新的 `tgos-state` 子快照擴充 P2 `offline-state`，不改寫既有 P2 schema。P4 的 `address-patch` 快照只讀取已驗證 TGOS 證據，不改寫 P3 狀態。
 
 ## 粒度與金額

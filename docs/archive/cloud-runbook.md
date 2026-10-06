@@ -1,5 +1,9 @@
 # Cloud agent：從離線快照接續 P3
 
+> 歷史文件：僅保留當時的設計、命令或量測，不是現行操作指示。舊完成勾選不代表重建驗收。TGOS T-16～T-18 須依新規則重驗，上游權威證明門檻的舊敘述也不作為現行要求。
+
+現行文件見[根目錄入口](../../README.md)及[重建企劃](../plans/重建企劃.md)。原位置：`docs/cloud-runbook.md`。
+
 P3 已提供 TGOS 批次保留、人工狀態確認、嚴格回傳匯入及歷史回補命令。資料工作可在本機或 cloud 執行，但所有 agent 必須接續同一份最新 `tgos-state`。TGOS 憑證、人工上傳與下載留在 Git 外。
 
 在 Linux repo 根目錄執行 `bash scripts/setup.sh`。先安裝固定 uv 版本 0.12.23。安裝與測試只使用合成 fixtures，不下載真實資料，也不需要憑證、GAL、`.dev` 或 raw ZIP。

@@ -1,5 +1,9 @@
 # taiwan-lvr-geodata 新版資料處理流程
 
+> 歷史文件：僅保留當時的設計、命令或量測，不是現行操作指示。舊完成勾選不代表重建驗收。TGOS T-16～T-18 須依新規則重驗，上游權威證明門檻的舊敘述也不作為現行要求。
+
+現行文件見[根目錄入口](../../README.md)及[重建企劃](../plans/重建企劃.md)。原位置：`docs/drafts/taiwan-lvr-geodata-新版資料處理流程.md`。
+
 > 狀態：草稿。本文是 Google Drive 文件的內容快照，後續企劃與正式文件將重新整理。
 
 - 來源：[Google Drive 原始文件](https://docs.google.com/document/d/11rV4YYm-9ORDYabeITJm4t7_c-oyTR-JNL_HysBgQVA/edit)

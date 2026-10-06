@@ -1,0 +1,108 @@
+{
+  "date": "2026-10-06",
+  "source_commit": "f1b129af145e69a3bc625db6346eb71e6850d2f1",
+  "scope": "documentation only",
+  "entries": [
+    {
+      "source": "docs/DATA_SOURCES.md",
+      "destination": "docs/archive/DATA_SOURCES.md",
+      "source_sha256": "21f8290428fffe55418b73f52559f25a2a83f2cb545058f8307abd0dcb413435"
+    },
+    {
+      "source": "docs/tgos-runbook.md",
+      "destination": "docs/archive/tgos-runbook.md",
+      "source_sha256": "e96b11c39181020d7d070199d587055f0ccf706e2201c87d1bfd59c97b2346fb"
+    },
+    {
+      "source": "docs/address-patch-runbook.md",
+      "destination": "docs/archive/address-patch-runbook.md",
+      "source_sha256": "5e6c8cb04f8432f3a9394b40b36a4d54bd52b3945ff5ef1cf322380692d49ea6"
+    },
+    {
+      "source": "docs/cloud-runbook.md",
+      "destination": "docs/archive/cloud-runbook.md",
+      "source_sha256": "a739f18890a91d88e0fb2b45ba3257e430761396fc2bea8bd711cd9f608f4e59"
+    },
+    {
+      "source": "docs/release-runbook.md",
+      "destination": "docs/archive/release-runbook.md",
+      "source_sha256": "b74784cf2fe1136240fba60aff811800383a30e13c24437d3bc93da695e6fda3"
+    },
+    {
+      "source": "docs/data-contract.md",
+      "destination": "docs/archive/data-contract.md",
+      "source_sha256": "5e3fea70b4a55210aba556a2690ba4003d96aba7f707d5749b327db51b347180"
+    },
+    {
+      "source": "docs/data-processing-flow.md",
+      "destination": "docs/archive/data-processing-flow.md",
+      "source_sha256": "54a6307980d356c6f3d4251e82cec47ed219e1b484b99660982199fad5b5b192"
+    },
+    {
+      "source": "docs/downloads.md",
+      "destination": "docs/archive/downloads.md",
+      "source_sha256": "59b4c8cea342023415bbda7304c139082687883e31235319d4a807e7883428a7"
+    },
+    {
+      "source": "docs/p0-foundations.md",
+      "destination": "docs/records/P0基礎驗收.md",
+      "source_sha256": "5cfb818d97851729b0ae9bc6485a6346bf80ddb4bf960c98b12772a92dea0aba"
+    },
+    {
+      "source": "docs/p1-conversion.md",
+      "destination": "docs/records/P1轉換驗收.md",
+      "source_sha256": "10d2c65b781461fa616f4a83392d13185ac79d07d305969af775f3b4b0a5fbf5"
+    },
+    {
+      "source": "docs/p2-offline-output.md",
+      "destination": "docs/records/P2離線驗收.md",
+      "source_sha256": "b161aa3703e082f2f74eba53072432d1fdfa7f839469399a8e74250672956324"
+    },
+    {
+      "source": "docs/drafts/taiwan-lvr-geodata-完整企劃.md",
+      "destination": "docs/archive/taiwan-lvr-geodata-完整企劃.md",
+      "source_sha256": "fe7792883ba4cdb417ce0f54c441c34ed714775d10aaa13a8e199bcde52471a3"
+    },
+    {
+      "source": "docs/drafts/taiwan-lvr-geodata-新版資料處理流程.md",
+      "destination": "docs/archive/taiwan-lvr-geodata-新版資料處理流程.md",
+      "source_sha256": "833ea916c8d03f0e203dc4ca794237c05394533d5a6356e4efb40c80b72af676"
+    },
+    {
+      "source": "docs/drafts/問題報告-TGOS匯入與地址重複.md",
+      "destination": "docs/records/TGOS地址錯配.md",
+      "source_sha256": "641f569e2060f77d842f9f98acac7f8b42db0ddaf7cfaf0495e4121c161b13ca"
+    },
+    {
+      "source": "docs/p1-evidence.json",
+      "destination": "docs/records/p1-evidence.json",
+      "source_sha256": "ae76b0f28cc5eaa9aa1f2a8083ae8dd611ddaf466a28227a87ba0c77f2c0f1db"
+    },
+    {
+      "source": "docs/p2-evidence.json",
+      "destination": "docs/records/p2-evidence.json",
+      "source_sha256": "81d8a5fcfb862d09b0c41dbd0f7fef38fc832a04521a083fd415bbe1728ea941"
+    },
+    {
+      "source": "docs/p3-evidence.json",
+      "destination": "docs/records/p3-evidence.json",
+      "source_sha256": "aadae0328e3c9647094928244e337f49f807b6a3320e00f18bee68fbd22f0012"
+    },
+    {
+      "source": "docs/p4-evidence.json",
+      "destination": "docs/records/p4-evidence.json",
+      "source_sha256": "01b244260d8d674c8127938dc4c4dce7e3e8f2b622f4ae70a1190b5554a71c80"
+    },
+    {
+      "source": "docs/p4-t19-evidence.json",
+      "destination": "docs/records/p4-t19-evidence.json",
+      "source_sha256": "219e67bfd33ba91e605d5380abd4ce6a7dd299d2bb0f2ec504961e8e79f23662"
+    },
+    {
+      "source": "docs/task-result-template.md",
+      "destination": "docs/records/歷史執行結果.md",
+      "source_sha256": "7a4dd4be26d5e1d3f8a6cc9dbe33a23e8aa1d2f326123f9dae6fe566e2b5109f",
+      "operation": "split historical results; retain empty template at source"
+    }
+  ]
+}

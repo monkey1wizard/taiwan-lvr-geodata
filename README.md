@@ -2,7 +2,7 @@
 
 將台灣實價登錄的買賣、預售屋與租賃資料整理為可追溯的地理資料，提供依交易月份下載的 GeoParquet、GeoJSON、NDJSON，以及年度 ZIP。
 
-專案目前進入重建規劃。目標是一次完成全部已盤點歷史資料的離線地址處理，再用 TGOS 補充未定位地址。本輪只更新 README 與[重建企劃](docs/plans/重建企劃.md)，程式及資料目錄尚未重構。
+專案目前進入重建規劃。目標是一次完成全部已盤點歷史資料的離線地址處理，再用 TGOS 補充未定位地址。文件已依[重建企劃](docs/plans/重建企劃.md)收斂為 README、architecture 與 CONTRIBUTING，程式及資料目錄尚未重構。
 
 ## 目前資料範圍
 
@@ -15,48 +15,52 @@
 
 **單批來源中出現多個交易月份，不代表已處理那些月份的全部交易。** 公開版本標示 `scope_limited`，使用時須保留這項限制。
 
-TGOS 問題的案例與量測限制見[問題報告](docs/drafts/問題報告-TGOS匯入與地址重複.md)。重建不沿用受影響項目的舊驗收結論。
+TGOS 問題的案例與量測限制見[問題報告](docs/records/TGOS地址錯配.md)。重建不沿用受影響項目的舊驗收結論。
 
 ## 下載資料
 
-從[目前版本的 GitHub Release](https://github.com/monkey1wizard/taiwan-lvr-geodata/releases/tag/data-p2-115q1-offline-v2)選擇月份、類別與格式。逐檔下載與雜湊核對方式見[下載說明](docs/downloads.md)。
+本機[版本指標](data/releases/latest.json)目前指向 `p2-115q1-offline-v2`。此版本只處理 `115q1` 來源，座標來源限臺北市官方資料。本次文件整理未重新連線核對公開附件。
 
-- 類別：`sales` 買賣、`presale` 預售屋、`rent` 租賃。
-- 月份：依交易或租賃日期的 `tx_yyyymm`，不是來源 ZIP 的季度。
-- 月檔：使用 `YYYYMM_category` 檔名，可單獨下載，不需要取得原始 ZIP。
-- 年度包：依格式打包同一版本的月檔，實際月份涵蓋以 manifest 為準。
+### 選擇資料
 
-未定位資料的 geometry 為 null。多門牌產生的近似 Polygon 不是建物或地籍輪廓。資料目前以來源觀測為單位，尚未證明交易身分的記錄不能視為已完成跨批次去重。
+從[該版本 Release](https://github.com/monkey1wizard/taiwan-lvr-geodata/releases/tag/data-p2-115q1-offline-v2)取得 manifest，再依附件清單選擇資料。
+
+| 選項 | 意義 |
+| --- | --- |
+| `sales`、`presale`、`rent` | 買賣、預售屋、租賃 |
+| `YYYYMM_category` 月檔 | 月份來自交易或租賃日期，不是來源 ZIP 季度 |
+| GeoParquet | 含地理中繼資料的 Parquet |
+| GeoJSON | FeatureCollection |
+| NDJSON | 每行一個 Feature |
+| 年度 ZIP | 同一版本月檔，依格式分開打包 |
+
+年度包的月份及分片以 manifest 為準。若有多個分片，取得清單所列的全部分片並逐一驗證，不能只下載第一個附件。
+
+### 使用下載命令
+
+先從固定版本指標取得 manifest URL 與 SHA-256。以下大寫參數為占位文字，執行前必須替換。目的目錄應尚未存在。
+
+```bash
+uv run --locked --python 3.13.16 python -m lvr_pipeline fetch-output --manifest-url MANIFEST_URL --manifest-sha256 MANIFEST_SHA256 --target data/downloads/my-month --month 202601 --category sales --format geoparquet
+```
+
+省略 `--format` 可下載該選擇範圍的三種格式。月份必須在該版 manifest 中。下載後依 manifest 核對檔案大小與雜湊，不把下載成功當成涵蓋完整。
+
+### 解讀涵蓋與定位
+
+`scope_limited` 表示來源範圍受限。單季來源中出現多個交易月份，不代表那些月份的全部交易都已處理。manifest 中未列出的月份與已確認範圍內的空月份不同，不能都解讀為零筆交易。
+
+未定位觀測仍保留，geometry 為 null。部分門牌定位及近似幾何須保留其品質標記。多門牌的 Polygon 不是建物或地籍輪廓。欄位及幾何語意見[資料規格](docs/architecture.md#資料規格)。
+
+資料仍以來源觀測為單位。未證明相同的交易不能視為已跨批次去重。每版來源、顯名及限制以該版 `NOTICE.json` 為準，程式碼授權不代表第三方資料採用相同授權。
+
+### 維護者下載
+
+維護包用於無原始 ZIP 的重產與後續處理。下載參數 `--maintenance`、交接內容與驗證方式見[發布與復原](CONTRIBUTING.md#發布與復原)。一般使用者取得月檔不需要維護包。
 
 ## 執行與開發
 
-在專案根目錄執行。套件版本由 `uv.lock` 固定，目前使用 `uv 0.12.23` 與 `Python 3.13.16`。
-
-Linux 安裝與合成測試：
-
-```bash
-bash scripts/setup.sh
-```
-
-執行前須已安裝 uv。安裝與測試不下載真實交易資料，也不需要 TGOS 憑證。
-
-Windows 可使用相同固定環境：
-
-```powershell
-uv sync --locked --group dev --python 3.13.16
-uv run --locked --python 3.13.16 python scripts/build_fixtures.py
-uv run --locked --python 3.13.16 python -m pytest -q
-```
-
-檢視目前已實作的命令：
-
-```bash
-uv run --locked --python 3.13.16 python -m lvr_pipeline --help
-```
-
-現有轉換命令與資料準備方式見[逐批轉換說明](docs/p1-conversion.md)及[資料來源](docs/DATA_SOURCES.md)。這些是現有操作，不能視為新版全歷史流程已完成。全歷史主入口、續跑與驗收方式將依重建企劃實作後再更新。
-
-正式開發目錄為 `C:/Code/taiwan-lvr-geodata`。在 `main` 修改、測試及提交，再直接推送 `origin/main`。GitHub Actions 負責 Linux 驗證。
+安裝、來源準備及現有命令見[資料架構與處理](docs/architecture.md#使用與資料處理)。開發、測試與發布方式見[CONTRIBUTING](CONTRIBUTING.md)。全歷史主入口尚待實作，單批命令不代表全量完成。
 
 ## 目前目錄
 
@@ -64,15 +68,19 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline --help
 
 ```text
 taiwan-lvr-geodata/
-├── README.md          唯一專案入口
+├── README.md          唯一專案入口與下載說明
+├── CONTRIBUTING.md    開發、驗證、發布與復原
 ├── lvr_pipeline/      資料處理程式與命令
 ├── config/            設定範例
 ├── schemas/           現行資料契約
 ├── scripts/           安裝、樣本與驗證工具
 ├── tests/             合成資料測試
 ├── docs/              操作文件、規格、計畫與歷史證據
-│   └── plans/
-│       └── 重建企劃.md
+│   ├── architecture.md  來源、處理流程與資料契約
+│   ├── task-result-template.md
+│   ├── plans/         重建企劃
+│   ├── records/       問題、遷移與驗收證據
+│   └── archive/       已取代文件
 ├── data/
 │   ├── sources/       納入 Git 的來源描述
 │   ├── reference/     小型路名參考與來源紀錄
@@ -92,14 +100,16 @@ taiwan-lvr-geodata/
 
 | 要找的內容 | 文件 |
 | --- | --- |
-| 接下來重做什麼、目標目錄與驗收 | [重建企劃](docs/plans/重建企劃.md) |
-| TGOS 地址錯配與重複的已知問題 | [問題報告](docs/drafts/問題報告-TGOS匯入與地址重複.md) |
-| 月檔及年度包下載 | [下載說明](docs/downloads.md) |
-| 目前的輸入準備與轉換命令 | [資料來源](docs/DATA_SOURCES.md)、[逐批轉換](docs/p1-conversion.md) |
-| 目前資料欄位、狀態與幾何 | [資料契約](docs/data-contract.md) |
-| 開發規則與結果紀錄 | [執行契約](AGENTS.md)、[結果範本](docs/task-result-template.md) |
+| 月檔、年度包及涵蓋限制 | [本頁下載說明](#下載資料) |
+| 來源、操作、資料規格、地址規則與 TGOS | [資料架構與處理](docs/architecture.md) |
+| 開發、驗證、發布與復原 | [CONTRIBUTING](CONTRIBUTING.md) |
+| 目標目錄、流程與工作順序 | [重建企劃](docs/plans/重建企劃.md) |
 
-目前文件仍含舊階段紀錄與已失效敘述，整理方式已列入重建企劃。涉及 TGOS 同址判定及全量完成狀態時，須同時核對問題報告，不能單憑舊文件的完成勾選採用結果。
+專案只有根目錄一份 README。問題與驗收放在 docs/records，已取代文件放在 docs/archive。搬移對照與尚未完成的盤點見[舊成果遷移](docs/records/舊成果遷移.md)。
+
+## 已知限制
+
+TGOS 同址判定尚未修復，既有候選須重新驗證。全歷史離線處理、舊補字案例逐項承接及公開全量交付均未完成。正式文件已標示待實作內容，歷史文件的完成勾選不作為新版驗收。
 
 ## 來源與授權
 

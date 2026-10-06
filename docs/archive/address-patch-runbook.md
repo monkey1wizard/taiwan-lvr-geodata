@@ -1,5 +1,9 @@
 # 地址 patch 操作手冊
 
+> 歷史文件：僅保留當時的設計、命令或量測，不是現行操作指示。舊完成勾選不代表重建驗收。TGOS T-16～T-18 須依新規則重驗，上游權威證明門檻的舊敘述也不作為現行要求。
+
+現行文件見[根目錄入口](../../README.md)及[重建企劃](../plans/重建企劃.md)。原位置：`docs/address-patch-runbook.md`。
+
 本文件說明如何把已驗證的 TGOS 門牌結果轉成供 `taiwan-address-data` 審查的 patch。所有命令都從 `C:/Code/taiwan-lvr-geodata` 執行。本步驟只建立內部快照，不會修改或發布地址 repo。
 
 ## 第一批結果

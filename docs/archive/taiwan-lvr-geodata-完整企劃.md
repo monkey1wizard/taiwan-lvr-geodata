@@ -1,10 +1,14 @@
 # 台灣實價登錄地理資料與地址回補完整企劃
 
+> 歷史文件：僅保留當時的設計、命令或量測，不是現行操作指示。舊完成勾選不代表重建驗收。TGOS T-16～T-18 須依新規則重驗，上游權威證明門檻的舊敘述也不作為現行要求。
+
+現行文件見[根目錄入口](../../README.md)及[重建企劃](../plans/重建企劃.md)。原位置：`docs/drafts/taiwan-lvr-geodata-完整企劃.md`。
+
 > 修訂日期：2026-10-06。本文件是 cloud agent 的完整執行企劃，包含六個 phases、24 個 tasks 與 26 個 test points。P1 建立內部轉換階段快照；P2 完成離線定位後，先交付公開月 output、年度包及可接續維護狀態；P3 再做 TGOS 增補。
 >
 > 月份依交易／租賃日期 tx_yyyymm 劃分，保留 YYYYMM_category 檔名。使用者可獨立下載月／類別／格式，也可選年度包。GitHub 公開及舊 TGOS 操作條件已確定，不再保留原三個 OQ。
 >
-> P0／P1 的 T-01～T-07、P2 的 T-08～T-13、T-22、T-23、P3 的 T-14～T-17，以及 P4 的 T-18 已驗收。115q1 首版公開離線 output 已保存於不可變 GitHub Release。第一個真實 TGOS 批次 `p3-tgos-20261005-001` 已匯入。TGOS 與地址 repo 座標視為可用來源，不另設上游權威證明門檻，程式內的 legacy 座標閘門已移除，T-17 已重跑並驗收，候選尚未發布。已產生 4,264 筆可審查地址 patch，另隔離 127 筆缺少唯一村里代碼的結果。見 [P0](../p0-foundations.md)、[P1](../p1-conversion.md)、[P2 驗收](../p2-offline-output.md)、[TGOS 操作手冊](../tgos-runbook.md)、[地址 patch 操作手冊](../address-patch-runbook.md)、[P3 執行證據](../p3-evidence.json)與 [P4 執行證據](../p4-evidence.json)。所有程式在本機正式目錄 main commit／push，cloud 不需要 GAL、`.dev` 或另產生提示。
+> P0／P1 的 T-01～T-07、P2 的 T-08～T-13、T-22、T-23、P3 的 T-14～T-17，以及 P4 的 T-18 已驗收。115q1 首版公開離線 output 已保存於不可變 GitHub Release。第一個真實 TGOS 批次 `p3-tgos-20261005-001` 已匯入。TGOS 與地址 repo 座標視為可用來源，不另設上游權威證明門檻，程式內的 legacy 座標閘門已移除，T-17 已重跑並驗收，候選尚未發布。已產生 4,264 筆可審查地址 patch，另隔離 127 筆缺少唯一村里代碼的結果。見 [P0](../records/P0基礎驗收.md)、[P1](../records/P1轉換驗收.md)、[P2 驗收](../records/P2離線驗收.md)、[TGOS 操作手冊](tgos-runbook.md)、[地址 patch 操作手冊](address-patch-runbook.md)、[P3 執行證據](../records/p3-evidence.json)與 [P4 執行證據](../records/p4-evidence.json)。所有程式在本機正式目錄 main commit／push，cloud 不需要 GAL、`.dev` 或另產生提示。
 
 ## 審核狀態
 
@@ -15,7 +19,7 @@
 
 ## 目標與範圍
 
-P0～P2 已完成本階段驗收。P2 交付 115q1 的 102,743 筆來源觀測、87 個交易月份、10 個年度及可接續維護狀態。P3 的第一個真實批次已完成匯入，程式內的 legacy 座標閘門已移除，T-17 已重跑並驗收，候選尚未發布。P4 已完成 T-18 的真實地址 patch。地址 repo 已完成 T-19 的匯入與物化程式及合成驗證，真實 patch 尚未匯入。詳見 [P1 紀錄](../p1-conversion.md)、[P2 紀錄](../p2-offline-output.md)、[P3／P4 結果](../task-result-template.md)與 [地址 patch 操作手冊](../address-patch-runbook.md)。
+P0～P2 已完成本階段驗收。P2 交付 115q1 的 102,743 筆來源觀測、87 個交易月份、10 個年度及可接續維護狀態。P3 的第一個真實批次已完成匯入，程式內的 legacy 座標閘門已移除，T-17 已重跑並驗收，候選尚未發布。P4 已完成 T-18 的真實地址 patch。地址 repo 已完成 T-19 的匯入與物化程式及合成驗證，真實 patch 尚未匯入。詳見 [P1 紀錄](../records/P1轉換驗收.md)、[P2 紀錄](../records/P2離線驗收.md)、[P3／P4 結果](../records/歷史執行結果.md)與 [地址 patch 操作手冊](address-patch-runbook.md)。
 
 以 taiwan-lvr-geodata 建立可重建的台灣實價登錄地理資料管線。taiwan-address-data 提供固定版本的離線門牌座標，並接收經驗證的新地址資料。雲端 agent 必須能取得相同輸入、接續人工 TGOS 輪次、回補各年份與三種交易類別，再發布有版本紀錄的 GIS 資料。
 
@@ -59,7 +63,7 @@ P0～P2 已驗收。P3 的 T-14～T-17 已驗收。第一個真實批次已匯�
 
 ## 流程與專案分工
 
-完整分支與交接步驟見[完整資料處理流程](../data-processing-flow.md)。該文件包含九個子流程，對應本企劃的 tasks 與 test points。P0～P2、P3 T-14～T-16 及 P4 T-18 已驗收；P3 公開回補與地址 repo 更新仍依實際證據完成。
+完整分支與交接步驟見[完整資料處理流程](data-processing-flow.md)。該文件包含九個子流程，對應本企劃的 tasks 與 test points。P0～P2、P3 T-14～T-16 及 P4 T-18 已驗收；P3 公開回補與地址 repo 更新仍依實際證據完成。
 
 ### 專案責任與回補流程
 
@@ -330,7 +334,7 @@ GAL receipt 與本機企劃鏡像只供選用紀錄。它們的全域流程檢�
 
 **交付與完成判斷：**固定環境、樣本、來源 manifest、資料契約及快照功能可用，相關測試通過。這一階段建立處理基礎，不交付使用者地理資料。
 
-**對應：**T-01～T-04。驗收為 TP-01～TP-04、TP-10。證據見 [P0 紀錄](../p0-foundations.md)。
+**對應：**T-01～T-04。驗收為 TP-01～TP-04、TP-10。證據見 [P0 紀錄](../records/P0基礎驗收.md)。
 
 ### P1：把 raw 變成後續可以處理的結構化資料
 
@@ -342,7 +346,7 @@ GAL receipt 與本機企劃鏡像只供選用紀錄。它們的全域流程檢�
 
 **交付與完成判斷：**已驗證的 observations、address_components、exclusions、diagnostics、dispositions，以及品質報告／manifest。來源列去向總數一致，成員沒有孤兒關聯，金額不因地址展開重複。產物是離線定位前的內部快照，還沒有使用者 GIS 月／年下載。
 
-**對應：**T-05～T-07。驗收為 TP-02～TP-07、TP-10 的 P1 範圍。目前已驗收樣本與 115q1，證據見 [P1 紀錄](../p1-conversion.md)。全歷史量測留在 P5。
+**對應：**T-05～T-07。驗收為 TP-02～TP-07、TP-10 的 P1 範圍。目前已驗收樣本與 115q1，證據見 [P1 紀錄](../records/P1轉換驗收.md)。全歷史量測留在 P5。
 
 ### P2：用既有地址資料產生第一版可下載地理資料
 
@@ -526,7 +530,7 @@ P0／P1 的實作與測試證據見各階段紀錄。後續實作仍為 NotRun�
 
 P0／P1、P2、P3 T-14～T-17 與 P4 T-18 已通過各自適用的階段驗收。T-17 已以真實 115q1 回補驗收，候選尚未發布。前置條件指已驗收的交付成果，不只代表程式已寫完。
 
-勾選表示該 task 已實作並通過本階段驗證，Git 交付使用 main 的本機提交與直接推送。T-01～T-07 的證據見 [P0 紀錄](../p0-foundations.md)與 [P1 紀錄](../p1-conversion.md)。尚未完成的 tasks 保留未勾選。
+勾選表示該 task 已實作並通過本階段驗證，Git 交付使用 main 的本機提交與直接推送。T-01～T-07 的證據見 [P0 紀錄](../records/P0基礎驗收.md)與 [P1 紀錄](../records/P1轉換驗收.md)。尚未完成的 tasks 保留未勾選。
 
 - [x] **T-01／P0**
   - 前置條件與適用門檻：無 task 前置，只用樣本。
