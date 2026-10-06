@@ -37,9 +37,6 @@ CURRENT_MODULES = {
     "offline_lookup.py",
     "p2_cli.py",
     "packaging.py",
-    "parquet_io.py",
-    "processing.py",
-    "snapshots.py",
     "sources.py",
     "tgos.py",
     "tx_date.py",
@@ -98,10 +95,14 @@ def git_files(root: Path) -> list[str]:
     return [line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip()]
 
 
+# New packages created by the rebuild are not part of the R-02 legacy inventory; only contracts replaced a legacy module.
+LEGACY_PACKAGES = {"contracts"}
+
+
 def module_names(path: Path) -> set[str]:
     # A module later converted to a package (e.g. contracts/) still counts as the same top-level module.
     names = {item.name for item in path.glob("*.py") if item.is_file()}
-    names |= {f"{item.name}.py" for item in path.iterdir() if item.is_dir() and (item / "__init__.py").is_file()}
+    names |= {f"{item.name}.py" for item in path.iterdir() if item.is_dir() and (item / "__init__.py").is_file() and item.name in LEGACY_PACKAGES}
     return names
 
 

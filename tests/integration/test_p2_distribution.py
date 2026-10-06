@@ -123,7 +123,7 @@ def release_candidate(output):
     path = output / "manifest.json"
     manifest = json.loads(path.read_text(encoding="utf-8"))
     manifest["producer_config"]["working_tree_source_dirty"] = False
-    from lvr_pipeline.processing import digest
+    from lvr_pipeline.storage.runs import digest
 
     manifest["bindings"]["config_sha256"] = digest(manifest["producer_config"])
     path.write_text(json.dumps(manifest), encoding="utf-8")

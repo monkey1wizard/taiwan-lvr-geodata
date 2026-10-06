@@ -6,9 +6,9 @@ import tempfile
 
 import duckdb
 
-from .parquet_io import BatchWriter, duckdb_config
-from .processing import Stage, bindings, digest
-from .snapshots import SnapshotStore
+from .storage.parquet import BatchWriter, duckdb_config
+from .storage.runs import Stage, bindings, digest
+from .storage.runs import SnapshotStore
 from .sources import sha256_file
 
 

@@ -9,8 +9,8 @@ import duckdb
 
 from .address import building_key_v2
 from .offline_lookup import load_pinned_source
-from .parquet_io import BatchWriter, duckdb_config, rows
-from .processing import Stage, bindings, digest, load_snapshot
+from .storage.parquet import BatchWriter, duckdb_config, rows
+from .storage.runs import Stage, bindings, digest, load_snapshot
 from .sources import sha256_file
 
 

@@ -10,8 +10,8 @@ import shutil
 import zipfile
 
 from .contracts import observation_id
-from .parquet_io import BatchWriter
-from .processing import Stage, bindings, canonical_json, digest
+from .storage.parquet import BatchWriter
+from .storage.runs import Stage, bindings, canonical_json, digest
 from .sources import sha256_file, verify_raw
 
 FIELD_ALIASES = {

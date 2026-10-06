@@ -9,9 +9,9 @@ import subprocess
 
 from .address import _COUNTY_CODE, _CITY_RE, building_key_v2, norm
 from .normalize import normalize_address
-from .parquet_io import BatchWriter
+from .storage.parquet import BatchWriter
 from .contracts.validate import valid_coordinate
-from .processing import Stage, bindings, digest
+from .storage.runs import Stage, bindings, digest
 from .sources import sha256_file
 
 COUNTY_NAMES = {

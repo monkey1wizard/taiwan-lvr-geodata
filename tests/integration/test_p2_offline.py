@@ -11,7 +11,7 @@ from lvr_pipeline.address_state import load_p2, resolve_offline
 from lvr_pipeline.offline_lookup import AdministrativeNames, build_index
 from lvr_pipeline.packaging import extract_handoff, package_output, verify_output
 from lvr_pipeline.export import geometry, read_wkb, wkb
-from lvr_pipeline.parquet_io import rows
+from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.sources import sha256_file
 from test_p1_conversion import pipeline, ADDRESS
 

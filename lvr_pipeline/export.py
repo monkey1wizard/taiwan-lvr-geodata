@@ -10,8 +10,8 @@ import struct
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from .parquet_io import SCHEMAS
-from .processing import canonical_json
+from .storage.parquet import SCHEMAS
+from .storage.runs import canonical_json
 
 
 def geometry(points, category):

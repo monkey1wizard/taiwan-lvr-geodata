@@ -9,9 +9,9 @@ import pytest
 
 from lvr_pipeline.ingest import ingest
 from lvr_pipeline.normalize import normalize, normalize_record
-from lvr_pipeline.parquet_io import BatchWriter, inspect_parquet, verify_relations
-from lvr_pipeline.processing import load_snapshot
-from lvr_pipeline.snapshots import SnapshotStore
+from lvr_pipeline.storage.parquet import BatchWriter, inspect_parquet, verify_relations
+from lvr_pipeline.storage.runs import load_snapshot
+from lvr_pipeline.storage.runs import SnapshotStore
 from test_p1_conversion import CODE, make_source, pipeline, rules, dataset
 
 
@@ -123,7 +123,7 @@ def test_disk_preflight_refuses_to_publish_insufficient_scope(tmp_path,monkeypat
 
 
 def test_arrow_contract_descriptor_matches_published_schema():
-    from lvr_pipeline.parquet_io import SCHEMAS
+    from lvr_pipeline.storage.parquet import SCHEMAS
     root=Path(__file__).resolve().parents[2]
     document=json.loads((root/"lvr_pipeline/contracts/json/converted-parquet.json").read_text(encoding="utf-8"))
     for name,schema in SCHEMAS.items():

@@ -15,9 +15,9 @@ from pathlib import Path
 from .address_state import load_p2
 from .address_v2 import building_key_v2
 from .normalize import normalize_address
-from .parquet_io import BatchWriter, rows
-from .processing import Stage, bindings, canonical_json, digest
-from .snapshots import SnapshotStore
+from .storage.parquet import BatchWriter, rows
+from .storage.runs import Stage, bindings, canonical_json, digest
+from .storage.runs import SnapshotStore
 from .sources import sha256_file
 from .contracts.validate import valid_coordinate
 

@@ -18,9 +18,9 @@ from lvr_pipeline.converted import export_converted
 from lvr_pipeline.contracts import component_id
 from lvr_pipeline.ingest import ingest
 from lvr_pipeline.normalize import normalize
-from lvr_pipeline.parquet_io import BatchWriter, SCHEMAS, rows
-from lvr_pipeline.processing import load_snapshot
-from lvr_pipeline.snapshots import SnapshotStore
+from lvr_pipeline.storage.parquet import BatchWriter, SCHEMAS, rows
+from lvr_pipeline.storage.runs import load_snapshot
+from lvr_pipeline.storage.runs import SnapshotStore
 from lvr_pipeline.sources import describe_zip, sha256_file
 
 CODE="1"*40

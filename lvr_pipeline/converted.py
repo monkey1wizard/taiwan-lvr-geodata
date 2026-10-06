@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .parquet_io import verify_relations
-from .processing import Stage, bindings, load_snapshot
+from .storage.parquet import verify_relations
+from .storage.runs import Stage, bindings, load_snapshot
 from .sources import sha256_file
 
 

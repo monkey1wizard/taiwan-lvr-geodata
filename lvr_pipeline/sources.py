@@ -8,13 +8,10 @@ import re
 import zipfile
 from pathlib import Path
 
+from .storage.runs import sha256_file
+
 TRANSACTION_MEMBER = re.compile(r"^[a-z]_lvr_land_([abc])\.csv$", re.I)
 CATEGORIES = {"a": "sales", "b": "presale", "c": "rent"}
-
-
-def sha256_file(path: Path) -> str:
-    with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
 def describe_zip(path: Path) -> dict:

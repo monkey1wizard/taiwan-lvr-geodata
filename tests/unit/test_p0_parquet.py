@@ -5,7 +5,7 @@ import pyarrow as pa
 import pyarrow.parquet as parquet
 import pytest
 
-from lvr_pipeline.snapshots import SnapshotStore
+from lvr_pipeline.storage.runs import SnapshotStore
 from test_p0_snapshots import BINDINGS
 
 

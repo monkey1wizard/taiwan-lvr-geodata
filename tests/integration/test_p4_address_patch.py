@@ -1,7 +1,7 @@
 """P4 address patch export acceptance."""
 
 from lvr_pipeline.address_patch import _split_legacy, export_address_patch, verify_address_patch
-from lvr_pipeline.parquet_io import rows
+from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.tgos import import_tgos, prepare_tgos, transition_batch
 from test_p3_tgos import fixture_state, response
 

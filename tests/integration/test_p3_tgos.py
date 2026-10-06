@@ -8,7 +8,7 @@ import pytest
 from lvr_pipeline.backfill import backfill_output
 from lvr_pipeline.p2_cli import _tgos_log_date
 from lvr_pipeline.packaging import package_output, verify_output
-from lvr_pipeline.parquet_io import rows
+from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.tgos import (
     _round_robin,
     import_tgos,

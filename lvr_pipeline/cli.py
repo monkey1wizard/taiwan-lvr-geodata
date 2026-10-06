@@ -14,7 +14,7 @@ from jsonschema import ValidationError
 from .converted import export_converted
 from .ingest import ingest
 from .normalize import normalize
-from .processing import peak_rss_bytes, load_snapshot
+from .storage.runs import peak_rss_bytes, load_snapshot
 
 
 def main(argv=None):

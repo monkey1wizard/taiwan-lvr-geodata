@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from lvr_pipeline.snapshots import SnapshotStore
+from lvr_pipeline.storage.runs import SnapshotStore
 from test_p0_contracts import observation, component
 
 BINDINGS={"code_commit":"9fec324"+"0"*33,"schema_version":"1.0","config_sha256":"a"*64,"input_sha256":["b"*64]}
@@ -143,7 +143,7 @@ def test_manifest_row_count_rechecked(tmp_path):
 
 def test_replace_waits_out_short_windows_lock(monkeypatch, tmp_path):
     from types import SimpleNamespace
-    from lvr_pipeline import snapshots
+    from lvr_pipeline.storage import runs as snapshots
 
     calls = []
 

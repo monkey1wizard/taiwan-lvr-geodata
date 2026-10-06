@@ -10,9 +10,9 @@ import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from .contracts import observation_id, validate_rows
-from .contracts.schemas import P1_DATASETS, PRIMARY, SCHEMAS as ALL_SCHEMAS, dataset_schema
-from .contracts.validate import validate_dataset_rows
+from ..contracts import observation_id, validate_rows
+from ..contracts.schemas import P1_DATASETS, PRIMARY, SCHEMAS as ALL_SCHEMAS, dataset_schema
+from ..contracts.validate import validate_dataset_rows
 
 # Retained symbol: the transaction (P1) datasets only; all datasets live in contracts.schemas.
 SCHEMAS = {name: ALL_SCHEMAS[name] for name in P1_DATASETS}
