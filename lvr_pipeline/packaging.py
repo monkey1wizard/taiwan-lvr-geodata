@@ -94,12 +94,6 @@ def package_output(
         raise ValueError("Offline state refers to different converted observations")
     if not notices.get("publication_authorized") or not notices.get("sources"):
         raise ValueError("Public source attribution and authorization required")
-    if sr["offline_source"]["legacy_base"] and not notices.get(
-        "legacy_coordinates_authorized"
-    ):
-        raise ValueError(
-            "Legacy README alone is insufficient permission for public coordinates"
-        )
     binding = bindings(
         "package-output",
         {"notices": notices, "max_asset_bytes": max_asset_bytes},

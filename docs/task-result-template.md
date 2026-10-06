@@ -123,11 +123,16 @@ T-14 的持久 TGOS 狀態與配額規則已通過合成整合驗收。T-15 的�
 | `verify-tgos-state --input data/work/tgos-state/snapshots/p3-tgos-20261005-001-submitted` | pass | 批次數 1；located 48,882、conflict 2,269、unmatched 4,871 |
 | `import-tgos --state …-submitted --batch p3-tgos-20261005-001 --response data/tgos/p3-tgos-20261005-001/response.csv --run-id p3-tgos-20261005-001-imported` | pass | 回傳 SHA-256 `a6f15f3…`；狀態 manifest SHA-256 `9f4596e…`；4,871 筆一對一核對 |
 | `verify-tgos-state --input data/work/tgos-state/snapshots/p3-tgos-20261005-001-imported` | pass | 批次數 1；located 53,310、conflict 2,269、unmatched 443 |
-| `backfill-output … --run-id p3-115q1-tgos-001-backfill` | fail | `Legacy README alone is insufficient permission for public coordinates`；未產生或發布候選 |
+| `backfill-output … --run-id p3-115q1-tgos-001-backfill` | fail | `Legacy README alone is insufficient permission for public coordinates`；未產生或發布候選。2026-10-06 當時結果，保留為歷史紀錄；該檢查已於同日依專案擁有者決定移除 |
+| `backfill-output --input data\work\converted\snapshots\p1-115q1-accepted --state data\work\tgos-state\snapshots\p3-tgos-20261005-001-imported --previous data\output\p2-115q1-offline-v2 --notices data\sources\p3_notice.json --output-dir data\output --report data\work\p3-tgos-20261005-001-backfill-report.json --run-id p3-115q1-tgos-001-backfill` | pass | Windows，約 162 秒；located 48,882 → 53,310、conflict 2,269 不變、unmatched 4,871 → 443；變更 90 個月、9 個年度（282 個月檔、501 個月檔未變）；前版可讀 |
+| `verify-output --input data\output\p3-115q1-tgos-001-backfill` | pass | `verified: true`，retained_rows 102,743 |
+| TP-14 真實候選檢查（一次性腳本，未納入 repo） | pass | 261 個月／類別組合：GeoParquet 皆為 1.1 版、WKB、CRS 軸序 Lon／Lat；三格式 ID 集合與 null 筆數一致；raw_record_id 無重複；無零面積 Polygon。幾何 Point 83,771、Polygon 23、MultiPoint 18、null 18,931，合計 102,743 |
+| TP-26 真實候選檢查（同一腳本） | pass | 月份集合與前版相同；30 個年度 ZIP 共 783 個成員，位元組雜湊與對應月檔相同；每年皆有三種格式 ZIP；金額總和與前版相同（未因回補重複計算）。未變月份的資料檔雜湊與前版相同。唯一差異是 201809 的 manifest 只有 `snapshot_id` 改為新快照，資料檔未變 |
+| TP-10／TP-18 合成測試（`test_incomplete_stage_and_stale_writers_keep_old_pointer`、`test_interruption_keeps_previous_pointer_and_rerun_uses_new_id`、`test_stale_writer_rejected_before_upload`、`test_alias_cycle_is_rejected_and_verified_alias_can_be_revoked`、`test_backfill_changes_only_affected_month_and_keeps_previous_readable`，加 TP-14／TP-26 的 4 個合成測試） | pass | 共 14 項通過。全部測試 223 項通過 |
 
 TP-15～TP-18 的合成情境包含 10,001 候選、公平選取、未來日期／額度耗盡、提交前取消、提交不明、UTF-8-sig、一對一 Address、重複匯入、座標軸疑似顛倒及單月回補。T-14～T-16 已有真實持久狀態與回傳證據。T-17 的合成測試通過，但真實公開回補因來源權利證據不足而失敗，尚未驗收。
 
-T-17 的下一步是補齊 legacy 地址座標的上游再散布證據，或實作來源級篩選，確保公開輸出只包含已授權座標。已驗證 TGOS 結果可獨立接續 P4。
+專案擁有者於 2026-10-06 決定不要求上游權威證明，已移除 `package_output` 的 legacy 座標閘門。T-17 已產生並驗證本機候選 `p3-115q1-tgos-001-backfill`，TP-10、TP-14、TP-18、TP-26 的適用檢查通過，T-17 驗收。限制：真實檢查只涵蓋 115q1 的單季範圍；超大年度包分片只有合成測試；候選尚未發布到 GitHub Release，發布屬 T-23 範圍。
 
 ## 本次 P4 T-18 執行結果：2026-10-06
 

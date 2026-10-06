@@ -200,14 +200,25 @@ def test_corrupted_public_month_fails(tmp_path):
         verify_output(output)
 
 
-def test_unproven_legacy_permission_cannot_publish(tmp_path):
+def test_legacy_base_needs_no_upstream_proof_to_package(tmp_path):
     converted, *_, state = run(tmp_path)
-    with pytest.raises(ValueError, match="Legacy README"):
+    package_output(
+        converted,
+        state,
+        tmp_path / "output",
+        notices={"publication_authorized": True, "sources": ["synthetic"]},
+    )
+    assert next((tmp_path / "output").rglob("NOTICE.json"))
+
+
+def test_package_still_requires_attribution(tmp_path):
+    converted, *_, state = run(tmp_path)
+    with pytest.raises(ValueError, match="attribution"):
         package_output(
             converted,
             state,
             tmp_path / "output",
-            notices={"publication_authorized": True, "sources": ["synthetic"]},
+            notices={"publication_authorized": True, "sources": []},
         )
 
 

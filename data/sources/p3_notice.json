@@ -1,0 +1,43 @@
+{
+  "publication_authorized": true,
+  "record_grain": "source_observation",
+  "coordinate_scope": ["all offline index counties", "TGOS batch p3-tgos-20261005-001"],
+  "sources": [
+    {
+      "provider": "內政部地政司",
+      "title": "不動產成交案件實際資訊資料供應系統，115q1 本機提供輸入",
+      "url": "https://plvr.land.moi.gov.tw/DownloadOpenData",
+      "license": "政府資料開放授權條款第1版",
+      "license_url": "https://data.gov.tw/license",
+      "provenance_limit": "Input bytes are pinned by the P1 manifest. Historical acquisition time and exact download URI were not supplied. This release does not claim a newly downloaded official quarterly file."
+    },
+    {
+      "provider": "臺北市政府民政局",
+      "title": "臺北市門牌位置資訊",
+      "version": "2026-10-02, SHA-256 7212058161f10a13d52ee46e74155526ca4ebf182b151562ba0e533f882a89ab",
+      "url": "https://data.gov.tw/dataset/155472",
+      "license": "政府資料開放授權條款第1版",
+      "license_url": "https://data.gov.tw/license",
+      "usage": "Derived WGS84 coordinates for exact address-key matches."
+    },
+    {
+      "provider": "國土測繪中心 TGOS",
+      "title": "TGOS 地址比對（addrCompare）批次查詢結果，批次 p3-tgos-20261005-001，服務日期 2026-10-05",
+      "url": "https://www.tgos.tw/",
+      "usage": "WGS84 coordinates returned for submitted addresses, matched one-to-one by Address and imported by import-tgos."
+    },
+    {
+      "provider": "taiwan-address-data",
+      "title": "離線門牌座標 legacy 基底",
+      "url": "https://github.com/monkey1wizard/taiwan-address-data",
+      "commit": "02887978ef19c1067e339787bae976a72d4723af",
+      "usage": "Offline address coordinates for exact address-key matches. Redistribution of the upstream datasets behind this repository was not independently verified. The project owner decided on 2026-10-06 not to require upstream proof."
+    }
+  ],
+  "administrative_reference": {
+    "repository": "https://github.com/monkey1wizard/taiwan-address-data",
+    "commit": "02887978ef19c1067e339787bae976a72d4723af",
+    "usage": "Explicit administrative name/code aliases, road-name candidate references and offline coordinates."
+  },
+  "limitations": "Selected 115q1 source observations only. Transaction months and years are scope_limited. Unknown transaction identity remains null. Unlocated and conflicting addresses remain in state. Approximate polygons are bounding boxes, not cadastral boundaries. No provider endorsement or accuracy warranty is implied."
+}

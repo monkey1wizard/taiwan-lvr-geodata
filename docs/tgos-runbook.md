@@ -81,7 +81,9 @@ data/work/tgos-state/snapshots/p3-tgos-20261005-001-imported
 
 回補只重建受影響的交易月與對應年度包。驗證完成不等於已公開發布。發布仍需核對來源權利、附件雜湊與 Git parent。
 
-第一批真實回補於 2026-10-06 執行後停止。`p3-tgos-20261005-001-imported` 同時保留最新地址基底的離線座標，而 `data/sources/p2_notice.json` 明確設定 `legacy_coordinates_authorized=false`。程式回傳 `Legacy README alone is insufficient permission for public coordinates`，因此沒有產生或發布 P3 月／年候選。補齊最新地址基底各上游資料的再散布證據，或實作只保留已授權座標來源的來源級篩選後，才能重跑本節命令。
+第一批真實回補於 2026-10-06 首次執行時停止。原因是 `package_output` 有 legacy 座標閘門，而 `data/sources/p2_notice.json` 設定 `legacy_coordinates_authorized=false`。專案擁有者當天決定不要求上游權威證明，閘門已移除。
+
+重跑時改用 `data/sources/p3_notice.json`，它列出 TGOS 與地址 repo 的來源與限制。`p2_notice.json` 維持不變，因為它描述已發布的 P2 首版。重跑命令即本節的 `backfill-output`，只需把 `--notices` 換成 `data\sources\p3_notice.json`。候選 `p3-115q1-tgos-001-backfill` 已產生並通過 `verify-output`，尚未發布。
 
 已驗證的 TGOS 結果可先依[地址 patch 操作手冊](address-patch-runbook.md)產生內部 patch。這不等於授權公開月／年資料，也不會自動修改地址 repo。
 
