@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | `lvr_pipeline/` | 解析、正規化、地址處理、輸出及 CLI | 依企劃拆分責任，共用核心規則 |
 | `lvr_pipeline/contracts/` | JSON 與 Arrow 契約 | 收斂至 contracts |
-| `data/sources/`、`data/reference/`、`data/registry/` | 來源描述與小型規則 | 經盤點後移至 config |
+| `config/sources/`、`config/reference/`、`config/rules/` | 來源描述與小型規則 | 已由 `data/` 移入（R03-9） |
 | `data/work/` | 既有階段快照 | 定義版本及續跑契約後遷移 |
 | `scripts/`、`tests/` | 安裝、驗證與合成測試 | 保留有效驗證，按責任整理 |
 
@@ -56,7 +56,7 @@
 
 ### 現有位置與打包
 
-目前發布候選在 `data/output/`，小型版本描述與指標在 `data/releases/`。重建企劃中的根目錄 `releases/` 尚未遷移。
+目前發布候選在 `data/output/`，小型版本描述與指標在根目錄 `releases/`。
 
 `package-output` 以 converted 輸入、定位 state、來源 notices 及 run ID 建立成品。`verify-output` 檢查產物。實際參數以各命令 `--help` 為準，避免把封存範例中的舊 run ID 當成新版本。
 

@@ -126,7 +126,8 @@ def heading_anchors(path: Path) -> set[str]:
 
 def broken_markdown_links(root: Path) -> list[str]:
     broken: list[str] = []
-    markdown_files = [root / name for name in git_files(root) if name.casefold().endswith(".md")]
+    # docs/archive is a frozen historical record; its links are not maintained after file moves.
+    markdown_files = [root / name for name in git_files(root) if name.casefold().endswith(".md") and not name.startswith("docs/archive/")]
     pattern = re.compile(r"(?<!!)\[[^\]]*\]\(([^)]+)\)")
     for source in markdown_files:
         for raw_target in pattern.findall(source.read_text(encoding="utf-8")):
@@ -176,7 +177,7 @@ def main() -> int:
     check("current_module_inventory", sorted(CURRENT_MODULES), sorted(module_names(root / "lvr_pipeline")))
     check("legacy_module_inventory", sorted(LEGACY_MODULES), sorted(module_names(legacy / "lvr_pipeline")))
 
-    current_rules = root / "data" / "registry" / "garbled_override.csv"
+    current_rules = root / "config" / "rules" / "character-fixes.csv"
     legacy_rules = legacy / "data" / "registry" / "garbled_override.csv"
     check("current_character_rule_count", 21, csv_rows(current_rules))
     check("legacy_character_rule_count", 21, csv_rows(legacy_rules))
@@ -187,7 +188,7 @@ def main() -> int:
         check(f"legacy_registry_rows:{name}", expected_rows, csv_rows(source))
         check(f"legacy_registry_sha256:{name}", expected_hash, sha256(source))
 
-    raw_manifest = json.loads((root / "data" / "sources" / "raw_manifest.json").read_text(encoding="utf-8"))
+    raw_manifest = json.loads((root / "config" / "sources" / "raw_manifest.json").read_text(encoding="utf-8"))
     entries = (
         raw_manifest.get("inputs")
         or raw_manifest.get("sources")

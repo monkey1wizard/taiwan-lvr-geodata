@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Step 1：靜態造字補正 — meta_{sales,presale,rent}.csv raw_address 原地回寫。
 
-Phase 1（靜態補正）：讀 data/work/meta_*.csv，對 raw_address 套用 garbled_override.csv
+Phase 1（靜態補正）：讀 data/work/meta_*.csv，對 raw_address 套用 config/rules/character-fixes.csv
 （char/variant/token 三 kind），補正後原地寫回同檔。冪等：重跑不再變動。
 
 自動破字（offline 語料 wildcard + 座標 probe）已移至 Step2 `--mode resolve`。
@@ -26,7 +26,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 WORK_DIR = os.path.join(ROOT, "data", "work")
 OFFLINE_IN_DIR = os.path.join(WORK_DIR, "offline_in")
 REGISTRY_DIR = os.path.join(ROOT, "data", "registry")
-GARBLED_PATH = os.path.join(REGISTRY_DIR, "garbled_override.csv")
+GARBLED_PATH = os.path.join(ROOT, "config", "rules", "character-fixes.csv")
 
 _CATS = ("sales", "presale", "rent")
 _SPLIT_COLS = ["id", "raw_address"]

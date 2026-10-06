@@ -58,9 +58,9 @@ def test_token_kind_matches_literal_question_mark():
 
 
 def test_real_registry_question_mark_rules_fire():
-    """回歸：data/registry 內既有 ? token 規則對 literal ? 生效，乾淨地址不動。"""
+    """回歸：config/rules 內既有 ? token 規則對 literal ? 生效，乾淨地址不動。"""
     repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    char_map, token_patterns = load_garbled(os.path.join(repo, "data", "registry", "garbled_override.csv"))
+    char_map, token_patterns = load_garbled(os.path.join(repo, "config", "rules", "character-fixes.csv"))
     assert "公舘路" in fix_garbled("臺北市北投區公?路100號", char_map, token_patterns)
     assert fix_garbled("臺北市北投區公館路100號", char_map, token_patterns) == "臺北市北投區公館路100號"
 

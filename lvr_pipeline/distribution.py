@@ -377,7 +377,7 @@ def publish_release(
     if transport.head() != expected_parent:
         raise ValueError("Stale parent after publication; previous pointer retained")
     base = (
-        f"https://github.com/monkey1wizard/taiwan-lvr-geodata/releases/download/{tag}"
+        f"https://github.com/monkey1wizard/taiwan-lvr-georeleases/download/{tag}"
     )
     pointer = {
         "schema_version": "1.0",
@@ -431,21 +431,21 @@ def commit_pointer(
     (
         transport or GitHubRelease("monkey1wizard/taiwan-lvr-geodata", checkout)
     ).verify_receipt(pointer)
-    path = checkout / "data/releases/latest.json"
-    version = checkout / "data/releases" / f"{pointer['snapshot_id']}.json"
+    path = checkout / "releases/latest.json"
+    version = checkout / "releases" / f"{pointer['snapshot_id']}.json"
     write_json(path, pointer)
     write_json(version, pointer)
     git(
         "add",
         "--",
-        "data/releases/latest.json",
-        f"data/releases/{pointer['snapshot_id']}.json",
+        "releases/latest.json",
+        f"releases/{pointer['snapshot_id']}.json",
     )
     git("commit", "-m", message)
     commit = git("rev-parse", "HEAD")
     if (
         git("rev-parse", commit + "^") != expected
-        or json.loads(git("show", commit + ":data/releases/latest.json")) != pointer
+        or json.loads(git("show", commit + ":releases/latest.json")) != pointer
     ):
         raise ValueError(
             "Stale local parent or changed pointer; remote index was not advanced"

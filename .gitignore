@@ -1,14 +1,6 @@
-# Local inputs, intermediate files, caches, and generated datasets
-/data/raw/
-/data/work/
-/data/cache/
-/data/output/
-/data/downloads/
-/data/tgos/
-/data/registry/land.csv
-/data/registry/parking.csv
-/data/registry/no_doorplate.csv
-/data/registry/unresolvable.csv
+# Local inputs, intermediate files, caches, and generated datasets.
+# data/ holds only local files; small tracked config lives in config/ and releases/.
+/data/
 *.sqlite
 *.sqlite-*
 *.duckdb

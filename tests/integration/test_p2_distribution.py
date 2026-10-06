@@ -138,7 +138,7 @@ def test_failed_release_never_publishes_or_updates_pointer(output, tmp_path, fai
         publish_release(output, parent, tmp_path, transport=transport)
     assert (
         "publish" not in transport.calls
-        and not (tmp_path / "data/releases/latest.json").exists()
+        and not (tmp_path / "releases/latest.json").exists()
     )
 
 
@@ -182,7 +182,7 @@ def test_resume_same_draft_skips_only_identical_assets(tmp_path, monkeypatch):
         if args[:2] == ("release", "view"):
             return json.dumps(
                 {
-                    "apiUrl": "https://api.github.com/repos/monkey1wizard/taiwan-lvr-geodata/releases/1"
+                    "apiUrl": "https://api.github.com/repos/monkey1wizard/taiwan-lvr-georeleases/1"
                 }
             )
         if args[0] == "api":

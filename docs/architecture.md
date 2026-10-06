@@ -212,12 +212,12 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline --help
 
 | 輸入 | 目前位置 | 使用條件 |
 | --- | --- | --- |
-| 交易來源清單 | [raw_manifest.json](../data/sources/raw_manifest.json) | 已盤點 58 批，不代表已完成全量驗收 |
+| 交易來源清單 | [raw_manifest.json](../config/sources/raw_manifest.json) | 已盤點 58 批，不代表已完成全量驗收 |
 | 原始交易 ZIP | `data/raw/<batch>_lvr_landcsv.zip` | 按清單核對雜湊與 ZIP 成員，缺失不能當成空批次 |
-| 地址來源描述 | [address_source.json](../data/sources/address_source.json) | 固定來源提交及檔案，不任意改用最新版本 |
-| 臺北市官方來源描述 | [official_taipei.json](../data/sources/official_taipei.json) | 固定本機來源檔及其雜湊 |
-| 補字規則 | [garbled_override.csv](../data/registry/garbled_override.csv) | 舊規則已存在，逐案承接驗收仍待執行 |
-| 路名參考 | [來源紀錄](../data/reference/roadnames_35321.provenance.txt) | 保留來源與適用限制 |
+| 地址來源描述 | [address_source.json](../config/sources/address_source.json) | 固定來源提交及檔案，不任意改用最新版本 |
+| 臺北市官方來源描述 | [official_taipei.json](../config/sources/official_taipei.json) | 固定本機來源檔及其雜湊 |
+| 補字規則 | [garbled_override.csv](../config/rules/character-fixes.csv) | 舊規則已存在，逐案承接驗收仍待執行 |
+| 路名參考 | [來源紀錄](../config/reference/roadnames_35321.provenance.txt) | 保留來源與適用限制 |
 
 舊專案 `C:/Code/taiwan-lvr-geojson` 僅作唯讀參考。地址專案預設位於同層的 `C:/Code/taiwan-address-data`。本次文件整理沒有下載、搬移或重新核對真實輸入。
 

@@ -8,7 +8,7 @@
 
 | 項目 | 狀態與限制 |
 | --- | --- |
-| 公開資料 | 本機[版本指標](data/releases/latest.json)指向 `p2-115q1-offline-v2`，來源範圍只有 `115q1` |
+| 公開資料 | 本機[版本指標](releases/latest.json)指向 `p2-115q1-offline-v2`，來源範圍只有 `115q1` |
 | 離線定位 | 該公開版本的座標來源限臺北市官方資料，其餘未定位觀測仍保留 |
 | 全歷史處理 | 現有清單列出 58 批原始來源，尚未完成全歷史離線處理驗收 |
 | TGOS 回補 | 已發現回傳門牌不符卻被採用的問題，既有回補候選與地址補充資料須重新驗證 |
@@ -19,11 +19,11 @@ TGOS 問題的案例與量測限制見[問題報告](docs/records/TGOS地址錯�
 
 ## 下載資料
 
-本機[版本指標](data/releases/latest.json)目前指向 `p2-115q1-offline-v2`。此版本只處理 `115q1` 來源，座標來源限臺北市官方資料。本次文件整理未重新連線核對公開附件。
+本機[版本指標](releases/latest.json)目前指向 `p2-115q1-offline-v2`。此版本只處理 `115q1` 來源，座標來源限臺北市官方資料。本次文件整理未重新連線核對公開附件。
 
 ### 選擇資料
 
-從[該版本 Release](https://github.com/monkey1wizard/taiwan-lvr-geodata/releases/tag/data-p2-115q1-offline-v2)取得 manifest，再依附件清單選擇資料。
+從[該版本 Release](https://github.com/monkey1wizard/taiwan-lvr-georeleases/tag/data-p2-115q1-offline-v2)取得 manifest，再依附件清單選擇資料。
 
 | 選項 | 意義 |
 | --- | --- |
@@ -113,6 +113,6 @@ TGOS 同址判定尚未修復，既有候選須重新驗證。全歷史離線處
 
 ## 來源與授權
 
-程式與既有測試源自 `taiwan-lvr-geojson`。程式碼授權見 [LICENSE](LICENSE)，路名參考資料見[來源紀錄](data/reference/roadnames_35321.provenance.txt)。
+程式與既有測試源自 `taiwan-lvr-geojson`。程式碼授權見 [LICENSE](LICENSE)，路名參考資料見[來源紀錄](config/reference/roadnames_35321.provenance.txt)。
 
 每版資料的來源、顯名與使用限制以該版本的 `NOTICE.json` 為準。程式碼授權不代表第三方地址資料具有相同授權。

@@ -16,11 +16,11 @@ from .pipeline import run
 def _add_offline_and_output_commands(sub):
     p = sub.add_parser("pin-address-source")
     p.add_argument("--address-dir", type=Path, required=True)
-    p.add_argument("--output", type=Path, default=Path("data/sources/address_source.json"))
+    p.add_argument("--output", type=Path, default=Path("config/sources/address_source.json"))
     p = sub.add_parser("build-offline-index")
     p.add_argument("--address-dir", type=Path, required=True)
     p.add_argument(
-        "--address-source", type=Path, default=Path("data/sources/address_source.json")
+        "--address-source", type=Path, default=Path("config/sources/address_source.json")
     )
     p.add_argument("--county", action="append")
     p.add_argument("--official-source", type=Path)
@@ -31,7 +31,7 @@ def _add_offline_and_output_commands(sub):
     p.add_argument("--input", type=Path, required=True)
     p.add_argument("--address-dir", type=Path, required=True)
     p.add_argument(
-        "--address-source", type=Path, default=Path("data/sources/address_source.json")
+        "--address-source", type=Path, default=Path("config/sources/address_source.json")
     )
     p.add_argument("--index", type=Path, required=True)
     p.add_argument("--work-dir", type=Path, default=Path("data/work"))
@@ -145,7 +145,7 @@ def build_parser():
             p.add_argument("--input", type=Path, help="An existing normalized snapshot")
         if command in {"ingest", "export-converted"}:
             p.add_argument("--raw-dir", type=Path, default=Path("data/raw"))
-            p.add_argument("--manifest", type=Path, default=Path("data/sources/raw_manifest.json"))
+            p.add_argument("--manifest", type=Path, default=Path("config/sources/raw_manifest.json"))
             p.add_argument("--batch", action="append", default=[])
         if command != "verify-converted":
             p.add_argument("--work-dir", type=Path, default=Path("data/work"))
@@ -153,7 +153,7 @@ def build_parser():
             p.add_argument("--run-id")
         if command in {"normalize", "export-converted"}:
             p.add_argument("--cutoff", type=int, required=True)
-            p.add_argument("--garbled-rules", type=Path, default=Path("data/registry/garbled_override.csv"))
+            p.add_argument("--garbled-rules", type=Path, default=Path("config/rules/character-fixes.csv"))
     return parser
 
 
