@@ -396,3 +396,96 @@ def test_exchange_folder_prefix_collision_does_not_overwrite(tmp_path):
     with pytest.raises(ValueError, match="Existing TGOS exchange differs"):
         _write_exchange(tmp_path, second, [], b"b", folder_date="2026-10-08")
     assert (target / "addresses.csv").read_bytes() == b"a"
+
+
+def _stale_ledger(tmp_path, submitted, work):
+    """Copy a TGOS state, giving every query the key an older rule set would have stored."""
+    from lvr_pipeline.tgos import _artifact_paths, _write_state
+
+    manifest, _, _ = load_state(submitted)
+    paths = _artifact_paths(submitted, manifest)
+    queries = list(rows(paths["tgos-query"]))
+    for row in queries:
+        row["building_key"] = row["building_key"].replace('"door":"', '"door":"9')
+        row["query_fingerprint"] = "stale-" + row["query_fingerprint"]
+    return _write_state(
+        submitted,
+        work,
+        action="stale-ledger",
+        batches=list(rows(paths["tgos-batch"])),
+        queries=queries,
+        results=list(rows(paths["tgos-result"])),
+        aliases=list(rows(paths["verified-alias"])),
+        alias_events=list(rows(paths["alias-event"])),
+    )
+
+
+def test_carried_queries_are_rekeyed_and_old_snapshot_is_untouched(tmp_path):
+    from lvr_pipeline.addresses.identity import building_key_v2
+    from lvr_pipeline.storage.runs import digest
+
+    _, state, _ = fixture_two_unmatched(tmp_path)
+    submitted, first = _submit_first(tmp_path, state, tmp_path / "old")
+    stale = _stale_ledger(tmp_path, submitted, tmp_path / "old")
+    before = list(rows(stale / "tgos_queries.parquet"))
+
+    seeded, _ = prepare_tgos(state, tmp_path / "new", tmp_path / "exchange", ledger=stale)
+    carried = [r for r in rows(seeded / "tgos_queries.parquet") if r["batch_id"] == first["batch_id"]]
+    assert len(carried) == 1
+    assert carried[0]["building_key"] == building_key_v2(first["address"])
+    assert carried[0]["query_fingerprint"] == digest([carried[0]["building_key"], first["address"]])
+    assert load_state(seeded)[1]["carried_query_keys_recomputed"] == 1
+    assert list(rows(stale / "tgos_queries.parquet")) == before
+    # the already-sent address is recognised, so the new batch holds only the other one
+    new_batch = [r for r in rows(seeded / "tgos_queries.parquet") if r["batch_id"] != first["batch_id"]]
+    assert [r["address"] for r in new_batch] != [first["address"]]
+    assert first["address"] not in [r["address"] for r in new_batch]
+
+
+def test_import_of_carried_batch_with_changed_keys_succeeds(tmp_path):
+    _, state, _ = fixture_two_unmatched(tmp_path)
+    submitted, first = _submit_first(tmp_path, state, tmp_path / "old")
+    stale = _stale_ledger(tmp_path, submitted, tmp_path / "old")
+    result = tmp_path / "result.csv"
+    response(
+        result,
+        [{"Address": first["address"], "Response_Address": first["address"], "Response_X": "121.51", "Response_Y": "25.01"}],
+    )
+    seeded, _ = prepare_tgos(state, tmp_path / "new", tmp_path / "exchange", ledger=stale)
+    imported = import_tgos(seeded, tmp_path / "new", first["batch_id"], result)
+    assert load_state(imported)[1]["status_counts"]["located"] == 2
+    assert [r["status"] for r in rows(imported / "tgos_imports.parquet")] == ["succeeded"]
+
+
+def test_same_address_text_already_sent_is_not_selected_again(tmp_path, monkeypatch):
+    _, state, addresses = fixture_two_unmatched(tmp_path)
+    submitted, first = _submit_first(tmp_path, state, tmp_path / "old")
+    # A rule change that moves every key: fingerprints no longer match, only the text can.
+    from lvr_pipeline.addresses.identity import building_key_v2 as real
+
+    monkeypatch.setattr(
+        "lvr_pipeline.tgos.building_key_v2",
+        lambda address: real(address).replace('"door":"', '"door":"9'),
+    )
+    seeded, _ = prepare_tgos(state, tmp_path / "new", tmp_path / "exchange", ledger=submitted)
+    new_batch = [r for r in rows(seeded / "tgos_queries.parquet") if r["batch_id"] != first["batch_id"]]
+    assert [r["address"] for r in new_batch] == [a for a in addresses if a != first["address"]]
+
+
+def test_cancelled_batch_addresses_are_eligible_again_with_approved_retry(tmp_path):
+    from lvr_pipeline.storage.runs import digest
+
+    _, state, _ = fixture_two_unmatched(tmp_path)
+    prepared, _ = prepare_tgos(state, tmp_path / "old", tmp_path / "exchange", limit=1)
+    query = list(rows(prepared / "tgos_queries.parquet"))[0]
+    cancelled = transition_batch(prepared, tmp_path / "old", query["batch_id"], "cancelled", reason="x")
+    seeded, _ = prepare_tgos(
+        state,
+        tmp_path / "new",
+        tmp_path / "exchange",
+        ledger=cancelled,
+        retry_fingerprints=[digest([query["building_key"], query["address"]])],
+        retry_reason="regenerated",
+    )
+    new_batch = [r for r in rows(seeded / "tgos_queries.parquet") if r["batch_id"] != query["batch_id"]]
+    assert query["address"] in [r["address"] for r in new_batch]

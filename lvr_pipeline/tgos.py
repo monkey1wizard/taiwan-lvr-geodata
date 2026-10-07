@@ -307,13 +307,18 @@ def repair_prepared_exchange(
     return state, exchange
 
 
-def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict]]:
+def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict], int]:
     """Carry sent batches and queries so they are not resent.
 
     Earlier results, evidence and aliases are dropped. Completed batches go
     back to submitted, so their stored responses can be imported again under
     the current address checks. An operator may correct the service date on
     which a carried batch actually used quota; the old date stays in reason.
+
+    Carried queries are re-keyed with the current building_key_v2 and their
+    fingerprints recomputed, so a rule change cannot hide an address already
+    sent or leave a key the address pool no longer contains. The old snapshot
+    is not modified. The third value is how many queries changed key.
     """
     manifest, _, stage_name = load_state(ledger)
     if stage_name != "tgos-state":
@@ -331,7 +336,21 @@ def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict]]:
         if query["batch_id"] in reopened:
             query["status"] = "submitted"
             query["result_id"] = None
-    return batches, queries
+    rekeyed = 0
+    for query in queries:
+        key = building_key_v2(query["address"])
+        if key is None:
+            # tgos-query.building_key is not nullable; the snapshot format must not change.
+            raise ValueError(
+                "Carried TGOS query has no building key under current rules: "
+                + query["address"]
+            )
+        fingerprint = digest([key, query["address"]])
+        if key != query["building_key"] or fingerprint != query["query_fingerprint"]:
+            rekeyed += 1
+        query["building_key"] = key
+        query["query_fingerprint"] = fingerprint
+    return batches, queries, rekeyed
 
 
 def prepare_tgos(
@@ -358,10 +377,11 @@ def prepare_tgos(
     results = _table(paths.get("tgos-result"))
     aliases = _table(paths.get("verified-alias"))
     events = _table(paths.get("alias-event"))
+    rekeyed = 0
     if ledger is not None:
         if stage_name != "offline-state":
             raise ValueError("A TGOS ledger can only seed a fresh offline state")
-        batches, queries = _carry_ledger(ledger)
+        batches, queries, rekeyed = _carry_ledger(ledger)
     available = limit
     retry_fingerprints = set(retry_fingerprints or [])
     if retry_fingerprints and not retry_reason:
@@ -379,12 +399,16 @@ def prepare_tgos(
     ):
         raise ValueError("TGOS retry is not in a retryable state")
     prior = set(query_history) - retry_fingerprints
+    # The same address text must not be sent twice even when its key changed.
+    sent_text = {row["address"] for row in queries if row["status"] not in retryable}
     candidates = []
     for row in rows(paths["address-result"]):
         if row["status"] not in {"unmatched", "outside_scope"}:
             continue
         fingerprint = digest([row["building_key"], row["canonical_address"]])
-        if fingerprint not in prior:
+        if fingerprint in retry_fingerprints:
+            candidates.append({**row, "query_fingerprint": fingerprint})
+        elif fingerprint not in prior and row["canonical_address"] not in sent_text:
             candidates.append({**row, "query_fingerprint": fingerprint})
     retry_candidates = [
         row for row in candidates if row["query_fingerprint"] in retry_fingerprints
@@ -446,7 +470,7 @@ def prepare_tgos(
         results=results,
         aliases=aliases,
         alias_events=events,
-        extra_report={"last_tgos_batch_id": batch_id},
+        extra_report={"last_tgos_batch_id": batch_id, "carried_query_keys_recomputed": rekeyed},
         run_id=run_id,
     )
     exchange = _write_exchange(
