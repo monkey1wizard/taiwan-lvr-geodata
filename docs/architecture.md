@@ -399,7 +399,7 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
      --ledger data/work/tgos-state/snapshots/<最新 TGOS 狀態>
    ```
 
-   第一輪沒有舊狀態時省略 `--ledger`。每個交換檔最多 10,000 筆，這是 `--limit` 的預設值，也是上限。輸出在 `data/tgos/YYYYMMDD-<id>/`，例如批次 `tgos-0358ee6e90df` 對應 `data/tgos/20261007-0358ee6e90df/addresses.csv`，同時產生新的 `tgos-state` 快照。用 `$LVR verify-tgos-state --input <新快照>` 檢查。
+   第一輪沒有舊狀態時省略 `--ledger`。每個交換檔最多 10,000 筆，這是 `--limit` 的預設值，也是上限。輸出在 `data/tgos/YYYYMMDD-<id>/`，例如批次 `tgos-0358ee6e90df` 在日期 `2026-10-08` 時對應 `data/tgos/20261008-0358ee6e/addresses.csv`。識別碼只取批次 ID 去掉 `tgos-` 後的前 8 碼；同日前 8 碼相同而內容不同時，程式報錯而不覆寫。2026-10-07 以前建立的 `data/tgos/20261007-0358ee6e90df/` 沿用 12 碼舊名，同時產生新的 `tgos-state` 快照。用 `$LVR verify-tgos-state --input <新快照>` 檢查。
 3. 人工上傳 `addresses.csv` 到 TGOS，使用 addrCompare（WGS84／EPSG:4326、單雙號比對、不限誤差、一筆結果）。不要修改檔案。後三欄保持空白，檔案編碼是 UTF-8 BOM。
 4. 上傳後記錄送出狀態：
 
@@ -634,7 +634,7 @@ id,Address,Response_Address,Response_X,Response_Y
 | submission_unknown | 提交不明，不自動重送 |
 | completed | 已記錄回傳，不代表地址採用正確 |
 
-日期只記錄在 `data/tgos/date.json`，並只用於 `data/tgos/YYYYMMDD-<識別碼>/` 資料夾名稱。日期不參與地址挑選、批次識別、提交狀態或匯入判定。操作員可先產生交換檔並交由其他人上傳，不受紀錄日期限制。例如日期 `2026-10-07` 與批次 `tgos-0358ee6e90df` 對應 `data/tgos/20261007-0358ee6e90df/`。
+日期只記錄在 `data/tgos/date.json`，並只用於 `data/tgos/YYYYMMDD-<識別碼>/` 資料夾名稱。日期不參與地址挑選、批次識別、提交狀態或匯入判定。操作員可先產生交換檔並交由其他人上傳，不受紀錄日期限制。例如日期 `2026-10-08` 與批次 `tgos-0358ee6e90df` 對應 `data/tgos/20261008-0358ee6e/`，識別碼取前 8 碼。2026-10-07 建立的 `data/tgos/20261007-0358ee6e90df/` 是改名前的 12 碼舊名，維持不變。
 
 每個交換檔最多 10,000 筆。這是檔案大小限制，不是日期限制。共用帳號的實際使用量由操作流程另行核對。失敗重查仍須有明確原因及既有查詢紀錄，不能以重建狀態繞過帳本。
 

@@ -37,7 +37,7 @@ def tgos_log_date(path: Path) -> str:
 def exchange_folder_name(batch_id: str, log_date: str) -> str:
     """Return the date-log-only folder name for a TGOS exchange."""
     compact_date = date.fromisoformat(log_date).strftime("%Y%m%d")
-    identifier = batch_id.removeprefix("tgos-")
+    identifier = batch_id.removeprefix("tgos-")[:8]
     return f"{compact_date}-{identifier}"
 
 

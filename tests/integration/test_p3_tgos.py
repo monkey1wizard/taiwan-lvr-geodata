@@ -87,7 +87,7 @@ def test_quota_is_reserved_before_utf8_sig_handoff(tmp_path):
         exchange_date="2026-10-07",
     )
     batch_id = list(rows(prepared / "tgos_batches.parquet"))[0]["batch_id"]
-    assert exchange.name == f"20261007-{batch_id.removeprefix('tgos-')}"
+    assert exchange.name == f"20261007-{batch_id.removeprefix('tgos-')[:8]}"
     assert (exchange / "addresses.csv").read_bytes().startswith(b"\xef\xbb\xbf")
     assert (exchange / "addresses.csv").read_text(encoding="utf-8-sig").splitlines() == [
         "id,Address,Response_Address,Response_X,Response_Y",
@@ -381,3 +381,18 @@ def test_backfill_changes_only_affected_month_and_keeps_previous_readable(tmp_pa
     assert report["unchanged_month_artifacts"] == 9
     assert verify_output(previous)["snapshot_id"] == "before-tgos"
     assert verify_output(output)["tgos_started"] is True
+
+
+def test_exchange_folder_uses_eight_character_id():
+    from lvr_pipeline.tgos import exchange_folder_name
+    assert exchange_folder_name("tgos-0358ee6e90df", "2026-10-08") == "20261008-0358ee6e"
+
+
+def test_exchange_folder_prefix_collision_does_not_overwrite(tmp_path):
+    from lvr_pipeline.tgos import _write_exchange
+    first = {"batch_id": "tgos-0358ee6e90df", "address_count": 0}
+    second = {"batch_id": "tgos-0358ee6effff", "address_count": 0}
+    target = _write_exchange(tmp_path, first, [], b"a", folder_date="2026-10-08")
+    with pytest.raises(ValueError, match="Existing TGOS exchange differs"):
+        _write_exchange(tmp_path, second, [], b"b", folder_date="2026-10-08")
+    assert (target / "addresses.csv").read_bytes() == b"a"
