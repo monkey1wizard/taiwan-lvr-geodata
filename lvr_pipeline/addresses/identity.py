@@ -10,7 +10,7 @@ from .parse import (_CITY_RE, _COUNTY_CODE, _dedup_prefix, _LI_LIN_RE, _REJECT_R
 KEY_VERSION = "v2"
 # Bump whenever a change alters building_key_v2 output for some input. Recorded in the bindings of the
 # normalize, address-pool and offline-index stages so snapshots made under older rules are not reused.
-NORMALIZATION_VERSION = "v2.3"
+NORMALIZATION_VERSION = "v2.4"
 _DOOR = re.compile(r"(?P<main>[0-9]+)(?P<before>(?:之[0-9]+)*)號(?P<after>(?:之[0-9]+)*)(?P<floor>.*)$")
 _FLOOR = re.compile(r"(?:[0-9一二三四五六七八九十百千]+樓(?:之[0-9一二三四五六七八九十]+)?|地下[0-9一二三四五六七八九十]+樓)?$")
 _ROAD = re.compile(r"(?:大道|路|街)")
