@@ -4,6 +4,7 @@
 
 公開 API：
     load_garbled(path) → (char_map, token_patterns)
+    load_statuses(path) → {(kind, garbled): status}   核對狀態，不影響套用結果
     fix_garbled(addr, char_map, token_patterns) → str
 """
 from __future__ import annotations
@@ -15,7 +16,29 @@ import re
 
 # token 規則的 ? 萬用字：比對真實資料裡的 literal ?(U+003F)與 PUA 造字。
 # 防污染靠 scope 守門（fix_garbled 跳過 scope 不在地址中的規則），非靠縮小萬用字範圍。
+STATUSES = ("unverified", "confirmed")
 _WILD = "[?" + chr(0xE000) + "-" + chr(0xF8FF) + "]"
+
+
+def _status(row: dict) -> str:
+    """核對狀態；欄位缺漏或空白視為 unverified，其他值必須是 STATUSES 之一。"""
+    status = (row.get("status") or "").strip() or "unverified"
+    if status not in STATUSES:
+        raise ValueError(f"invalid character-fix status {status!r}; expected one of {STATUSES}")
+    return status
+
+
+def load_statuses(path: str) -> dict[tuple[str, str], str]:
+    """回傳 {(kind, garbled): status}。status 只供核對紀錄，fix_garbled 不使用。"""
+    statuses: dict[tuple[str, str], str] = {}
+    if not os.path.isfile(path):
+        return statuses
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        for row in csv.DictReader(f):
+            garbled = row.get("garbled", "").strip()
+            if garbled and row.get("correct", "").strip():
+                statuses[(row.get("kind", "").strip(), garbled)] = _status(row)
+    return statuses
 
 
 def load_garbled(path: str) -> tuple[dict[str, str], list[tuple[re.Pattern, str, str]]]:
@@ -34,6 +57,7 @@ def load_garbled(path: str) -> tuple[dict[str, str], list[tuple[re.Pattern, str,
             garbled = row.get("garbled", "").strip()
             correct = row.get("correct", "").strip()
             kind = row.get("kind", "").strip()
+            _status(row)  # validated only; status never changes the replacement result
             if not garbled or not correct:
                 continue
             if kind == "char" and garbled.upper().startswith("U+"):

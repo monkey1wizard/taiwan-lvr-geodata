@@ -3,6 +3,8 @@
 import os
 import tempfile
 
+import pytest
+
 from lvr_pipeline.addresses.characters import fix_garbled, load_garbled
 
 
@@ -101,3 +103,30 @@ def test_all_three_kinds_combined():
         pua2 = chr(0xE500)
         assert fix_garbled(f"臺北市北投區東洋新{pua2}街10號", char_map, token_patterns) == "臺北市北投區東洋新邨街10號"
         assert fix_garbled("普通地址無需補正", char_map, token_patterns) == "普通地址無需補正"
+
+
+def test_status_column_is_loaded_and_does_not_change_replacements():
+    import csv
+    import tempfile
+    from lvr_pipeline.addresses.characters import load_statuses
+    repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    path = os.path.join(repo, "config", "rules", "character-fixes.csv")
+    statuses = load_statuses(path)
+    assert len(statuses) == 21 and set(statuses.values()) == {"unverified"}
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.DictReader(f))
+    with tempfile.TemporaryDirectory() as tmp:
+        stripped = os.path.join(tmp, "no-status.csv")
+        with open(stripped, "w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=["garbled", "correct", "scope", "kind", "evidence", "noted_date"])
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({k: row[k] for k in writer.fieldnames})
+        assert load_garbled(stripped)[0] == load_garbled(path)[0]
+        assert [(p.pattern, d, s) for p, d, s in load_garbled(stripped)[1]] == \
+               [(p.pattern, d, s) for p, d, s in load_garbled(path)[1]]
+        bad = os.path.join(tmp, "bad.csv")
+        with open(bad, "w", encoding="utf-8", newline="") as f:
+            f.write("garbled,correct,scope,kind,evidence,noted_date,status\n体,體,,variant,x,2026-01-01,maybe\n")
+        with pytest.raises(ValueError):
+            load_garbled(bad)
