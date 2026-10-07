@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 
+from .addresses import identity
 from .addresses.identity import building_key, building_key_v2
 from .addresses.parse import arab_to_cjk, is_garbled, norm
 from .contracts import component_id
@@ -148,7 +149,8 @@ def normalize(ingest_snapshot: Path, work_dir: Path, *, cutoff: int, rules_path:
         raise FileNotFoundError("Explicit garbled rules file required")
     manifest, previous = load_snapshot(ingest_snapshot, "ingest")
     rules_hash = sha256_file(rules_path)
-    binding = bindings("normalize", {"cutoff": cutoff, "batch_rows": batch_rows},
+    binding = bindings("normalize", {"cutoff": cutoff, "batch_rows": batch_rows,
+                                "normalization_version": identity.NORMALIZATION_VERSION},
                        [sha256_file(Path(ingest_snapshot) / "manifest.json"), rules_hash], code_commit)
     stage = Stage(Path(work_dir) / "normalized", "normalize", binding, run_id)
     if stage.reused:

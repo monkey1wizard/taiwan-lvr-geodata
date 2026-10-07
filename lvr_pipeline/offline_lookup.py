@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 
+from .addresses import identity
 from .addresses.identity import building_key_v2
 from .addresses.parse import _COUNTY_CODE, _CITY_RE, norm
 from .normalize import normalize_address
@@ -127,6 +128,7 @@ def build_index(
         "descriptor": descriptor,
         "counties": sorted(counties or COUNTY_NAMES),
         "official": official_metadata,
+        "normalization_version": identity.NORMALIZATION_VERSION,
     }
     input_hashes = [digest(descriptor)]
     if official:

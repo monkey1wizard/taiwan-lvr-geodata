@@ -7,6 +7,7 @@ import re
 
 import duckdb
 
+from .addresses import identity
 from .addresses.identity import building_key_v2
 from .offline_lookup import load_pinned_source
 from .storage.parquet import BatchWriter, duckdb_config, rows
@@ -54,6 +55,7 @@ def build_pool(
         {
             "address_commit": descriptor["commit"],
             "coordinate_confirmed_candidates": bool(index_path),
+            "normalization_version": identity.NORMALIZATION_VERSION,
         },
         input_hashes,
     )
