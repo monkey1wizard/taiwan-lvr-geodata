@@ -6,6 +6,7 @@
 
 - [完整資料處理流程](#完整資料處理流程)
 - [使用與資料處理](#使用與資料處理)
+- [全量循環作業](#全量循環作業)
 - [資料規格](#資料規格)
 - [地址處理規則](#地址處理規則)
 - [TGOS 操作](#tgos-操作)
@@ -252,6 +253,247 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline verify-converted --input
 完整流程圖及模組邊界集中在[企劃第五節](plans/重建企劃.md#五主要流程與程式邊界)。R-06 實作全量入口後，才會在本文件加入可執行的全歷史命令。
 
 全量結果記入[全歷史驗收](records/全歷史驗收.md)。TGOS 現有匯入有同址判定缺陷，後續處理須遵守[TGOS 操作](#tgos-操作)。取得現有公開成品見[資料下載](../README.md#下載資料)。
+
+## 全量循環作業
+
+本節說明在 Linux 雲端主機上，如何把原始交易資料處理至離線定位，完成 TGOS 人工送查循環，再輸出月檔與年度包。狀態是草稿（任務卡 F-6）。本節的命令都已在紀錄中執行過，只有標示「待」的項目尚未對全量資料執行。結果是快速版，不作為 V-08～V-11 或 V-12 的驗收依據。
+
+本節使用現有的分段命令。單一全量入口 `run-full` 尚未實作，由 R06-4 負責。重建企劃的目標流程見[完整資料處理流程](#完整資料處理流程)，TGOS 規則見[TGOS 操作](#tgos-操作)。
+
+**慣例**
+
+- 所有命令都在專案根目錄執行。為縮短命令，先設定：
+
+  ```bash
+  LVR="uv run --locked --python 3.13.16 python -m lvr_pipeline"
+  ```
+
+- `<run-id>` 是本輪識別，例如 `fast2-20261008`。同一個階段的快照 ID 不可用於不同的輸入。
+- 每個階段的快照放在 `data/work/<階段>/snapshots/<快照 ID>/`。階段目錄依序是 `ingested`、`normalized`、`converted`、`offline-index`、`address-pool`、`offline-state`、`tgos-state`。
+- 命令成功時印出 JSON 並以結束代碼 0 離開。失敗時印出 `{"error": ..., "completed": false}` 並以 1 離開。長時間命令請在 `tmux` 或 `nohup` 下執行，並接 `2>&1 | tee data/work/logs/<run-id>-<步驟>.log`。
+
+### 全量循環 1 環境
+
+1. 準備 Linux 主機，安裝 `git` 與 `uv`（專案目前使用 uv 0.12.23）。`uv` 依 `.python-version` 使用 Python 3.13.16。
+2. 取得本專案，切到要執行的提交，執行：
+
+   ```bash
+   bash scripts/setup.sh
+   ```
+
+   腳本會執行 `uv sync --locked --group dev --python 3.13.16`、產生合成測試資料並跑 `pytest`。測試只用合成資料，不下載真實資料。GitHub Actions 在 Ubuntu 上執行同一個腳本約 1 分 54 秒。
+3. 設定 DuckDB 環境變數。未設定時，程式預設為 2 執行緒、記憶體上限 256MB、暫存上限 1GiB。快速版在 256MB 預設值下，關聯驗證曾因超過上限而失敗，因此全量執行必須放寬：
+
+   ```bash
+   export LVR_DUCKDB_THREADS=4
+   export LVR_DUCKDB_MEMORY_LIMIT=16GB
+   export LVR_DUCKDB_TEMP_LIMIT=100GiB
+   ```
+
+   上列是 2026-10-06 Windows 快速版使用的值。雲端主機的合適值待 Linux 實測。
+4. 資源需求。2026-10-06 Windows 實測的 RSS 峰值約 3 GB（見下表）。`ingest` 開始前會做保守的磁碟預檢：目標磁碟可用空間的 80% 須不少於「ZIP 成員解壓後大小總和 × 12」，否則停止。單輪完整的磁碟用量尚未彙整。每個快照的 `quality.json` 有 `artifact_bytes`，可用來統計。
+
+**2026-10-06 Windows 11 快速版實測，僅供規劃雲端主機參考。** 不同機器的耗時會不同。2026-10-07 起的 v2 實測，完成後記在 `docs/records/快速全量資料v2.md`。
+
+| 步驟 | 耗時 | RSS 峰值 |
+| --- | --- | --- |
+| `ingest` | 未單獨量測（58 批，含在讀取階段） | 未記錄 |
+| `normalize` | 47.6 分鐘 | 約 2.99 GB |
+| `export-converted` | 55.5 分鐘 | 約 2.96 GB |
+| `build-offline-index`（22 個縣市代碼） | 13.7 分鐘 | 未記錄 |
+| `build-address-pool` | 25.7 分鐘 | 約 2.95 GB |
+| `resolve-offline` | 9.5 分鐘 | 未記錄 |
+| `prepare-tgos`（10,000 筆） | 8.4 分鐘 | 未記錄 |
+| `import-tgos`（10,000 筆，2026-10-07） | 15 分 53.8 秒 | 未記錄 |
+| `package-output`、`verify-output` | 待 F-5 實測 | 待 F-5 實測 |
+
+`normalize` 至 `resolve-offline` 合計約 152 分鐘，不含讀取。
+
+### 全量循環 2 輸入
+
+1. 原始 ZIP：把 58 個 `<批次>_lvr_landcsv.zip`（101q1 至 115q2，例如 `115q2_lvr_landcsv.zip`）放進 `data/raw/`，合計 674,172,610 位元組（依 [raw_manifest.json](../config/sources/raw_manifest.json)）。下載頁位置記在 manifest 的 `source_page`。101q1 是已知空批次，只含 `manifest.csv` 與 `build.ttt`；其他缺檔不能當成空批次。
+2. 核對：`ingest` 讀取前會逐檔核對大小、SHA-256、ZIP 成員與已知空批次，任何不符都會中止（錯誤如 `Raw size/hash mismatch`、`Raw manifest mismatch: members`）。獨立的 `verify-sources` 命令尚未實作，規劃在 R-06。因此直接執行「全量循環 3」的 `ingest` 即完成核對。
+3. 地址資料專案：它固定在 [address_source.json](../config/sources/address_source.json) 的 `commit` 欄位，目前值為 `3ff9be0265b22a4910abf2bd4e3e96c7653fb6f0`，儲存庫為 `https://github.com/monkey1wizard/taiwan-address-data`。以全新複製取得，只在本機複本切到該提交，不修改該專案：
+
+   ```bash
+   git clone https://github.com/monkey1wizard/taiwan-address-data ../taiwan-address-data
+   git -C ../taiwan-address-data checkout --detach 3ff9be0265b22a4910abf2bd4e3e96c7653fb6f0
+   git -C ../taiwan-address-data rev-parse HEAD
+   git -C ../taiwan-address-data status --porcelain
+   ```
+
+   `rev-parse` 的輸出必須等於 `address_source.json` 的 `commit`，`status --porcelain` 必須沒有輸出。不要在該目錄執行 `pull`、`commit`、`push` 或其他會改動檔案的命令。這組複製命令本身尚未在雲端主機實測，取得儲存庫的讀取權限也須事先確認。
+4. 版本不符時，`build-offline-index` 逐檔核對路名檔雜湊，錯誤為 `Address road hash mismatch`。2026-10-06 的快速版曾因地址專案前進到新提交，在 `build-address-pool` 失敗。遇到不符時，不要改用最新版本，也不要自行執行 `pin-address-source`。該命令會改寫來源描述，須由擁有者決定。
+
+### 全量循環 3 全量處理
+
+以下命令的順序與參數對應任務卡 F-3。`<run-id>` 換成未使用過的值。
+
+1. 讀取全部 58 批。`--batch` 必須明確列出，沒有「全部」選項：
+
+   ```bash
+   BATCHES=$(uv run --locked --python 3.13.16 python -c "import json;print(' '.join('--batch '+e['batch'] for e in json.load(open('config/sources/raw_manifest.json'))['inputs']))")
+   $LVR ingest $BATCHES --run-id <run-id>-ingest
+   ```
+
+   第一行只是從 manifest 組出 58 個 `--batch` 參數的輔助寫法，沒有單獨實測，也可手動列出。若已有可沿用的讀取快照，直接用它的路徑做下一步，不需重讀 ZIP。
+2. 正規化：
+
+   ```bash
+   $LVR normalize --input data/work/ingested/snapshots/<run-id>-ingest \
+     --cutoff 202610 --garbled-rules config/rules/character-fixes.csv \
+     --run-id <run-id>-normalize
+   ```
+
+   `--cutoff` 是本輪截止年月。下一步 `export-converted` 必須使用相同值，否則程式拒絕。
+3. 轉換與複驗：
+
+   ```bash
+   $LVR export-converted --input data/work/normalized/snapshots/<run-id>-normalize \
+     --cutoff 202610 --run-id <run-id>
+   $LVR verify-converted --input data/work/converted/snapshots/<run-id>
+   ```
+
+   `verify-converted` 是選用的獨立複驗。核對輸入列數：2026-10-06 快速版輸入來源列為 6,169,758，保留 4,377,484、排除 1,792,230、失敗 44，三者相加等於輸入列。列數改變時先查明原因。
+4. 建離線索引。快速版明確傳入 22 個縣市代碼。程式在省略 `--county` 時預設使用同一組 22 個代碼，但省略寫法沒有單獨實測，以下採明確傳入：
+
+   ```bash
+   COUNTIES=""
+   for c in 09007 09020 10002 10004 10005 10007 10008 10009 10010 10013 10014 10015 10016 10017 10018 10020 63 64 65 66 67 68; do COUNTIES="$COUNTIES --county $c"; done
+   $LVR build-offline-index --address-dir ../taiwan-address-data \
+     --address-source config/sources/address_source.json $COUNTIES \
+     --run-id <run-id>-index
+   ```
+
+5. 建地址池：
+
+   ```bash
+   $LVR build-address-pool --input data/work/converted/snapshots/<run-id> \
+     --address-dir ../taiwan-address-data \
+     --address-source config/sources/address_source.json \
+     --index data/work/offline-index/snapshots/<run-id>-index \
+     --run-id <run-id>-pool
+   ```
+
+6. 離線定位與驗證：
+
+   ```bash
+   $LVR resolve-offline --pool data/work/address-pool/snapshots/<run-id>-pool \
+     --index data/work/offline-index/snapshots/<run-id>-index \
+     --run-id <run-id>-offline
+   $LVR verify-offline-state --input data/work/offline-state/snapshots/<run-id>-offline
+   ```
+
+   `verify-offline-state` 必須印出 `verified: true`。2026-10-06 快速版的結果：唯一地址鍵 1,105,429，已定位 915,335，座標衝突 10,143，未命中 179,951。v2 的規則與正規化版本不同，數字會不同，以 F-3 紀錄為準。
+7. 每步完成後，記錄命令、耗時、RSS 峰值與快照 manifest 的 SHA-256。耗時與 RSS 在命令輸出（`ingest`、`normalize`、`export-converted`）或快照內的 `quality.json`（`build_elapsed_seconds`、`build_process_peak_rss_bytes`）。
+
+### 全量循環 4 TGOS 循環
+
+TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產生新的狀態快照，前版保留。
+
+1. 維護日期紀錄 `data/tgos/date.json`，內容只能有 `date` 欄位，例如 `{"date": "2026-10-07"}`。日期只用於交換資料夾名稱，不限制地址挑選、提交或匯入。有其他欄位時程式拒絕。
+2. 產生交換檔。有舊 TGOS 狀態時，用 `--ledger` 帶入，避免重送已送出的查詢：
+
+   ```bash
+   $LVR prepare-tgos --state data/work/offline-state/snapshots/<run-id>-offline \
+     --ledger data/work/tgos-state/snapshots/<最新 TGOS 狀態>
+   ```
+
+   第一輪沒有舊狀態時省略 `--ledger`。每個交換檔最多 10,000 筆，這是 `--limit` 的預設值，也是上限。輸出在 `data/tgos/YYYYMMDD-<id>/`，例如批次 `tgos-0358ee6e90df` 對應 `data/tgos/20261007-0358ee6e90df/addresses.csv`，同時產生新的 `tgos-state` 快照。用 `$LVR verify-tgos-state --input <新快照>` 檢查。
+3. 人工上傳 `addresses.csv` 到 TGOS，使用 addrCompare（WGS84／EPSG:4326、單雙號比對、不限誤差、一筆結果）。不要修改檔案。後三欄保持空白，檔案編碼是 UTF-8 BOM。
+4. 上傳後記錄送出狀態：
+
+   ```bash
+   $LVR set-tgos-status --state data/work/tgos-state/snapshots/<目前快照> \
+     --batch tgos-<id> --status submitted --reason "<送出說明>"
+   ```
+
+   不確定是否送出時，改用 `--status submission_unknown`（不自動重送）。確定不送時用 `cancelled`。
+5. 人工下載回傳檔，存成同一個交換資料夾內的 `Address_Finish.csv`。匯入前先核對：欄位為 `id,Address,Response_Address,Response_X,Response_Y`，且回傳的 `(id, Address)` 集合與 `addresses.csv` 完全相同。F-1 用腳本核對，沒有專用命令。不一致就停止，不匯入。
+6. 匯入並檢查：
+
+   ```bash
+   $LVR import-tgos --state data/work/tgos-state/snapshots/<submitted 後的快照> \
+     --batch tgos-<id> --response data/tgos/<YYYYMMDD>-<id>/Address_Finish.csv
+   $LVR verify-tgos-state --input data/work/tgos-state/snapshots/<匯入後的快照>
+   ```
+
+   快速版只採用回傳地址與送出地址的 `building_key_v2` 相同的結果，其餘隔離，不建立別名。F-1 的 10,000 筆結果：採用 3,188、地址不符 4,037、查無門牌 2,739、座標無效 11、回傳地址不完整 25，別名 0。匯入約 15 分 53.8 秒（2026-10-07 Windows）。完整紀錄見[TGOS 批次匯入](records/TGOS批次匯入.md)，日期解耦與批次重建見[TGOS 批次重建](records/TGOS批次重建.md)。
+7. 重新輸出：把匯入後的 TGOS 狀態當作 `package-output` 的 `--state`，重新執行「全量循環 5」。對全量資料尚未執行，待 F-5。
+8. 下一批：回到步驟 2，`--ledger` 指向最新 TGOS 狀態。
+9. 提醒：TGOS 帳本在 `data/work/tgos-state/`，記錄已送出與已回傳的批次，不可遺失，也不可用重建離線狀態的方式覆蓋。
+
+### 全量循環 5 輸出
+
+下列命令的參數取自 `--help`。它們在 2026-10-07 之前只對單季（115q1）執行過，對全量資料尚未執行，結果與資源待 F-5 實測。
+
+1. 產生月檔與年度包：
+
+   ```bash
+   $LVR package-output --input data/work/converted/snapshots/<run-id> \
+     --state <離線狀態或匯入後的 TGOS 狀態快照> \
+     --notices <公告設定 JSON> \
+     --output-dir data/output/<release-id>
+   ```
+
+   `--notices` 使用 `config/sources/` 內的公告設定（目前有 `p2_notice.json`、`p3_notice.json`），F-5 時確認用哪一份。實際輸出的目錄結構待 F-5 確認。
+2. 驗證：
+
+   ```bash
+   $LVR verify-output --input <package-output 產生的輸出資料夾>
+   ```
+
+3. 記錄月檔數、年度包數、三種格式的總大小與最大單檔大小、耗時、RSS 峰值與剩餘磁碟，均待 F-5 實測。
+4. 單一附件上限為 `MAX_ASSET_BYTES` = 2,147,483,647 位元組（`lvr_pipeline/packaging.py`）。任一單檔超過、`verify-output` 失敗，或磁碟剩餘低於 20% 時停止，不進入發布。
+5. 本節不含發布。`publish-output` 與 `commit-release-pointer` 需擁有者另行指示，見[CONTRIBUTING](../CONTRIBUTING.md#發布與復原)。
+
+### 全量循環 6 新增一季原始資料
+
+目前沒有增量讀取。選取的批次集合改變，讀取階段的綁定也改變，必須重跑整條鏈。以新增 115q3 為例：
+
+1. 把 `115q3_lvr_landcsv.zip` 放進 `data/raw/`。
+2. 在 `config/sources/raw_manifest.json` 新增該批次的條目（大小、SHA-256、ZIP 成員）。目前沒有只更新 raw manifest 的正式命令。`scripts/inventory_sources.py --raw-dir data/raw --address-repo ../taiwan-address-data --output-dir <暫存目錄>` 會同時重算 raw manifest 與地址來源描述。使用時只取 `raw_manifest.json`，不要覆蓋 `address_source.json`，並以 `git diff` 確認只新增一個批次。這個做法對全量資料尚未實測。`verify-sources` 規劃在 R-06。
+3. 由擁有者決定新的 `--cutoff` 年月，不要自行推定。
+4. 以新的 `<run-id>` 重跑「全量循環 3」的步驟 1、2、3、5、6。離線索引只取決於地址來源、縣市範圍與規則，這些都不變時，沿用原本的 `<run-id>-index`，程式會重用既有快照。補字規則、`NORMALIZATION_VERSION` 或程式有變更時，綁定不同，索引也要用新的 run ID。
+5. TGOS：新的離線狀態沒有舊帳本。用 `prepare-tgos --ledger <舊 TGOS 狀態>` 把舊批次帶入，再對每個已回傳的批次重新 `import-tgos`，以新的地址鍵重判同址。這是 F-4 的工作，待 F-4 驗證。在那之前不要覆蓋或丟棄舊 `tgos-state`。
+6. 重新執行「全量循環 5」。
+
+### 全量循環 7 中斷與重跑
+
+1. 快照不可變。階段完成時才建立 `data/work/<階段>/snapshots/<快照 ID>/`，`current.json` 指向最新快照。進行中的內容在 `staging/<快照 ID>/` 與 `build/<快照 ID>/`。
+2. 以相同快照 ID 與相同輸入重跑：程式發現快照已存在且綁定相符，直接重用並回傳既有路徑，不重算。
+3. 以相同快照 ID 但輸入、規則或程式不同重跑：程式拒絕，錯誤為 `Existing snapshot has different bindings`。換新的 `--run-id`，不覆寫舊快照。
+4. 命令中途被中斷：前一版快照不受影響，但 `staging/<快照 ID>/`（可能還有 `build/<快照 ID>/`）會殘留。之後以相同快照 ID 重跑會失敗（`FileExistsError`）。省略 `--run-id` 時，快照 ID 由輸入綁定算出，同樣會撞到殘留目錄。這是已知缺口，由 R06-4 處理。處理規則（改名隔離，或驗證後續用）待擁有者決定，見[重建任務卡](plans/重建任務卡.md)。暫行作法：換新的 `--run-id` 重跑，不要刪除殘留目錄。
+5. 出現錯誤 `Snapshot writer busy or stale lock; inspect before retry`，表示 `data/work/<階段>/.publish-lock/` 存在。程式不會自動刪除它。處理順序：
+   1. 先確認沒有行程在執行：`pgrep -af lvr_pipeline`，並確認沒有 `tmux` 或 `nohup` 工作仍在跑。
+   2. 仍有行程時，等它結束，不要刪鎖。
+   3. 沒有行程時，保留鎖，先檢查該階段 `current.json` 指向的快照與 `snapshots/` 內容，並執行對應的 `verify-*` 命令。通過後，由擁有者決定是否移除鎖。
+6. 重跑只能整階段重做，不能只重做某一批次。
+7. TGOS 的提交不明狀態不自動重送，也不因逾時取消。
+
+### 全量循環 8 雲端搬移清單
+
+1. 新主機先完成「全量循環 1」的環境。地址資料專案在新主機重新複製並切到固定提交，不要複製舊主機上的整個目錄。
+2. 要帶走的資料：
+
+   | 路徑 | 說明 | 可否重建 |
+   | --- | --- | --- |
+   | `data/tgos/` | 交換檔、manifest、人工下載的回傳檔、`date.json` | 回傳檔不可重建 |
+   | `data/work/tgos-state/` | TGOS 帳本與所有批次狀態快照，含 `current.json` | 不可重建 |
+   | `data/raw/` | 58 個原始 ZIP，674,172,610 位元組 | 可重新下載，須通過 manifest 核對 |
+   | `data/review/` | 人工覆核用的匯出，例如補字規則命中表 | 可重建 |
+   | 其餘 `data/work/` 快照 | 讀取、正規化、轉換、索引、地址池、離線狀態 | 可重建。跨機器重用尚未驗證 |
+   | `data/output/` | 月檔與年度包候選 | 可重建 |
+
+   其餘 `data/work/` 快照建議在新主機重跑，不要直接重用。若要複製，整個階段目錄含 `current.json` 一起複製，並對每個快照執行對應的 `verify-*` 命令。
+3. 不可進 Git：`data/`（整個資料夾已列入 `.gitignore`）、`.env` 與 `.env.*`（`.env.example` 除外）、原始 ZIP、工作快照、TGOS 交換檔與回傳、發布候選、憑證、第三方地址資料列。地址資料專案是同層的獨立儲存庫，不複製進本專案。
+4. 資源起點：快速版在 DuckDB 記憶體上限 16GB、暫存上限 100GiB、4 執行緒下完成，RSS 峰值約 3 GB。雲端主機規格、單輪磁碟用量，以及 `package-output`、`verify-output` 的資源待 Linux 與 F-5 實測，此處不推測。
+5. 搬移後的檢查：
+   1. `bash scripts/setup.sh` 通過。
+   2. `data/raw/` 通過 `ingest` 的來源核對。
+   3. 地址資料專案 `rev-parse HEAD` 等於 `address_source.json` 的 `commit`，工作樹乾淨。
+   4. 對帶來的 TGOS 狀態執行 `verify-tgos-state --input data/work/tgos-state/snapshots/<最新快照>`，輸出 `verified: true`。
+   5. `data/tgos/date.json` 存在且只有 `date` 欄位。
 
 ## 資料規格
 
