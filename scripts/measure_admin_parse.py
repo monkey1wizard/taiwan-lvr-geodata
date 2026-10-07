@@ -19,7 +19,7 @@ from lvr_pipeline.addresses.parse import _COUNTY_CODE  # noqa: E402
 from lvr_pipeline.offline_lookup import load_pinned_source  # noqa: E402
 
 pool = Path(sys.argv[1] if len(sys.argv) > 1 else ROOT / "data/work/address-pool/snapshots/fast-all58-v5-pool2")
-descriptor = json.loads(Path(sys.argv[2] if len(sys.argv) > 2 else ROOT / "data/sources/address_source.json").read_text(encoding="utf-8"))
+descriptor = json.loads(Path(sys.argv[2] if len(sys.argv) > 2 else ROOT / "config/sources/address_source.json").read_text(encoding="utf-8"))
 names = load_pinned_source(Path(sys.argv[3] if len(sys.argv) > 3 else "C:/Code/taiwan-address-data"), descriptor)
 
 table = pq.read_table(pool / "address_occurrences.parquet", columns=["normalized_address", "reason"])
