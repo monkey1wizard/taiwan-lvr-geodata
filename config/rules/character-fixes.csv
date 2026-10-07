@@ -7,15 +7,15 @@ U+E08E,豬,,char,manual:山豬湖,2026-06-14,confirmed
 U+E0C6,舘,,char,manual:公舘里,2026-06-14,confirmed
 U+E127,脚,,char,manual:宅脚嶼,2026-06-14,confirmed
 U+E0C8,雙,,char,manual:雙頭掛(標準字;庫用異體双),2026-06-14,confirmed
-U+E0A1,舘,,char,offline_vote:{'舘': 2},2026-06-14,confirmed
-U+E20F,脚,,char,offline_vote:{'脚': 2},2026-06-14,confirmed
-U+EF43,邨,,char,offline_vote:{'邨': 3},2026-06-14,confirmed
-U+F57B,嵵,,char,offline_vote:{'嵵': 1},2026-06-14,confirmed
-巿,市,,variant,異體字標準化(U+5DFF→市),2026-06-14,confirmed
+U+E0A1,舘,,char,offline_vote:{'舘': 2},2026-06-14,unverified
+U+E20F,脚,,char,offline_vote:{'脚': 2},2026-06-14,unverified
+U+EF43,邨,,char,offline_vote:{'邨': 3},2026-06-14,unverified
+U+F57B,嵵,,char,offline_vote:{'嵵': 1},2026-06-14,unverified
+巿,市,,variant,異體字標準化(U+5DFF→市),2026-06-14,unverified
 塩,鹽,,variant,異體字標準化(庫用塩),2026-06-14,unverified
-体,體,,variant,異體字標準化,2026-06-14,confirmed
+体,體,,variant,異體字標準化,2026-06-14,unverified
 双,雙,,variant,異體字標準化(双=雙),2026-06-14,unverified
-東洋新?,東洋新邨,嘉義市,token,offline_unique:東洋新(.),2026-06-14,unverified
+東洋新?,東洋新邨,嘉義市,token,offline_unique:東洋新(.);owner_verified:2026-10-07,2026-06-14,confirmed
 崎?,崎頂,竹南鎮,token,offline_unique:崎(.),2026-06-14,unverified
 ?福村,雙福村,民雄鄉,token,offline_unique:(.)福村=双x1480→輸出標準雙（裸?福歧義3候選不補）,2026-06-14,unverified
 公?路,公舘路,北投區,token,offline_unique,2026-06-14,unverified
