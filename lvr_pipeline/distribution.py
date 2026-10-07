@@ -103,7 +103,10 @@ def fetch_output(
         if full:
             verify_output(root)
         elif maintenance:
-            extract_handoff(root / selected[0]["path"], root / "maintenance")
+            entry = next(
+                (a for a in selected if a.get("role") == "index"), selected[0]
+            )
+            extract_handoff(root / entry["path"], root / "maintenance")
         elif format is None:
             groups = {}
             for item in selected:

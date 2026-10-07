@@ -75,6 +75,80 @@ def zip_files(path, files):
                 shutil.copyfileobj(stream, target, length=2**20)
 
 
+MEMBER_BUDGET_OVERHEAD = 512
+ZIP_BASE_OVERHEAD = 4096
+
+
+def write_maintenance(staging, identifier, bundle, max_asset_bytes):
+    """Write the maintenance handoff as one legacy ZIP when it fits, else indexed parts.
+
+    Files are never split. A member is budgeted at its raw size plus ZIP overhead, so a
+    part cannot exceed the limit even if its content does not compress.
+    """
+    sized = [
+        (name, Path(source), Path(source).stat().st_size) for name, source in bundle
+    ]
+    for name, _, size in sized:
+        if size + MEMBER_BUDGET_OVERHEAD + ZIP_BASE_OVERHEAD > max_asset_bytes:
+            raise ValueError(
+                f"Maintenance member exceeds configured asset limit: {name}"
+            )
+    total = (
+        sum(size + MEMBER_BUDGET_OVERHEAD for _, _, size in sized) + ZIP_BASE_OVERHEAD
+    )
+    if total <= max_asset_bytes:
+        path = staging / f"{identifier}_maintenance.zip"
+        zip_files(path, [(name, source) for name, source, _ in sized])
+        if path.stat().st_size > max_asset_bytes:
+            raise ValueError("Maintenance asset exceeds configured limit")
+        return [artifact(staging, path, kind="maintenance")]
+    groups, current, used = [], [], ZIP_BASE_OVERHEAD
+    for item in sorted(sized, key=lambda x: x[0]):
+        budget = item[2] + MEMBER_BUDGET_OVERHEAD
+        if current and used + budget > max_asset_bytes:
+            groups.append(current)
+            current, used = [], ZIP_BASE_OVERHEAD
+        current.append(item)
+        used += budget
+    if current:
+        groups.append(current)
+    parts, members, assets = [], [], []
+    for i, group in enumerate(groups, 1):
+        path = staging / f"{identifier}_maintenance.part{i:03d}.zip"
+        zip_files(path, [(name, source) for name, source, _ in group])
+        item = artifact(staging, path, kind="maintenance", role="part")
+        if item["bytes"] > max_asset_bytes:
+            raise ValueError("Maintenance part exceeds configured limit")
+        assets.append(item)
+        parts.append(
+            {"name": item["asset_name"], "bytes": item["bytes"], "sha256": item["sha256"]}
+        )
+        members.extend(
+            {
+                "path": name,
+                "part": path.name,
+                "bytes": size,
+                "sha256": sha256_file(source),
+            }
+            for name, source, size in group
+        )
+    index = staging / f"{identifier}_maintenance_index.json"
+    write_json(
+        index,
+        {
+            "schema_version": "1.0",
+            "kind": "maintenance-index",
+            "snapshot_id": identifier,
+            "parts": parts,
+            "members": members,
+            "part_count": len(parts),
+            "member_count": len(members),
+            "member_bytes": sum(m["bytes"] for m in members),
+        },
+    )
+    return [artifact(staging, index, kind="maintenance", role="index")] + assets
+
+
 def package_output(
     converted: Path,
     state: Path,
@@ -281,21 +355,21 @@ def package_output(
     bundle.extend(
         [("handoff.json", descriptor), ("NOTICE.json", staging / "NOTICE.json")]
     )
-    maintenance = staging / f"{identifier}_maintenance.zip"
-    zip_files(maintenance, bundle)
+    maintenance_assets = write_maintenance(
+        staging, identifier, bundle, max_asset_bytes
+    )
     descriptor.unlink()
-    assets.append(artifact(staging, maintenance, kind="maintenance"))
-    if maintenance.stat().st_size > max_asset_bytes:
-        raise ValueError(
-            "Maintenance asset exceeds configured limit; chunked state contract required"
-        )
+    assets.extend(maintenance_assets)
     size_report = {
         "snapshot_id": identifier,
         "git": "code, schemas, synthetic tests, source descriptors and small release pointers only",
         "release_asset_bytes": sum(a["bytes"] for a in assets),
         "monthly_bytes": sum(a["bytes"] for a in assets if a["kind"] == "monthly"),
         "annual_bytes": sum(a["bytes"] for a in assets if a["kind"] == "annual"),
-        "maintenance_bytes": maintenance.stat().st_size,
+        "maintenance_bytes": sum(a["bytes"] for a in maintenance_assets),
+        "maintenance_parts": sum(
+            1 for a in maintenance_assets if a.get("role") == "part"
+        ),
         "largest_asset_bytes": max(a["bytes"] for a in assets),
         "max_asset_bytes": max_asset_bytes,
         "retained_build_staging_bytes": sum(
@@ -412,20 +486,35 @@ def verify_output(root: Path):
     if sorted(annual_members) != sorted(expected):
         raise ValueError("Annual coverage duplicates or omits monthly assets")
     maintenance = [a for a in manifest["assets"] if a["kind"] == "maintenance"]
-    if len(maintenance) != 1:
+    index = [a for a in maintenance if a.get("role") == "index"]
+    if index:
+        if len(index) != 1 or any(
+            a.get("role") not in {"index", "part"} for a in maintenance
+        ):
+            raise ValueError("Missing maintenance handoff")
+        declared = json.loads((root / index[0]["path"]).read_text(encoding="utf-8"))
+        if sorted(p["name"] for p in declared["parts"]) != sorted(
+            a["asset_name"] for a in maintenance if a["role"] == "part"
+        ):
+            raise ValueError("Maintenance index differs from released parts")
+        entry = root / index[0]["path"]
+    elif len(maintenance) == 1:
+        entry = root / maintenance[0]["path"]
+    else:
         raise ValueError("Missing maintenance handoff")
     with tempfile.TemporaryDirectory(prefix="handoff-verify-") as folder:
-        extract_handoff(root / maintenance[0]["path"], Path(folder))
+        extract_handoff(entry, Path(folder))
     return manifest
 
 
-def extract_handoff(archive_path: Path, target: Path):
+def extract_zip(archive_path, target, budget=8 * 2**30):
+    """Extract a handoff ZIP safely; returns the extracted entry names."""
     target = Path(target)
     with zipfile.ZipFile(archive_path) as archive:
         names = archive.namelist()
         if len(set(names)) != len(names):
             raise ValueError("Duplicate handoff ZIP entry")
-        if sum(i.file_size for i in archive.infolist()) > 8 * 2**30:
+        if sum(i.file_size for i in archive.infolist()) > budget:
             raise ValueError("Handoff exceeds 8GiB extraction budget")
         for info in archive.infolist():
             safe_path(info.filename)
@@ -437,6 +526,67 @@ def extract_handoff(archive_path: Path, target: Path):
                 raise FileExistsError(destination)
             with archive.open(info) as source, destination.open("xb") as stream:
                 shutil.copyfileobj(source, stream, 2**20)
+    return names
+
+
+def extract_indexed_handoff(index_path, target):
+    index_path, target = Path(index_path), Path(target)
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    if index.get("schema_version") != "1.0" or index.get("kind") != "maintenance-index":
+        raise ValueError("Unsupported maintenance index")
+    parts = index["parts"]
+    members = index["members"]
+    if (
+        len({p["name"] for p in parts}) != len(parts)
+        or len({m["path"] for m in members}) != len(members)
+        or index["part_count"] != len(parts)
+        or index["member_count"] != len(members)
+        or index["member_bytes"] != sum(m["bytes"] for m in members)
+    ):
+        raise ValueError("Maintenance index totals mismatch")
+    if index["member_bytes"] > 8 * 2**30:
+        raise ValueError("Handoff exceeds 8GiB extraction budget")
+    for part in parts:
+        safe_path(part["name"])
+        if "/" in part["name"]:
+            raise ValueError("Unsafe artifact path")
+        path = index_path.parent / part["name"]
+        if not path.is_file():
+            raise ValueError("Maintenance part missing")
+        if path.stat().st_size != part["bytes"] or sha256_file(path) != part["sha256"]:
+            raise ValueError("Maintenance part hash/size mismatch")
+    for member in members:
+        safe_path(member["path"])
+    part_names = {p["name"] for p in parts}
+    if any(m["part"] not in part_names for m in members):
+        raise ValueError("Maintenance member refers to unknown part")
+    for part in parts:
+        names = extract_zip(index_path.parent / part["name"], target)
+        if sorted(names) != sorted(
+            m["path"] for m in members if m["part"] == part["name"]
+        ):
+            raise ValueError("Maintenance part member list differs from index")
+    extracted = {
+        p.relative_to(target).as_posix() for p in target.rglob("*") if p.is_file()
+    }
+    if extracted != {m["path"] for m in members}:
+        raise ValueError("Extracted maintenance files differ from index")
+    for member in members:
+        path = target / member["path"]
+        if (
+            path.stat().st_size != member["bytes"]
+            or sha256_file(path) != member["sha256"]
+        ):
+            raise ValueError("Maintenance member hash/size mismatch")
+
+
+def extract_handoff(archive_path: Path, target: Path):
+    """Extract a legacy single maintenance ZIP, or an indexed set of parts (.json)."""
+    target = Path(target)
+    if Path(archive_path).suffix == ".json":
+        extract_indexed_handoff(archive_path, target)
+    else:
+        extract_zip(archive_path, target)
     handoff = json.loads((target / "handoff.json").read_text(encoding="utf-8"))
     if (
         handoff["schema_version"] != "1.0"
