@@ -73,8 +73,7 @@ def test_range_door_is_none():
     assert building_key_v2(R + "10-12號") is None
 
 
-def test_sub_door_before_vs_after_number_recorded_only():
-    # Record only: no assertion about equality; sub-door equivalence is not inferred (see R04 record).
+def test_sub_door_before_vs_after_number_differ():
+    # R04-6 owner decision: sub-door equivalence is not inferred, so the two notations give different keys.
     ka, kb = _keys(R + "10之1號", R + "10號之1")
-    assert ka is None or isinstance(ka, str)
-    assert kb is None or isinstance(kb, str)
+    assert ka is not None and kb is not None and ka != kb

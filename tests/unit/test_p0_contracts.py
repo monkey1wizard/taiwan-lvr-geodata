@@ -10,7 +10,7 @@ from lvr_pipeline.contracts import component_id, observation_id, validate_relati
 from lvr_pipeline.tx_date import validated_roc_to_tx_yyyymm
 
 
-@pytest.mark.parametrize("address", ["臺北市中正區測試路10之1號", "臺北市中正區測試路10號之1", "臺北市中正區測試路10號之1二樓"])
+@pytest.mark.parametrize("address", ["臺北市中正區測試路10號之1", "臺北市中正區測試路10號之1二樓"])
 def test_equivalent_full_subdoor(address):
     assert building_key_v2(address) == building_key_v2("臺北市中正區測試路10號之1")
 
@@ -31,7 +31,7 @@ def test_ambiguous_or_unscoped_address(address):
 
 def test_legacy_stays_compatible():
     assert building_key("臺北市中正區測試路10號之1") == building_key("臺北市中正區測試路10號之2")
-    assert building_key_v2("台北市中正區測試路１０號之１") == building_key_v2("臺北市中正區測試路10之1號")
+    assert building_key_v2("台北市中正區測試路１０號之１") == building_key_v2("臺北市中正區測試路10號之1")
 
 
 @pytest.mark.parametrize("value,expected", [("1130229",202402),("1140229",None),("1140230",None),("1140900",None),("1151101",None),("1140901",202509),("００１０１０１",None),("0000101",None)])
