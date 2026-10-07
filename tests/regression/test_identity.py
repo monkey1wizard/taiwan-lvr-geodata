@@ -50,11 +50,23 @@ def test_different_address(a, b):
     _assert_different(a, b)
 
 
-@pytest.mark.xfail(strict=True, reason="R04-5 defect: a doubled city prefix yields a key (town=臺北市) that differs from the "
-                                       "single-prefix key and is not None; building_key_v2 does not call _dedup_prefix")
 def test_duplicated_prefix_same_as_single_or_both_none():
     ka, kb = _keys("臺北市臺北市大安區和平東路二段100號", R + "100號")
     assert ka == kb or (ka is None and kb is None)
+
+
+@pytest.mark.parametrize("doubled", ["臺北市臺北市大安區和平東路二段100號", "台北市臺北市大安區和平東路二段100號",
+                                     "臺北市臺北市臺北市大安區和平東路二段100號"])
+def test_doubled_county_prefix_equals_single_prefix_key(doubled):
+    # R04-6 owner decision: an exactly repeated county name (after norm) is dropped before the key is built.
+    ka, kb = _keys(doubled, R + "100號")
+    assert ka is not None and ka == kb
+
+
+@pytest.mark.parametrize("address", ["北投區臺北市北投區和平東路二段100號", "大安區臺北市大安區和平東路二段100號",
+                                     "新北市臺北市大安區和平東路二段100號"])
+def test_other_unparseable_start_is_none(address):
+    assert building_key_v2(address) is None
 
 
 def test_range_door_is_none():

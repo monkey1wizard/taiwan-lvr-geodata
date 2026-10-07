@@ -10,10 +10,11 @@ from .parse import (_CITY_RE, _COUNTY_CODE, _dedup_prefix, _LI_LIN_RE, _REJECT_R
 KEY_VERSION = "v2"
 # Bump whenever a change alters building_key_v2 output for some input. Recorded in the bindings of the
 # normalize, address-pool and offline-index stages so snapshots made under older rules are not reused.
-NORMALIZATION_VERSION = "v2.1"
+NORMALIZATION_VERSION = "v2.2"
 _DOOR = re.compile(r"(?P<main>[0-9]+)(?P<before>(?:之[0-9]+)*)號(?P<after>(?:之[0-9]+)*)(?P<floor>.*)$")
 _FLOOR = re.compile(r"(?:[0-9一二三四五六七八九十百千]+樓(?:之[0-9一二三四五六七八九十]+)?|地下[0-9一二三四五六七八九十]+樓)?$")
 _ROAD = re.compile(r"(?:大道|路|街)")
+_REPEATED_COUNTY = re.compile("^(" + "|".join(sorted(_COUNTY_CODE, key=len, reverse=True)) + r")\1+")
 
 
 def building_key_v2(address: str) -> str | None:
@@ -25,8 +26,10 @@ def building_key_v2(address: str) -> str | None:
     # Hyphens can represent ranges or subnumbers; neither is guessed.
     if any(c in text for c in "-至~～、及與") or re.search(r"\s", text):
         return None
+    # Owner decision (R04-6): an exactly repeated county name is dropped; any other odd start is rejected.
+    text = _REPEATED_COUNTY.sub(lambda m: m.group(1), text, count=1)
     region = _CITY_RE.match(text)
-    if not region or region.group(2).endswith("里"):
+    if not region or region.group(2).endswith("里") or region.group(2) in _COUNTY_CODE:
         return None
     rest = text[region.end():]
     door = _DOOR.search(rest)
