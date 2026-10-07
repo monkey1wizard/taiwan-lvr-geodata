@@ -6,9 +6,10 @@ import json
 from pathlib import Path
 import re
 
-from .address import arab_to_cjk, building_key, building_key_v2, is_garbled, norm
+from .addresses.identity import building_key, building_key_v2
+from .addresses.parse import arab_to_cjk, is_garbled, norm
 from .contracts import component_id
-from .garbled import fix_garbled, load_garbled
+from .addresses.characters import fix_garbled, load_garbled
 from .ingest import FIELD_ALIASES
 from .storage.parquet import BatchWriter, rows
 from .storage.runs import Stage, bindings, canonical_json, load_snapshot

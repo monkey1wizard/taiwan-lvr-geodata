@@ -43,7 +43,7 @@ def test_pua_corrected_after_normalize():
         garbled_p = os.path.join(tmp, "garbled.csv")
         _write_garbled(garbled_p, "garbled,correct,scope,kind,evidence,noted_date\n"
                                   "U+E001,槺,,char,test,2026-01-01\n")
-        from lvr_pipeline.garbled import load_garbled
+        from lvr_pipeline.addresses.characters import load_garbled
         char_map, token_patterns = load_garbled(garbled_p)
 
         pua = chr(0xE001)
@@ -68,7 +68,7 @@ def test_idempotent_second_run_no_change():
         garbled_p = os.path.join(tmp, "garbled.csv")
         _write_garbled(garbled_p, "garbled,correct,scope,kind,evidence,noted_date\n"
                                   "U+E001,槺,,char,test,2026-01-01\n")
-        from lvr_pipeline.garbled import load_garbled
+        from lvr_pipeline.addresses.characters import load_garbled
         char_map, token_patterns = load_garbled(garbled_p)
 
         pua = chr(0xE001)
@@ -81,7 +81,7 @@ def test_idempotent_second_run_no_change():
 
 
 def test_missing_meta_file_returns_zero():
-    from lvr_pipeline.garbled import load_garbled
+    from lvr_pipeline.addresses.characters import load_garbled
     char_map, token_patterns = load_garbled("/nonexistent/garbled.csv")
     assert normalize_meta("/nonexistent/meta_sales.csv", char_map, token_patterns) == 0
 
@@ -89,7 +89,7 @@ def test_missing_meta_file_returns_zero():
 def test_no_raw_address_column_skipped():
     """Meta without raw_address column: returns 0, file unchanged."""
     with tempfile.TemporaryDirectory() as tmp:
-        from lvr_pipeline.garbled import load_garbled
+        from lvr_pipeline.addresses.characters import load_garbled
         char_map, token_patterns = load_garbled("/nonexistent/garbled.csv")
         meta_p = os.path.join(tmp, "meta_sales.csv")
         _write_meta(meta_p, [{"id": "1", "other": "value"}])

@@ -390,7 +390,7 @@ def peak_rss_bytes() -> int:
 def bindings(stage: str, parameters: dict, input_hashes: list[str], code_commit: str | None = None) -> dict:
     if code_commit is None:
         code_commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
-    files = [*sorted((ROOT / "lvr_pipeline").glob("*.py")), *sorted((ROOT / "lvr_pipeline" / "storage").glob("*.py")), *sorted((ROOT / "lvr_pipeline" / "contracts").glob("*.py")), *sorted((ROOT / "lvr_pipeline" / "contracts" / "json").glob("*.json")), ROOT / "uv.lock"]
+    files = [*sorted((ROOT / "lvr_pipeline").glob("*.py")), *sorted((ROOT / "lvr_pipeline" / "addresses").glob("*.py")), *sorted((ROOT / "lvr_pipeline" / "storage").glob("*.py")), *sorted((ROOT / "lvr_pipeline" / "contracts").glob("*.py")), *sorted((ROOT / "lvr_pipeline" / "contracts" / "json").glob("*.json")), ROOT / "uv.lock"]
     # Text normalization makes source fingerprints portable across CRLF/LF checkouts.
     code = {file.relative_to(ROOT).as_posix(): hashlib.sha256(file.read_text(encoding="utf-8").encode("utf-8")).hexdigest() for file in files}
     dirty = bool(subprocess.check_output(["git", "-C", str(ROOT), "status", "--porcelain", "--", "lvr_pipeline", "uv.lock"], text=True).strip())

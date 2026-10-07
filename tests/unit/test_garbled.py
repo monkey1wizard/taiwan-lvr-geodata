@@ -3,7 +3,7 @@
 import os
 import tempfile
 
-from lvr_pipeline.garbled import fix_garbled, load_garbled
+from lvr_pipeline.addresses.characters import fix_garbled, load_garbled
 
 
 def _write_garbled(path: str, content: str) -> None:

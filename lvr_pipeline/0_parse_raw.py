@@ -27,7 +27,7 @@ import re
 import sys
 import zipfile
 
-from lvr_pipeline.address import _CITY_RE as _ADDR_CITY_RE
+from lvr_pipeline.addresses.parse import _CITY_RE as _ADDR_CITY_RE
 from lvr_pipeline.tx_date import roc_to_tx_yyyymm
 
 csv.field_size_limit(sys.maxsize)

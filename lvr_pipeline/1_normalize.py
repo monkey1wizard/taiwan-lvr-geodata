@@ -17,8 +17,8 @@ import csv
 import os
 import sys
 
-from lvr_pipeline.garbled import fix_garbled, load_garbled
-from lvr_pipeline.address import is_garbled
+from lvr_pipeline.addresses.characters import fix_garbled, load_garbled
+from lvr_pipeline.addresses.parse import is_garbled
 
 csv.field_size_limit(sys.maxsize)
 

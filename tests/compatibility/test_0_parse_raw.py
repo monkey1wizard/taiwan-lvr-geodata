@@ -2,7 +2,7 @@
 """Unit tests for 0_parse_raw.py — _classify/_expand_list (structural expansion only).
 
 Garbled-correction tests have moved to test_garbled.py since that logic
-now lives in lvr_pipeline/garbled.py (Step 1 normalize, not Step 0).
+now lives in lvr_pipeline/addresses/characters.py (Step 1 normalize, not Step 0).
 """
 import importlib.util
 import os

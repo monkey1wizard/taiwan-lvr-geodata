@@ -107,7 +107,7 @@ def test_building_key_v2_table_has_enough_cases():
 @pytest.mark.parametrize("address,expected", BUILDING_KEY_V2_CASES)
 def test_building_key_v2_both_entry_points_agree(address, expected):
     from lvr_pipeline.address import building_key_v2 as via_address
-    from lvr_pipeline.address_v2 import building_key_v2 as via_v2
+    from lvr_pipeline.addresses.identity import building_key_v2 as via_v2
     assert via_address(address) == expected
     assert via_v2(address) == expected
 

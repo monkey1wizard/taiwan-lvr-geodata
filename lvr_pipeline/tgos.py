@@ -13,7 +13,7 @@ from datetime import date
 from pathlib import Path
 
 from .address_state import load_p2
-from .address_v2 import building_key_v2
+from .addresses.identity import building_key_v2
 from .normalize import normalize_address
 from .storage.parquet import BatchWriter, rows
 from .storage.runs import Stage, bindings, canonical_json, digest

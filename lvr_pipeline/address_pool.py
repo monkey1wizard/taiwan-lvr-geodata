@@ -7,7 +7,7 @@ import re
 
 import duckdb
 
-from .address import building_key_v2
+from .addresses.identity import building_key_v2
 from .offline_lookup import load_pinned_source
 from .storage.parquet import BatchWriter, duckdb_config, rows
 from .storage.runs import Stage, bindings, digest, load_snapshot

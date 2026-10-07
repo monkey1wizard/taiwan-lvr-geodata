@@ -58,7 +58,7 @@ def validate_rows(rows: list[dict], schema_name: str) -> None:
         if schema_name == "address-component":
             if row["component_id"] != component_id(row["raw_record_id"], row["ordinal"]):
                 raise ValueError("Component identity mismatch")
-            from ..address import building_key_v2
+            from ..addresses.identity import building_key_v2
             # A component held for review has no key until its members are proven.
             expected = building_key_v2(row["normalized_address"]) if row["expansion_status"] == "confirmed" else None
             if row["building_key"] != expected:

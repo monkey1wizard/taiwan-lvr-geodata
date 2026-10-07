@@ -22,7 +22,7 @@ import os
 import re
 from typing import Callable
 
-from lvr_pipeline.address import arab_to_cjk, norm, parse
+from lvr_pipeline.addresses.parse import arab_to_cjk, norm, parse
 
 
 def _is_garble_char(c: str) -> bool:

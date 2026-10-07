@@ -7,7 +7,8 @@ from pathlib import Path
 import re
 import subprocess
 
-from .address import _COUNTY_CODE, _CITY_RE, building_key_v2, norm
+from .addresses.identity import building_key_v2
+from .addresses.parse import _COUNTY_CODE, _CITY_RE, norm
 from .normalize import normalize_address
 from .storage.parquet import BatchWriter
 from .contracts.validate import valid_coordinate
