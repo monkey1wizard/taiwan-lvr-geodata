@@ -7,13 +7,15 @@ Caller supplies pre-loaded road indexes and a coord probe function.
 
 resolve() returns (tier, candidate_address, evidence):
   "tier1_apply"   — coord-confirmed substitution; caller applies + caches
-  "tier2_review"  — plausible candidate, no coord confirmation; caller logs only
+  "tier2_review"  — plausible candidate, no coord confirmation or no valid
+                    door-number evidence; caller sends it to review, never adopts
   "none"          — nothing actionable (no PUA, multi-PUA, multi-match, no hit)
 
 Invariants:
   - Never reads or writes garbled_override.csv
   - Handles single PUA in road-name portion only
-  - Every Tier 1 result carries coord-hit evidence
+  - Every Tier 1 result carries coord-hit evidence and a valid door number
+  - Several candidates are never resolved by picking one ("none" + count)
 """
 from __future__ import annotations
 
@@ -22,6 +24,7 @@ import os
 import re
 from typing import Callable
 
+from lvr_pipeline.addresses.identity import building_key_v2
 from lvr_pipeline.addresses.parse import arab_to_cjk, norm, parse
 
 
@@ -158,6 +161,11 @@ def resolve(
 
     norm_addr = arab_to_cjk(norm(address))
     candidate_address = norm_addr.replace(pua_char, replacement_char)
+
+    # Door-number evidence: the candidate address must yield a valid building key
+    # (exactly one door number, no range or sub-door guess). Without it, never adopt.
+    if building_key_v2(candidate_address) is None:
+        return ("tier2_review", candidate_address, f"corpus_match_no_door:{candidate_road}")
 
     if coord_probe(candidate_address):
         return ("tier1_apply", candidate_address, f"offline_coord_hit:{candidate_road}")

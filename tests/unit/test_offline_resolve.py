@@ -231,3 +231,37 @@ def test_build_offline_road_set():
 def test_build_offline_road_set_missing_dir():
     result = build_offline_road_set("/nonexistent", "63")
     assert result == set()
+
+
+# ── R04-7 採用條件 ─────────────────────────────────────────────────────────────
+
+def test_resolve_several_candidates_is_not_adopted():
+    """多個候選：不採用、不取第一個；結果交由覆核（候選位址為空）。"""
+    addr = f"臺北市士林區{_PUA1}行街10號"
+    tier, candidate, evidence = resolve(addr, {"力行街", "義行街"}, {}, _always_true)
+    assert tier != "tier1_apply"
+    assert candidate == ""
+    assert evidence == "multi-match:2"
+
+
+def test_resolve_unique_candidate_without_door_number_is_pending_review():
+    """唯一候選但沒有有效門牌證據：即使座標探測為真也不採用。"""
+    for addr in (
+        f"臺北市士林區{_PUA1}榔路",
+        f"臺北市士林區{_PUA1}榔路10-2號",
+    ):
+        tier, candidate, evidence = resolve(addr, {"槺榔路"}, {}, _always_true)
+        assert tier == "tier2_review", addr
+        assert "槺榔路" in candidate
+        assert evidence == "corpus_match_no_door:槺榔路"
+
+
+def test_resolve_unique_candidate_with_door_number_is_adopted_with_evidence():
+    """唯一候選且有門牌證據：採用，並保存候選與依據。"""
+    addr = f"臺北市士林區{_PUA1}榔路10號"
+    tier, candidate, evidence = resolve(
+        addr, {"槺榔路"}, {"臺北市士林區": ["槺榔路"]}, _always_true
+    )
+    assert tier == "tier1_apply"
+    assert candidate == "臺北市士林區槺榔路10號"
+    assert evidence == "offline_coord_hit:槺榔路"
