@@ -13,7 +13,10 @@ from pathlib import Path
 from urllib.parse import unquote
 
 
-CURRENT_MODULES = {
+BASELINE_COMMIT = "9eab65f16cf9196c7ae78a29b4e3336d954cc573"
+
+# Top-level modules of lvr_pipeline/ at BASELINE_COMMIT (the R-02 inventory baseline).
+BASELINE_MODULES = {
     "__init__.py",
     "__main__.py",
     "0_parse_raw.py",
@@ -35,7 +38,12 @@ CURRENT_MODULES = {
     "ingest.py",
     "normalize.py",
     "offline_lookup.py",
+    "p2_cli.py",
+    "p2_contracts.py",
     "packaging.py",
+    "parquet_io.py",
+    "processing.py",
+    "snapshots.py",
     "sources.py",
     "tgos.py",
     "tx_date.py",
@@ -94,17 +102,33 @@ def git_files(root: Path) -> list[str]:
     return [line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip()]
 
 
-# New packages created by the rebuild are not part of the R-02 legacy inventory; only contracts replaced a legacy module.
-LEGACY_PACKAGES = {"contracts"}
-# New top-level modules created by the rebuild (not in the R-02 inventory document).
-NEW_MODULES = {"pipeline.py"}
+def git_show(root: Path, commit: str, path: str) -> bytes:
+    return subprocess.run(["git", "show", f"{commit}:{path}"], cwd=root, check=True, capture_output=True).stdout
+
+
+def baseline_module_names(root: Path, commit: str) -> set[str]:
+    result = subprocess.run(
+        ["git", "ls-tree", "--name-only", commit, "lvr_pipeline/"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    return {line.rsplit("/", 1)[-1] for line in result.stdout.splitlines() if line.endswith(".py")}
 
 
 def module_names(path: Path) -> set[str]:
-    # A module later converted to a package (e.g. contracts/) still counts as the same top-level module.
-    names = {item.name for item in path.glob("*.py") if item.is_file() and item.name not in NEW_MODULES}
-    names |= {f"{item.name}.py" for item in path.iterdir() if item.is_dir() and (item / "__init__.py").is_file() and item.name in LEGACY_PACKAGES}
-    return names
+    return {item.name for item in path.glob("*.py") if item.is_file()}
+
+
+def bytes_sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def bytes_csv_rows(data: bytes) -> int:
+    reader = csv.reader(data.decode("utf-8-sig").splitlines())
+    return max(sum(1 for _ in reader) - 1, 0)
 
 
 def heading_anchors(path: Path) -> set[str]:
@@ -174,21 +198,22 @@ def main() -> int:
     readmes = [name for name in git_files(root) if Path(name).name.casefold() == "readme.md"]
     check("single_project_readme", ["README.md"], readmes)
     check("markdown_local_links", [], broken_markdown_links(root))
-    check("current_module_inventory", sorted(CURRENT_MODULES), sorted(module_names(root / "lvr_pipeline")))
+    check("current_module_inventory", sorted(BASELINE_MODULES), sorted(baseline_module_names(root, BASELINE_COMMIT)))
     check("legacy_module_inventory", sorted(LEGACY_MODULES), sorted(module_names(legacy / "lvr_pipeline")))
 
-    current_rules = root / "config" / "rules" / "character-fixes.csv"
+    # The rules file and the raw manifest are read from the baseline commit, where they lived under data/.
+    current_rules = git_show(root, BASELINE_COMMIT, "data/registry/garbled_override.csv")
     legacy_rules = legacy / "data" / "registry" / "garbled_override.csv"
-    check("current_character_rule_count", 21, csv_rows(current_rules))
+    check("current_character_rule_count", 21, bytes_csv_rows(current_rules))
     check("legacy_character_rule_count", 21, csv_rows(legacy_rules))
-    check("character_rule_hash_match", sha256(legacy_rules), sha256(current_rules))
+    check("character_rule_hash_match", sha256(legacy_rules), bytes_sha256(current_rules))
 
     for name, (expected_rows, expected_hash) in EXPECTED_REGISTRY.items():
         source = legacy / "data" / "registry" / name
         check(f"legacy_registry_rows:{name}", expected_rows, csv_rows(source))
         check(f"legacy_registry_sha256:{name}", expected_hash, sha256(source))
 
-    raw_manifest = json.loads((root / "config" / "sources" / "raw_manifest.json").read_text(encoding="utf-8"))
+    raw_manifest = json.loads(git_show(root, BASELINE_COMMIT, "data/sources/raw_manifest.json").decode("utf-8"))
     entries = (
         raw_manifest.get("inputs")
         or raw_manifest.get("sources")
@@ -199,13 +224,14 @@ def main() -> int:
     check("raw_manifest_source_count", 58, len(entries))
 
     inventory = (root / "docs" / "records" / "R02盤點.md").read_text(encoding="utf-8")
-    for name in sorted(CURRENT_MODULES | LEGACY_MODULES):
+    for name in sorted(BASELINE_MODULES | LEGACY_MODULES):
         check(f"documented_module:{name}", True, f"`{name}`" in inventory)
     for name in EXPECTED_REGISTRY:
         check(f"documented_registry:{name}", True, name in inventory)
 
     output = {
         "root": str(root),
+        "baseline_commit": BASELINE_COMMIT,
         "legacy": str(legacy),
         "status": "pass" if all(item["status"] == "pass" for item in checks) else "fail",
         "checks": checks,
