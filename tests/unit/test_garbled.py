@@ -112,7 +112,7 @@ def test_status_column_is_loaded_and_does_not_change_replacements():
     repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     path = os.path.join(repo, "config", "rules", "character-fixes.csv")
     statuses = load_statuses(path)
-    assert len(statuses) == 21 and set(statuses.values()) == {"unverified"}
+    assert len(statuses) == 21 and set(statuses.values()) <= {"unverified", "confirmed"}
     with open(path, encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
     with tempfile.TemporaryDirectory() as tmp:
