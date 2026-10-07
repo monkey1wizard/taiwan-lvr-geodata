@@ -36,7 +36,7 @@ def build_pool(
     roads = {}
     if index_path:
         from .address_state import load_p2
-        from .garbled_resolve import resolve
+        from .offline.resolve import resolve
 
         _, index_report = load_p2(index_path, "offline-index")
         if index_report["address_source_commit"] != descriptor["commit"]:

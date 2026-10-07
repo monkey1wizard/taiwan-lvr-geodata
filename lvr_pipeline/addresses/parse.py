@@ -54,7 +54,7 @@ _FW = str.maketrans(
 
 # ── 亂碼偵測（缺字 ? 與 PUA 造字）─────────────────────────────────────────────
 # 單一真相：literal "?"(U+003F，上游遺失字替換符號)＋ PUA 私用區(U+E000–U+F8FF)。
-# 全管線（normalize 切檔、garbled_resolve、prepare_tgos 排除）共用此偵測，勿各自寫死 PUA-only。
+# 全管線（normalize 切檔、offline.resolve、prepare_tgos 排除）共用此偵測，勿各自寫死 PUA-only。
 
 GARBLE_RE = re.compile("[?" + chr(0xE000) + "-" + chr(0xF8FF) + "]")
 

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""lvr_pipeline.garbled_resolve 驗收測試。"""
+"""lvr_pipeline.offline.resolve 驗收測試。"""
 import os
 import sys
 import csv
@@ -7,7 +7,7 @@ import tempfile
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from lvr_pipeline.garbled_resolve import (
+from lvr_pipeline.offline.resolve import (
     resolve,
     load_35321,
     build_offline_road_set,
