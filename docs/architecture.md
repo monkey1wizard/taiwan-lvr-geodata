@@ -508,11 +508,11 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
 
    | 路徑 | 說明 | 可否重建 |
    | --- | --- | --- |
-   | `data/tgos/` | 全部交換資料夾（`20261007-0358ee6e90df/`、`20261008-17de0200/`、`20261008-2160fe59/`）與 `date.json`。含人工下載的回傳檔 `Address_Finish.csv` | 回傳檔不可重建 |
+   | `data/tgos/` | 全部交換資料夾（`20261007-0358ee6e90df/`、`20261008-2160fe59/`）與 `date.json`。含人工下載的回傳檔 `Address_Finish.csv` | 回傳檔不可重建 |
    | `data/work/fast2b/tgos-state/` | 目前的 TGOS 帳本。`current.json` 指向 `snapshots/tgos-state-1867e36677c54cbc8fd3fbd5`，約 3 GB | 不可重建（含已送出與已回傳批次） |
    | `data/raw/` | 58 個原始 ZIP，674,172,610 位元組 | 可重新下載，須通過 manifest 核對 |
 
-   `data/tgos/20261008-17de0200/` 是已取消批次的資料夾，**不可上傳**。帶走它只為保持與帳本一致。
+   已取消批次 `tgos-17de02009526` 的資料夾 `data/tgos/20261008-17de0200/` 已由擁有者於 2026-10-08 刪除。該批次只以 `cancelled` 狀態留在 TGOS 狀態快照中，程式不讀取已取消批次的資料夾。
 3. 要接續目前狀態（不重跑全量處理）時，另外帶走：
 
    | 路徑 | 用途 |
@@ -549,7 +549,7 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
    ```
 
    `fetch-output --maintenance` 找到 `role: index` 的資產，走 `extract_handoff`：核對每片雜湊與成員清單、解開、再核對每個成員的雜湊與檔案集合，缺片、多檔、雜湊不符都會失敗。`verify-output` 也做同樣檢查。小於上限的輸出仍是單一 `<id>_maintenance.zip`，兩種格式都能讀。F-5 第二次實測的重組檢查是在 Python 內直接呼叫 `extract_handoff`：索引列 889 個成員、3,706,456,067 bytes，約 698 秒，通過。`fetch-output --maintenance` 本身只有合成資料測試，沒有對全量輸出實測。
-7. **不要上傳已取消批次的資料夾。** 原因：資料夾存在不代表批次有效。例如 `data/tgos/20261008-17de0200/` 屬於已取消的 `tgos-17de02009526`，其中含 124 筆已送出的地址。上傳前先確認批次在最新 TGOS 狀態快照中是 `prepared`。
+7. **不要上傳已取消批次的資料夾。** 原因：資料夾存在不代表批次有效。例如已取消的 `tgos-17de02009526` 含 124 筆已送出的地址，其資料夾 `data/tgos/20261008-17de0200/` 已於 2026-10-08 刪除。上傳前先確認批次在最新 TGOS 狀態快照中是 `prepared`。
 8. **失敗後殘留的 staging 目錄不會自動刪除。** 原因：處理規則尚未決定，待擁有者在 R06-4 裁定。已知殘留：`data/work/fast2/tgos-state/staging/tgos-state-ec7ef08f829fc60dc623ac41`、`data/output/fast2-20261008/.staging/fast2-output/`（約 25 GB）。不要刪除；換新的 run ID 重跑。需要磁碟空間時，先請擁有者決定。
 
 ### 全量循環 10 下一次 TGOS 循環（目前狀態）
