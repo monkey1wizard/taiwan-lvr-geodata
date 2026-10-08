@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 from lvr_pipeline.addresses import identity as cur  # noqa: E402
 from lvr_pipeline.addresses.parse import arab_to_cjk, norm  # noqa: E402
 
-snapshot = Path(sys.argv[1] if len(sys.argv) > 1 else ROOT / "data/work/normalized/snapshots/fast-all58-v5-normalize")
+snapshot = Path(sys.argv[1] if len(sys.argv) > 1 else ROOT / "data/tmp/work/fast2/normalized/snapshots/fast2-normalize")
 baseline = sys.argv[2] if len(sys.argv) > 2 else "99b6226"
 source = subprocess.check_output(["git", "-C", str(ROOT), "show", f"{baseline}:lvr_pipeline/addresses/identity.py"], text=True)
 old = types.ModuleType("lvr_pipeline.addresses._identity_baseline")

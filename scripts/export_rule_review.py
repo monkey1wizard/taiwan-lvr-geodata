@@ -3,9 +3,9 @@
 """R04-10 待確認補字規則的離線查核表（唯讀快照）。
 
 輸入：
-  1. data/work/normalized/current.json 指向的正規化快照 observations（raw_address 為原始地址）。
+  1. data/tmp/work/fast2/normalized/current.json 指向的正規化快照 observations（raw_address 為原始地址）。
   2. 指定的 ingest 快照 records/*/*.parquet（member_path、鄉鎮市區），以 raw_record_id 串接。
-輸出（只寫在 data/review/character-rules/<YYYYMMDD>/，已被 .gitignore 排除）：
+輸出（只寫在 data/tmp/review/character-rules/<YYYYMMDD>/，已被 .gitignore 排除）：
   rule_hits.csv  UTF-8 with BOM；每個「規則 x 不同原始地址」一列。
   summary.csv    每條規則的範圍內/範圍外命中數、不同地址數；無命中的規則列 0。
 
@@ -32,8 +32,8 @@ sys.path.insert(0, HERE)
 from audit_character_fixes import (  # noqa: E402
     CATS, ROOT, Rule, load_rules, snapshot_dir, snapshot_rows)
 
-INGEST = os.path.join(ROOT, "data", "work", "ingested", "snapshots", "fast-all58-v3-ingest")
-OUT_BASE = os.path.join(ROOT, "data", "review", "character-rules")
+INGEST = os.path.join(ROOT, "data", "tmp", "work", "ingested", "snapshots", "fast-all58-v3-ingest")
+OUT_BASE = os.path.join(ROOT, "data", "tmp", "review", "character-rules")
 
 COUNTY_BY_LETTER = {
     "a": "臺北市", "b": "臺中市", "c": "基隆市", "d": "臺南市", "e": "高雄市", "f": "新北市",

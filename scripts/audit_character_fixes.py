@@ -3,7 +3,7 @@
 """R04-4 補字規則真實資料核對（唯讀）。
 
 輸入：
-  1. data/work/normalized/current.json 指向的正規化快照（observations/*/*.parquet 的 raw_address）。
+  1. data/tmp/work/fast2/normalized/current.json 指向的正規化快照（observations/*/*.parquet 的 raw_address）。
   2. 舊專案 data/work/offline_in/*_garbled.csv（欄位 id, raw_address；內容是舊規則套用後的值）。
      --include-clean 時另讀 *_clean.csv，涵蓋舊規則已完整修好的列。
 
@@ -36,7 +36,7 @@ sys.path.insert(0, ROOT)
 from lvr_pipeline.addresses.characters import fix_garbled, load_garbled  # noqa: E402
 
 RULES = os.path.join(ROOT, "config", "rules", "character-fixes.csv")
-NORMALIZED = os.path.join(ROOT, "data", "work", "normalized")
+NORMALIZED = os.path.join(ROOT, "data", "tmp", "work", "fast2", "normalized")
 OLD_PROJECT = "C:/Code/taiwan-lvr-geojson"
 CATS = ("sales", "presale", "rent")
 NEGATIVE_CASES = ["臺北市士林區天母二路13巷12弄9號"]

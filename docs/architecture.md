@@ -156,7 +156,7 @@ raw_record_id 追溯來源觀測。上游序號或相同地址不足以證明同
 
 ### 階段產物與續跑邊界
 
-下表說明目標階段契約，不預先指定尚未實作的檔名。現有工作快照仍在 data/work，企劃中的 data/runs 布局尚待遷移。
+下表說明目標階段契約，不預先指定尚未實作的檔名。目前接續使用的工作快照在 `data/tmp/work/`，企劃中的 `data/runs/` 布局待 R06-4 實作，見「全量循環 0」。
 
 | 階段產物 | 必須保留 | 下一階段依賴 |
 | --- | --- | --- |
@@ -244,7 +244,7 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline verify-converted --input
 | 3 | `resolve-offline` | 地址池與相同版本索引 |
 | 4 | `verify-offline-state` | 產生的離線狀態 |
 
-各命令的路徑參數以 `python -m lvr_pipeline 命令 --help` 為準。既有階段快照仍在 `data/work/`，尚未遷移至企劃中的 `data/runs/`。使用官方來源時，來源描述與實體檔案必須配對。
+各命令的路徑參數以 `python -m lvr_pipeline 命令 --help` 為準。目前接續使用的階段快照在 `data/tmp/work/`，尚未遷移至企劃中的 `data/runs/`。使用官方來源時，來源描述與實體檔案必須配對。
 
 續跑前核對輸入、規則及狀態版本。若狀態已開始 TGOS 作業，不得用重建離線狀態抹除既有帳本。現有快照與續跑限制的歷史範例保存在[P2 紀錄](records/P2離線驗收.md)。
 
@@ -274,6 +274,26 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline verify-converted --input
 - 每個階段的快照放在 `<工作目錄>/<階段>/snapshots/<快照 ID>/`。階段目錄依序是 `ingested`、`normalized`、`converted`、`offline-index`、`address-pool`、`offline-state`、`tgos-state`。工作目錄預設是 `data/work`，用 `--work-dir` 改變。
 - 命令成功時印出 JSON 並以結束代碼 0 離開。失敗時印出 `{"error": ..., "completed": false}` 並以 1 離開。長時間命令請在 `tmux` 或 `nohup` 下執行，並接 `2>&1 | tee <工作目錄>/logs/<步驟>.log`。
 
+### 全量循環 0 目前 `data/` 布局（2026-10-08 整理）
+
+依企劃第四節的目標布局整理。尚未符合目標、但目前仍需使用的內容放在 `data/tmp/`；`data/runs/` 要等 R06-4 的 `run-full` 才會使用。
+
+| 位置 | 內容 |
+| --- | --- |
+| `data/raw/` | 58 個原始交易 ZIP |
+| `data/cache/` | 官方來源快取 |
+| `data/tgos/` | `date.json` 與各批交換資料夾，含人工下載的回傳檔 |
+| `data/output/fast2-output-b/` | 快速版 v2 輸出：`monthly/`、`yearly/`、維護包分片與索引 |
+| `data/output/p2-115q1-offline-v2/` | 目前公開版本的本機副本 |
+| `data/tmp/work/ingested/`、`fast2/`、`fast2b/` | 接續工作用的階段快照，以 `--work-dir` 指定 |
+| `data/tmp/work/tgos-state/` | F-1 的 TGOS 狀態，作為來源紀錄 |
+| `data/tmp/work/logs/` | 各次執行的日誌 |
+| `data/tmp/kepler/` | Kepler.gl 年度 CSV |
+| `data/tmp/review/` | 補字規則查核表 |
+| `data/tmp/legacy-evidence/` | R09-4 舊錯配清查要用的舊輸出、舊地址 patch 與發布收據 |
+
+程式的 `--work-dir` 預設仍是 `data/work`。本節命令一律明確指定工作目錄。
+
 ### 全量循環 1 環境
 
 1. 準備 Linux 主機，安裝 `git` 與 `uv`（專案目前使用 uv 0.12.23）。`uv` 依 `.python-version` 使用 Python 3.13.16。
@@ -299,7 +319,7 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline verify-converted --input
 
 - 記憶體：各步驟 RSS 峰值約 3 GB（見下表）。Windows 主機另設 DuckDB 記憶體上限 16GB。
 - 磁碟，單輪從讀取快照到輸出：
-  - 工作目錄：讀取快照 `ingested` 5.3 GB（F-3 沿用既有快照，未重讀）；`data/work/fast2`（正規化、轉換、索引、地址池、離線狀態，以及 F-4 第一次留下的 TGOS 狀態）15 GB；`data/work/fast2b`（TGOS 狀態）3 GB。合計約 23 GB。這台機器的 `data/work` 全部約 48 GB，含更早的快速版與驗證快照，不是單輪需求。
+  - 工作目錄：讀取快照 `ingested` 5.3 GB（F-3 沿用既有快照，未重讀）；`data/tmp/work/fast2`（正規化、轉換、索引、地址池、離線狀態，以及 F-4 第一次留下的 TGOS 狀態）15 GB；`data/tmp/work/fast2b`（TGOS 狀態）3 GB。合計約 23 GB。這台機器的 `data/work` 全部約 48 GB，含更早的快速版與驗證快照，不是單輪需求。
   - 輸出：每輪 `package-output` 約 25 GB（總計 25,953,761,652 bytes）。失敗時殘留的 `.staging` 也約 25 GB，不會自動刪除。
   - 建議雲端磁碟至少 150 GB 可用，並且剩餘低於 20% 時停止。這是依上列數值加上殘留與重跑的餘量所作的估計，未在 Linux 驗證。
 
@@ -338,7 +358,7 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline verify-converted --input
 
 ### 全量循環 3 全量處理
 
-以下命令是 F-3 實際使用的順序與參數。`<W>` 代表本輪工作目錄，例如 `data/work/fast2`；**每次改變正規化規則後必須用全新的 `<W>`**（見「全量循環 9」規則 1）。`<run-id>` 換成未使用過的值。
+以下命令是 F-3 實際使用的順序與參數。`<W>` 代表本輪工作目錄，例如 `data/tmp/work/fast2`；**每次改變正規化規則後必須用全新的 `<W>`**（見「全量循環 9」規則 1）。`<run-id>` 換成未使用過的值。
 
 1. 讀取全部 58 批。`--batch` 必須明確列出，沒有「全部」選項：
 
@@ -347,7 +367,7 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline verify-converted --input
    $LVR ingest $BATCHES --work-dir <W> --run-id <run-id>-ingest
    ```
 
-   第一行只是從 manifest 組出 58 個 `--batch` 參數的輔助寫法，沒有單獨實測，也可手動列出。F-3 沿用既有讀取快照 `data/work/ingested/snapshots/fast-all58-v3-ingest`，沒有重讀 ZIP；沿用時，直接把該路徑傳給下一步的 `--input`。
+   第一行只是從 manifest 組出 58 個 `--batch` 參數的輔助寫法，沒有單獨實測，也可手動列出。F-3 沿用既有讀取快照 `data/tmp/work/ingested/snapshots/fast-all58-v3-ingest`，沒有重讀 ZIP；沿用時，直接把該路徑傳給下一步的 `--input`。
 2. 正規化：
 
    ```bash
@@ -400,7 +420,7 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline verify-converted --input
 
 ### 全量循環 4 TGOS 循環
 
-TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產生新的狀態快照，前版保留。`<T>` 代表 TGOS 狀態的工作目錄，目前是 `data/work/fast2b`。
+TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產生新的狀態快照，前版保留。`<T>` 代表 TGOS 狀態的工作目錄，目前是 `data/tmp/work/fast2b`。
 
 1. 維護日期紀錄 `data/tgos/date.json`，內容只能有 `date` 欄位，例如 `{"date": "2026-10-08"}`。**執行 `prepare-tgos` 前先改成預定的交換日期。** 日期只用於交換資料夾名稱，不限制地址挑選、提交或匯入。有其他欄位時程式拒絕。
 2. 產生交換檔。工作目錄 `<T>` 必須還沒有 `tgos-state`，並用 `--ledger` 帶入舊帳本，避免重送已送出的查詢：
@@ -509,7 +529,7 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
    | 路徑 | 說明 | 可否重建 |
    | --- | --- | --- |
    | `data/tgos/` | 全部交換資料夾（`20261007-0358ee6e90df/`、`20261008-2160fe59/`）與 `date.json`。含人工下載的回傳檔 `Address_Finish.csv` | 回傳檔不可重建 |
-   | `data/work/fast2b/tgos-state/` | 目前的 TGOS 帳本。`current.json` 指向 `snapshots/tgos-state-1867e36677c54cbc8fd3fbd5`，約 3 GB | 不可重建（含已送出與已回傳批次） |
+   | `data/tmp/work/fast2b/tgos-state/` | 目前的 TGOS 帳本。`current.json` 指向 `snapshots/tgos-state-1867e36677c54cbc8fd3fbd5`，約 3 GB | 不可重建（含已送出與已回傳批次） |
    | `data/raw/` | 58 個原始 ZIP，674,172,610 位元組 | 可重新下載，須通過 manifest 核對 |
 
    已取消批次 `tgos-17de02009526` 的資料夾 `data/tgos/20261008-17de0200/` 已由擁有者於 2026-10-08 刪除。該批次只以 `cancelled` 狀態留在 TGOS 狀態快照中，程式不讀取已取消批次的資料夾。
@@ -517,13 +537,13 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
 
    | 路徑 | 用途 |
    | --- | --- |
-   | `data/work/fast2/offline-state/snapshots/fast2-offline` | 之後 `prepare-tgos` 的 `--state` |
-   | `data/work/fast2/converted/snapshots/fast2-converted` | `package-output` 的 `--input` |
-   | `data/work/fast2b/tgos-state/snapshots/tgos-state-1867e36677c54cbc8fd3fbd5` | 目前的 TGOS 狀態（已含在上列 `tgos-state/`） |
-   | `data/output/fast2-20261008b/fast2-output-b/` | 已通過 `verify-output` 的輸出，約 25 GB。只有要直接取用或比對時才需要 |
+   | `data/tmp/work/fast2/offline-state/snapshots/fast2-offline` | 之後 `prepare-tgos` 的 `--state` |
+   | `data/tmp/work/fast2/converted/snapshots/fast2-converted` | `package-output` 的 `--input` |
+   | `data/tmp/work/fast2b/tgos-state/snapshots/tgos-state-1867e36677c54cbc8fd3fbd5` | 目前的 TGOS 狀態（已含在上列 `tgos-state/`） |
+   | `data/output/fast2-output-b/` | 已通過 `verify-output` 的輸出，約 25 GB。只有要直接取用或比對時才需要 |
 
    帶走快照時，連同該快照資料夾的所有檔案一起複製，並在新主機執行對應的 `verify-offline-state`、`verify-converted`、`verify-tgos-state`、`verify-output`。
-4. 不必帶走：`data/work/` 其餘快照（`ingested`、`normalized`、`fast`、`p1-*` 等）、`data/output/fast2-20261008/`（第一次失敗的殘留 staging）、`data/output/fast2-20261008b-handoff-check/`（重組檢查產物）。
+4. 不必帶走：`data/work/` 內剩下的舊快照，以及 `data/output/` 內第一次失敗的殘留輸出與重組檢查產物。這些已列入 2026-10-08 的刪除清單。
 5. 不可進 Git：`data/`（整個資料夾已列入 `.gitignore`）、`.env` 與 `.env.*`（`.env.example` 除外）、原始 ZIP、工作快照、TGOS 交換檔與回傳、發布候選、憑證、第三方地址資料列。地址資料專案是同層的獨立儲存庫，不複製進本專案。
 6. 搬移後的檢查：
    1. `bash scripts/setup.sh` 通過。
@@ -536,8 +556,8 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
 
 以下規則來自 F-3～F-5a 的失敗。照做可避免重蹈。
 
-1. **改變地址鍵規則（`NORMALIZATION_VERSION`）後，用全新的 `--work-dir` 重跑。** 原因：`normalize` 啟動時用目前規則驗證工作目錄內既有的快照；舊規則產生的快照在新規則下驗證失敗，錯誤為 `Component key does not match v2 rule`。F-3 第一次以 `data/work` 執行失敗，改用 `data/work/fast2` 成功。這是任務卡 R03-12，尚未修正。
-2. **`prepare-tgos` 以離線狀態為來源時，工作目錄不能已有 TGOS 狀態。** 原因：程式拒絕，錯誤為 `TGOS work directory already has state; use its latest snapshot`，帶 `--ledger` 也一樣。要重新從離線狀態產生批次，用全新的 `--work-dir`（F-4 用 `data/work/fast2b`），並以路徑傳入 `--state`（離線狀態快照）與 `--ledger`（舊 TGOS 狀態快照）。
+1. **改變地址鍵規則（`NORMALIZATION_VERSION`）後，用全新的 `--work-dir` 重跑。** 原因：`normalize` 啟動時用目前規則驗證工作目錄內既有的快照；舊規則產生的快照在新規則下驗證失敗，錯誤為 `Component key does not match v2 rule`。F-3 第一次以 `data/work` 執行失敗，改用 `data/tmp/work/fast2` 成功。這是任務卡 R03-12，尚未修正。
+2. **`prepare-tgos` 以離線狀態為來源時，工作目錄不能已有 TGOS 狀態。** 原因：程式拒絕，錯誤為 `TGOS work directory already has state; use its latest snapshot`，帶 `--ledger` 也一樣。要重新從離線狀態產生批次，用全新的 `--work-dir`（F-4 用 `data/tmp/work/fast2b`），並以路徑傳入 `--state`（離線狀態快照）與 `--ledger`（舊 TGOS 狀態快照）。
 3. **`prepare-tgos` 前先確認 `data/tgos/date.json`。** 原因：交換資料夾名稱取自該檔日期，格式 `data/tgos/YYYYMMDD-<8 碼>/`。日期錯了，資料夾名稱就錯。
 4. **帶入的舊查詢會自動以目前規則重算地址鍵；已送出的地址文字不會再被選。** 原因（F-4b）：規則升版後，舊批次 10,000 筆查詢中有 134 筆的鍵改變，若不重算，`import-tgos` 會因證據不一致失敗，`prepare-tgos` 也會再送出 124 筆文字相同的地址。重算筆數記在狀態 quality report 的 `carried_query_keys_recomputed`（本輪 134）。重算後鍵為 `None` 時，程式直接報錯停止。
 5. **已取消批次的地址不會被自動重選。** 原因：既有行為要求以 `--retry-query-fingerprint` 與 `--retry-reason` 明確核准才能再次送出。已知問題：被取消的 `tgos-17de02009526` 有 9,876 筆未送出的地址，目前不會進入任何批次，除非核准重試。
@@ -550,11 +570,11 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
 
    `fetch-output --maintenance` 找到 `role: index` 的資產，走 `extract_handoff`：核對每片雜湊與成員清單、解開、再核對每個成員的雜湊與檔案集合，缺片、多檔、雜湊不符都會失敗。`verify-output` 也做同樣檢查。小於上限的輸出仍是單一 `<id>_maintenance.zip`，兩種格式都能讀。F-5 第二次實測的重組檢查是在 Python 內直接呼叫 `extract_handoff`：索引列 889 個成員、3,706,456,067 bytes，約 698 秒，通過。`fetch-output --maintenance` 本身只有合成資料測試，沒有對全量輸出實測。
 7. **不要上傳已取消批次的資料夾。** 原因：資料夾存在不代表批次有效。例如已取消的 `tgos-17de02009526` 含 124 筆已送出的地址，其資料夾 `data/tgos/20261008-17de0200/` 已於 2026-10-08 刪除。上傳前先確認批次在最新 TGOS 狀態快照中是 `prepared`。
-8. **失敗後殘留的 staging 目錄不會自動刪除。** 原因：處理規則尚未決定，待擁有者在 R06-4 裁定。已知殘留：`data/work/fast2/tgos-state/staging/tgos-state-ec7ef08f829fc60dc623ac41`、`data/output/fast2-20261008/.staging/fast2-output/`（約 25 GB）。不要刪除；換新的 run ID 重跑。需要磁碟空間時，先請擁有者決定。
+8. **失敗後殘留的 staging 目錄不會自動刪除。** 原因：處理規則尚未決定，待擁有者在 R06-4 裁定。已知殘留：`data/tmp/work/fast2/tgos-state/staging/tgos-state-ec7ef08f829fc60dc623ac41`、`data/output/fast2-20261008/.staging/fast2-output/`（約 25 GB）。不要刪除；換新的 run ID 重跑。需要磁碟空間時，先請擁有者決定。
 
 ### 全量循環 10 下一次 TGOS 循環（目前狀態）
 
-目前狀態：批次 `tgos-2160fe59f6b1`（10,000 筆）狀態為 `prepared`，交換檔在 `data/tgos/20261008-2160fe59/addresses.csv`（SHA-256 `ebda836ac4ae1bf47f97b554e67946816b6c08b96177bc578b934af0f506bb9e`）。TGOS 狀態工作目錄是 `data/work/fast2b`，目前快照 `tgos-state-1867e36677c54cbc8fd3fbd5`。
+目前狀態：批次 `tgos-2160fe59f6b1`（10,000 筆）狀態為 `prepared`，交換檔在 `data/tgos/20261008-2160fe59/addresses.csv`（SHA-256 `ebda836ac4ae1bf47f97b554e67946816b6c08b96177bc578b934af0f506bb9e`）。TGOS 狀態工作目錄是 `data/tmp/work/fast2b`，目前快照 `tgos-state-1867e36677c54cbc8fd3fbd5`。
 
 1. 核對交換檔 SHA-256 與上列相同，不要修改檔案。
 2. 人工上傳 `data/tgos/20261008-2160fe59/addresses.csv`，設定同「全量循環 4」步驟 3。
@@ -562,26 +582,26 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
 
    ```bash
    $LVR set-tgos-status \
-     --state data/work/fast2b/tgos-state/snapshots/tgos-state-1867e36677c54cbc8fd3fbd5 \
+     --state data/tmp/work/fast2b/tgos-state/snapshots/tgos-state-1867e36677c54cbc8fd3fbd5 \
      --batch tgos-2160fe59f6b1 --status submitted --reason "<送出說明>" \
-     --work-dir data/work/fast2b
+     --work-dir data/tmp/work/fast2b
    ```
 
-   命令印出新快照 ID。用 `data/work/fast2b/tgos-state/current.json` 確認目前快照。
+   命令印出新快照 ID。用 `data/tmp/work/fast2b/tgos-state/current.json` 確認目前快照。
 4. 人工下載回傳檔，存成 `data/tgos/20261008-2160fe59/Address_Finish.csv`，核對方式同「全量循環 4」步驟 5。
 5. 匯入並驗證，`--state` 用步驟 3 產生的快照：
 
    ```bash
    $LVR import-tgos \
-     --state data/work/fast2b/tgos-state/snapshots/<步驟 3 的快照> \
+     --state data/tmp/work/fast2b/tgos-state/snapshots/<步驟 3 的快照> \
      --batch tgos-2160fe59f6b1 \
      --response data/tgos/20261008-2160fe59/Address_Finish.csv \
-     --work-dir data/work/fast2b
-   $LVR verify-tgos-state --input data/work/fast2b/tgos-state/snapshots/<匯入後的快照>
+     --work-dir data/tmp/work/fast2b
+   $LVR verify-tgos-state --input data/tmp/work/fast2b/tgos-state/snapshots/<匯入後的快照>
    ```
 
 6. 重新輸出：以匯入後的快照作 `--state`，使用新的 `--run-id` 與新的 `--output-dir`，重跑 `package-output` 與 `verify-output`（見「全量循環 5」）。不要覆寫 `fast2-output-b`。
-7. 產生再下一批時，不能在 `data/work/fast2b` 內從離線狀態重新開始（規則 2）。目前沒有在已有 TGOS 狀態的工作目錄內產生下一批的命令；程式只支援從離線狀態加 `--ledger` 在新的工作目錄重建（例如 `data/work/fast2c`）。這個流程對下一批尚未實測。
+7. 產生再下一批時，不能在 `data/tmp/work/fast2b` 內從離線狀態重新開始（規則 2）。目前沒有在已有 TGOS 狀態的工作目錄內產生下一批的命令；程式只支援從離線狀態加 `--ledger` 在新的工作目錄重建（例如 `data/tmp/work/fast2c`）。這個流程對下一批尚未實測。
 
 ## 資料規格
 
