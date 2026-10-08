@@ -6,12 +6,11 @@ import time
 from pathlib import Path
 
 from .address_pool import build_pool
-from .address_source import pin_address_source
-from .address_state import resolve_offline, load_p2
+from .offline.index import pin_address_source, build_index
+from .results.reconcile import resolve_offline, load_p2
 from .backfill import backfill_output
 from .address_patch import export_address_patch, verify_address_patch
 from .distribution import fetch_output, publish_release, commit_pointer
-from .offline_lookup import build_index
 from .packaging import package_output, verify_output, write_json
 from .tgos import (
     import_tgos,

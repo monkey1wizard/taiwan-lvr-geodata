@@ -9,7 +9,7 @@ import duckdb
 
 from .addresses import identity
 from .addresses.identity import building_key_v2
-from .offline_lookup import load_pinned_source
+from .offline.index import load_pinned_source
 from .storage.parquet import BatchWriter, duckdb_config, rows
 from .storage.runs import Stage, bindings, digest, load_snapshot
 from .sources import sha256_file
@@ -36,7 +36,7 @@ def build_pool(
     probe_db = None
     roads = {}
     if index_path:
-        from .address_state import load_p2
+        from .results.reconcile import load_p2
         from .offline.resolve import resolve
 
         _, index_report = load_p2(index_path, "offline-index")

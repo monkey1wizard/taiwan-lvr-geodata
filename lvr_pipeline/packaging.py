@@ -16,7 +16,7 @@ import zipfile
 
 import duckdb
 
-from .address_state import load_p2
+from .results.reconcile import load_p2
 from .storage.parquet import duckdb_config
 from .export import (
     POINT_COLUMNS,

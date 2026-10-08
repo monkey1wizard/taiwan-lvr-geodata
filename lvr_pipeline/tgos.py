@@ -12,7 +12,7 @@ import tempfile
 from datetime import date
 from pathlib import Path
 
-from .address_state import load_p2
+from .results.reconcile import load_p2
 from .addresses.identity import building_key_v2
 from .normalize import normalize_address
 from .storage.parquet import BatchWriter, rows
