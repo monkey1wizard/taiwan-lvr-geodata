@@ -1,0 +1,126 @@
+"""Export located sales from monthly GeoParquet outputs to a Kepler.gl point CSV (read-only on outputs)."""
+from __future__ import annotations
+
+import argparse
+import csv
+import datetime
+import json
+from collections import Counter
+from pathlib import Path
+
+import pyarrow.parquet as pq
+
+from lvr_pipeline.export import read_wkb
+
+COUNTY_BY_LETTER = {
+    "a": "臺北市", "b": "臺中市", "c": "基隆市", "d": "臺南市", "e": "高雄市", "f": "新北市",
+    "g": "宜蘭縣", "h": "桃園市", "i": "嘉義市", "j": "新竹縣", "k": "苗栗縣", "m": "南投縣",
+    "n": "彰化縣", "o": "新竹市", "p": "雲林縣", "q": "嘉義縣", "t": "屏東縣", "u": "花蓮縣",
+    "v": "臺東縣", "w": "金門縣", "x": "澎湖縣", "z": "連江縣",
+}
+FIELDS = ["trade_date", "tx_yyyymm", "county", "district", "address", "building_type", "total_price",
+          "unit_price_sqm", "building_area_sqm", "longitude", "latitude", "category", "raw_record_id"]
+COLUMNS = ["raw_record_id", "category", "member_path", "raw_address", "tx_date_raw", "tx_yyyymm",
+           "props_json", "location_status", "is_approximation", "unique_point_count", "geometry"]
+
+
+def roc_date(value: str) -> str | None:
+    value = (value or "").strip()
+    if len(value) != 7 or not value.isdigit():
+        return None
+    try:
+        return datetime.date(int(value[:3]) + 1911, int(value[3:5]), int(value[5:])).isoformat()
+    except ValueError:
+        return None
+
+
+def number(value):
+    value = (value or "").strip()
+    return value if value.replace(".", "", 1).isdigit() else ""
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output-root", type=Path, required=True, help="package-output folder with monthly/")
+    parser.add_argument("--category", default="sales", choices=["sales", "presale", "rent"])
+    parser.add_argument("--county", action="append", default=[], help="County name, repeatable; default all")
+    parser.add_argument("--from-yyyymm", type=int, default=0)
+    parser.add_argument("--to-yyyymm", type=int, default=999999)
+    parser.add_argument("--out", type=Path, required=True, help="CSV file, or a directory with --by-year")
+    parser.add_argument("--by-year", action="store_true", help="Write one CSV per transaction year")
+    parser.add_argument("--prefix", default="sales", help="File name prefix with --by-year")
+    parser.add_argument("--no-id", action="store_true", help="Omit raw_record_id and category to shrink files")
+    args = parser.parse_args(argv)
+    fields = [f for f in FIELDS if not (args.no_id and f in {"raw_record_id", "category"})]
+
+    counties = set(args.county)
+    files = sorted((args.output_root / "monthly").glob(f"*/*/*_{args.category}.parquet"))
+    reasons = Counter()
+    per_year = {}
+    handles = {}
+
+    def writer_for(year):
+        key = year if args.by_year else "all"
+        if key not in handles:
+            final = args.out / f"{args.prefix}_{year}.csv" if args.by_year else args.out
+            final.parent.mkdir(parents=True, exist_ok=True)
+            stream = final.with_suffix(".tmp").open("w", encoding="utf-8-sig", newline="")
+            writer = csv.DictWriter(stream, fieldnames=fields)
+            writer.writeheader()
+            handles[key] = (stream, writer, final)
+        return handles[key][1]
+
+    for path in files:
+        month = int(path.name.split("_")[0])
+        if not args.from_yyyymm <= month <= args.to_yyyymm:
+            continue
+        year = month // 100
+        stats = per_year.setdefault(year, Counter())
+        for row in pq.read_table(path, columns=COLUMNS).to_pylist():
+            county = COUNTY_BY_LETTER.get(row["member_path"][:1].lower(), "")
+            if counties and county not in counties:
+                continue
+            reasons["selected"] += 1
+            stats["selected"] += 1
+            if row["location_status"] != "complete" or row["geometry"] is None:
+                reasons["excluded_not_fully_located"] += 1
+                continue
+            if row["is_approximation"] or row["unique_point_count"] != 1:
+                reasons["excluded_multi_point_or_approximation"] += 1
+                continue
+            geometry = read_wkb(row["geometry"])
+            if geometry.get("type") != "Point":
+                reasons["excluded_not_point"] += 1
+                continue
+            lng, lat = geometry["coordinates"]
+            props = json.loads(row["props_json"])
+            record = {
+                "trade_date": roc_date(row["tx_date_raw"]) or "",
+                "tx_yyyymm": row["tx_yyyymm"],
+                "county": county,
+                "district": props.get("鄉鎮市區", ""),
+                "address": row["raw_address"],
+                "building_type": props.get("建物型態", ""),
+                "total_price": number(props.get("總價元")),
+                "unit_price_sqm": number(props.get("單價元平方公尺")),
+                "building_area_sqm": number(props.get("建物移轉總面積平方公尺")),
+                "longitude": lng,
+                "latitude": lat,
+                "category": row["category"],
+                "raw_record_id": row["raw_record_id"],
+            }
+            writer_for(year).writerow({k: record[k] for k in fields})
+            reasons["written"] += 1
+            stats["written"] += 1
+    outputs = []
+    for stream, _, final in handles.values():
+        stream.close()
+        final.with_suffix(".tmp").replace(final)
+        outputs.append({"file": str(final), "bytes": final.stat().st_size})
+    print(json.dumps({"totals": reasons, "per_year": {y: dict(s) for y, s in sorted(per_year.items())},
+                      "outputs": outputs}, ensure_ascii=False))
+
+
+
+if __name__ == "__main__":
+    main()
