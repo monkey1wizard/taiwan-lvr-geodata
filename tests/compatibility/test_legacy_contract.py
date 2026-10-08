@@ -35,6 +35,8 @@ SUBCOMMANDS = {
     "revoke-alias", "verify-tgos-state", "package-output", "verify-output", "backfill-output",
     "export-address-patch", "verify-address-patch", "fetch-output", "publish-output",
     "commit-release-pointer",
+    # R05-2 依卡片新增 audit-address-source，規劃者核准。
+    "audit-address-source",
 }
 
 
@@ -52,8 +54,9 @@ def test_retained_symbols_exist(module_name):
     assert not missing, f"{module_name} lost {missing}"
 
 
-def test_cli_subcommand_set_is_exactly_23():
-    assert len(SUBCOMMANDS) == 23
+# R05-2 依卡片新增 audit-address-source，規劃者核准。
+def test_cli_subcommand_set_is_exactly_24():
+    assert len(SUBCOMMANDS) == 24
     result = subprocess.run([sys.executable, "-m", "lvr_pipeline", "--help"], cwd=ROOT, capture_output=True,
                             text=True, encoding="utf-8", check=True)
     match = re.search(r"\{([a-z0-9,\-]+)\}", result.stdout)

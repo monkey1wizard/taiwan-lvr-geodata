@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from .address_pool import build_pool
-from .offline.index import pin_address_source, build_index
+from .offline.index import audit_address_source, pin_address_source, build_index
 from .results.reconcile import resolve_offline, load_p2
 from .backfill import backfill_output
 from .address_patch import export_address_patch, verify_address_patch
@@ -92,6 +92,27 @@ def _run_offline_and_output(args):
             official=official,
             run_id=args.run_id,
         )
+    elif command == "audit-address-source":
+        start = time.perf_counter()
+        summary = audit_address_source(
+            args.address_dir,
+            read(args.address_source),
+            args.output_dir,
+            counties=args.county,
+        )
+        print(
+            json.dumps(
+                {
+                    "output_dir": str(args.output_dir),
+                    "rows": summary["rows"],
+                    "categories": summary["categories"],
+                    "elapsed_seconds": round(time.perf_counter() - start, 3),
+                    "process_peak_rss_bytes": peak_rss_bytes(),
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 0
     elif command == "build-address-pool":
         path = build_pool(
             args.input,

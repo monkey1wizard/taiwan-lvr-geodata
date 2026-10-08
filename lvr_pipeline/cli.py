@@ -27,6 +27,13 @@ def _add_offline_and_output_commands(sub):
     p.add_argument("--official-file", type=Path)
     p.add_argument("--work-dir", type=Path, default=Path("data/work"))
     p.add_argument("--run-id")
+    p = sub.add_parser("audit-address-source")
+    p.add_argument("--address-dir", type=Path, required=True)
+    p.add_argument(
+        "--address-source", type=Path, default=Path("config/sources/address_source.json")
+    )
+    p.add_argument("--county", action="append")
+    p.add_argument("--output-dir", type=Path, required=True)
     p = sub.add_parser("build-address-pool")
     p.add_argument("--input", type=Path, required=True)
     p.add_argument("--address-dir", type=Path, required=True)
