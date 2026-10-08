@@ -24,6 +24,16 @@ CONFLICT = "臺北市中正區測試路30號"
 UNMATCHED = "臺北市中正區測試路11號"
 NO_ADMIN = "測試路5號"
 GARBLED = "臺北市中正區測路12號"
+RANGE = "臺北市中正區測試路1-3號"  # county and town parse, the door range yields no key
+INCOMPLETE = "臺北市中正區測試路13號"  # TGOS answers with an address that has no door
+FAR = "臺北市中正區測試路14號"  # TGOS answers with a coordinate outside Taiwan
+TGOS_FOUND = "臺北市中正區測試路15號"  # TGOS locates it, so it is no longer unmatched
+TGOS_ANSWERS = {
+    UNMATCHED: ("臺北市中正區測試路99號", "121.51", "25.01"),
+    INCOMPLETE: ("臺北市中正區測試路", "121.52", "25.02"),
+    FAR: (FAR, "10", "10"),
+    TGOS_FOUND: (TGOS_FOUND, "121.53", "25.03"),
+}
 
 
 def _git(root, *args):
@@ -61,7 +71,8 @@ def _tree_hashes(directory):
 def built(tmp_path_factory):
     tmp_path = tmp_path_factory.mktemp("review")
     records = [{"address": value, "date": "1150102", "extra": ["中正區"]}
-               for value in [ADDRESS, VARIANT, CONFLICT, UNMATCHED, NO_ADMIN, GARBLED]]
+               for value in [ADDRESS, VARIANT, CONFLICT, UNMATCHED, NO_ADMIN, GARBLED, RANGE,
+                             INCOMPLETE, FAR, TGOS_FOUND]]
     _, _, converted = pipeline(tmp_path, records, extra_header=["鄉鎮市區"])
     root, descriptor = _two_road_source(tmp_path)
     work = tmp_path / "work"
@@ -77,12 +88,9 @@ def built(tmp_path_factory):
         writer = csv.DictWriter(stream, fieldnames=["Address", "Response_Address", "Response_X", "Response_Y"])
         writer.writeheader()
         for query in queries:
-            if query["address"] == UNMATCHED:
-                writer.writerow({"Address": query["address"], "Response_Address": "臺北市中正區測試路99號",
-                                 "Response_X": "121.51", "Response_Y": "25.01"})
-            else:
-                writer.writerow({"Address": query["address"], "Response_Address": "",
-                                 "Response_X": "", "Response_Y": ""})
+            answer, x, y = TGOS_ANSWERS.get(query["address"], ("", "", ""))
+            writer.writerow({"Address": query["address"], "Response_Address": answer,
+                             "Response_X": x, "Response_Y": y})
     tgos_state = import_tgos(submitted, work, batch_id, response)
     before = {name: _tree_hashes(path) for name, path in
               [("converted", converted), ("state", state), ("tgos", tgos_state)]}
@@ -103,6 +111,8 @@ def test_each_produced_reason_code_has_rows(built):
     assert set(PRODUCED_CODES) <= set(EXCEPTION_REASON_CODES)
     assert {"district_missing", "district_ambiguous", "road_only_not_unique"}.isdisjoint(found)
     report = json.loads((built["review"] / "quality.json").read_text(encoding="utf-8"))
+    assert report["address_status_source"] == "tgos-state"
+    report = json.loads((built["review"] / "quality.json").read_text(encoding="utf-8"))
     assert report["reason_counts"]["district_missing"] == 0
     assert sum(report["reason_counts"].values()) == len(built["rows"])
     # Each synthetic address appears once per category (sales, presale, rent).
@@ -119,13 +129,34 @@ def test_each_produced_reason_code_has_rows(built):
     assert {row["raw_address"] for row in conflict} == {CONFLICT}
     points = json.loads(conflict[0]["related_json"])["coordinates"]
     assert [(p["lng"], p["lat"]) for p in points] == [(121.5, 25.0), (121.6, 25.1)]
+    # Final status comes from the TGOS state: TGOS_FOUND was located there.
     unmatched = _by_reason(built["rows"], "offline_unmatched")
-    assert {row["raw_address"] for row in unmatched} == {UNMATCHED, VARIANT}
+    assert {row["raw_address"] for row in unmatched} == {UNMATCHED, VARIANT, INCOMPLETE, FAR}
+    review = _by_reason(built["rows"], "address_review")
+    assert {row["raw_address"] for row in review} == {RANGE} and len(review) == 3
+    assert all(row["building_key"] is None and row["town_code"] == "6300100" for row in review)
+    incomplete = _by_reason(built["rows"], "tgos_response_incomplete")
+    assert {row["raw_address"] for row in incomplete} == {INCOMPLETE}
+    assert json.loads(incomplete[0]["related_json"])["reason"] == "TGOS response is not a complete address"
+    far = _by_reason(built["rows"], "tgos_coordinate_invalid")
+    assert {row["raw_address"] for row in far} == {FAR}
+    assert json.loads(far[0]["related_json"])["reason"] == "TGOS coordinate is outside declared WGS84 Taiwan bounds"
     isolated = _by_reason(built["rows"], "tgos_isolated")
     assert {row["raw_address"] for row in isolated} == {UNMATCHED} and len(isolated) == 3
     detail = json.loads(isolated[0]["related_json"])
     assert detail["submitted_address"] == UNMATCHED and detail["response_address"] == "臺北市中正區測試路99號"
     assert detail["reason"] == "TGOS response address differs from submitted address"
+
+
+def test_without_tgos_state_offline_status_is_used(built):
+    review = build_review(built["converted"], built["state"], built["tmp"] / "review-offline",
+                          descriptor=built["descriptor"], run_id="review-offline")
+    values = list(rows(review / "exception_addresses.parquet"))
+    unmatched = {row["raw_address"] for row in values if row["reason_code"] == "offline_unmatched"}
+    assert TGOS_FOUND in unmatched
+    assert not any(row["reason_code"].startswith("tgos_") for row in values)
+    report = json.loads((review / "quality.json").read_text(encoding="utf-8"))
+    assert report["address_status_source"] == "offline-state"
 
 
 def test_subdoor_variants_point_at_each_other_and_keep_their_keys(built):
@@ -154,7 +185,7 @@ def test_exception_ids_recompute_and_first_run_is_kept(built):
     for row in built["rows"]:
         if row["reason_code"] == "subdoor_variant_pair":
             extra = json.loads(row["related_json"])["pair_building_key"]
-        elif row["reason_code"] == "tgos_isolated":
+        elif row["reason_code"].startswith("tgos_"):
             extra = json.loads(row["related_json"])["result_id"]
         else:
             extra = ""

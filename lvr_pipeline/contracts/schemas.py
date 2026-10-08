@@ -266,6 +266,10 @@ EXCEPTION_REASON_CODES = (
     "offline_unmatched",
     "coordinate_conflict",
     "tgos_isolated",
+    # R05-8b
+    "address_review",
+    "tgos_response_incomplete",
+    "tgos_coordinate_invalid",
 )
 OFFLINE_SCHEMAS["exception-address"] = _schema(
     "exception-address",

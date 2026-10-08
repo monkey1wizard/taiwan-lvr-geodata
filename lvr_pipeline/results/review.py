@@ -13,9 +13,12 @@ stage produces the codes that existing snapshot data can decide:
 - ``subdoor_variant_pair``: two pool keys with the same county, town and
   locality/road whose doors are ``N之M`` and ``N號之M``. One row per side,
   each pointing at the other. They are not merged.
-- ``offline_unmatched`` and ``coordinate_conflict``: offline state status.
-- ``tgos_isolated``: TGOS results rejected because the response address differs
-  from the submitted address.
+- ``address_review``: occurrence status ``address_review`` (county and town
+  parse, but the door text yields no key, such as a range or several doors).
+- ``offline_unmatched`` and ``coordinate_conflict``: address status of the TGOS
+  state when one is given (its final status after TGOS), else the offline state.
+- ``tgos_isolated``, ``tgos_response_incomplete``, ``tgos_coordinate_invalid``:
+  TGOS results rejected with the matching reason text recorded by ``import-tgos``.
 """
 
 from __future__ import annotations
@@ -35,14 +38,20 @@ from ..storage.parquet import BatchWriter, duckdb_config
 from ..storage.runs import Stage, bindings, digest, load_snapshot, sha256_file
 from .reconcile import load_p2
 
-TGOS_ISOLATION_REASON = "TGOS response address differs from submitted address"
+# Reason codes for TGOS results rejected by import-tgos, keyed by its recorded reason text.
+TGOS_REJECTION_CODES = {
+    "TGOS response address differs from submitted address": "tgos_isolated",
+    "TGOS response is not a complete address": "tgos_response_incomplete",
+    "TGOS coordinate is outside declared WGS84 Taiwan bounds": "tgos_coordinate_invalid",
+}
 PRODUCED_CODES = (
     "invalid_admin",
+    "address_review",
     "garbled_pending",
     "subdoor_variant_pair",
     "offline_unmatched",
     "coordinate_conflict",
-    "tgos_isolated",
+    *TGOS_REJECTION_CODES.values(),
 )
 COLUMNS = [field.name for field in dataset_schema("exception-address")]
 
@@ -101,6 +110,8 @@ chosen AS (
   UNION ALL
   SELECT 'garbled_pending', b.*, '', NULL FROM base b WHERE b.reason = 'candidate_review'
   UNION ALL
+  SELECT 'address_review', b.*, '', NULL FROM base b WHERE b.reason = 'address_review'
+  UNION ALL
   SELECT 'subdoor_variant_pair', b.*, p.pair_key,
          json_object('pair_building_key', p.pair_key, 'pair_address', p.pair_address)::VARCHAR
   FROM base b JOIN pairs p USING (building_key)
@@ -121,12 +132,13 @@ FROM chosen p JOIN observations o USING (raw_record_id)
 
 _TGOS_SQL = r"""
   UNION ALL
-  SELECT 'tgos_isolated', b.*, r.result_id,
+  SELECT m.code, b.*, r.result_id,
          json_object('batch_id', r.batch_id, 'result_id', r.result_id, 'submitted_address', r.address,
                      'response_address', r.response_address, 'reason', r.reason)::VARCHAR
-  FROM tgos_result r JOIN tgos_query q USING (batch_id, query_fingerprint)
+  FROM tgos_result r JOIN rejection_codes m ON r.reason = m.reason
+  JOIN tgos_query q USING (batch_id, query_fingerprint)
   JOIN base b ON b.building_key = q.building_key
-  WHERE r.status = 'rejected' AND r.reason = '{reason}'
+  WHERE r.status = 'rejected'
 """
 
 
@@ -169,7 +181,8 @@ def build_review(
     binding = bindings(
         "review",
         {"reason_codes": list(EXCEPTION_REASON_CODES), "produced_codes": list(PRODUCED_CODES),
-         "tgos_isolation_reason": TGOS_ISOLATION_REASON, "prior_review": prior_review is not None},
+         "tgos_rejection_codes": TGOS_REJECTION_CODES, "prior_review": prior_review is not None,
+         "final_status_from_tgos": tgos_state is not None},
         hashes,
     )
     stage = Stage(Path(work_dir) / "review", "review", binding, run_id)
@@ -186,14 +199,20 @@ def build_review(
         ) as stream:
             db.read_parquet(_paths(state, state_manifest, "address-occurrence")).create_view("occurrence")
             db.read_parquet(_paths(state, state_manifest, "address-pool")).create_view("pool")
-            db.read_parquet(_paths(state, state_manifest, "address-result")).create_view("result")
-            db.read_parquet(_paths(state, state_manifest, "offline-row")).create_view("evidence")
+            # With a TGOS state, its address status and evidence are the final ones.
+            status_snapshot, status_manifest = (
+                (tgos_state, tgos_manifest) if tgos_manifest is not None else (state, state_manifest)
+            )
+            db.read_parquet(_paths(status_snapshot, status_manifest, "address-result")).create_view("result")
+            db.read_parquet(_paths(status_snapshot, status_manifest, "offline-row")).create_view("evidence")
             db.read_parquet(_paths(converted, converted_manifest, "observation")).create_view("observations")
             tgos_sql = ""
             if tgos_manifest is not None:
                 db.read_parquet(_paths(tgos_state, tgos_manifest, "tgos-result")).create_view("tgos_result")
                 db.read_parquet(_paths(tgos_state, tgos_manifest, "tgos-query")).create_view("tgos_query")
-                tgos_sql = _TGOS_SQL.format(reason=TGOS_ISOLATION_REASON)
+                db.execute("CREATE TEMP TABLE rejection_codes (reason VARCHAR, code VARCHAR)")
+                db.executemany("INSERT INTO rejection_codes VALUES (?, ?)", list(TGOS_REJECTION_CODES.items()))
+                tgos_sql = _TGOS_SQL
             db.execute("CREATE TEMP TABLE picked AS " + _SQL.format(tgos=tgos_sql))
             if prior_paths:
                 db.read_parquet(prior_paths).create_view("prior")
@@ -236,6 +255,7 @@ def build_review(
     report = {
         "converted_snapshot_sha256": converted_hash,
         "offline_state_manifest_sha256": hashes[1],
+        "address_status_source": "tgos-state" if tgos_manifest is not None else "offline-state",
         "tgos_state_manifest_sha256": hashes[2] if tgos_manifest is not None else None,
         "prior_review": str(prior_review) if prior_review is not None else None,
         "address_source_commit": descriptor["commit"],
