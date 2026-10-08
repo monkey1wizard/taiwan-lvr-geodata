@@ -186,7 +186,7 @@ def test_monthly_formats_carry_typed_attributes(output):
 
 def test_yearly_points_only_fully_located_single_points(output):
     manifest = verify_output(output)
-    assert manifest["gis_attribute_contract"] == "1.1"
+    assert manifest["gis_attribute_contract"] == "1.2"
     items = [a for a in manifest["assets"] if a["kind"] == "annual_points"]
     assert sorted(a["category"] for a in items) == ["presale", "rent", "sales"]
     for item in items:
@@ -200,7 +200,9 @@ def test_yearly_points_only_fully_located_single_points(output):
         assert len(rows) == item["rows"] == 2
         assert all(r["address"] == "臺北市中正區測試路10號之1" for r in rows)
         assert all(r["location_status"] == "complete" for r in rows)
-        assert all((r["longitude"], r["latitude"]) == ("121.5", "25.0") for r in rows)
+        # contract 1.2: the two rows share one building coordinate, so both are spread (<= 1 m)
+        assert all(export.haversine_m(float(r["longitude"]), float(r["latitude"]), 121.5, 25.0) <= 1.0 for r in rows)
+        assert len({(r["longitude"], r["latitude"]) for r in rows}) == 2
     sales = next(a for a in items if a["category"] == "sales")
     table = pq.read_table(monthly(output, "sales")).to_pylist()
     singles = [r for r in table if r["location_status"] == "complete" and r["longitude"] is not None]
@@ -343,23 +345,149 @@ def test_duplicate_or_unmapped_source_ref_is_detected(output):
     verify_output(output)
 
 
-def test_contract_1_0_points_with_raw_record_id_still_verify(output):
+
+
+@pytest.mark.parametrize("contract", ["1.0", "1.1"])
+def test_contract_1_0_and_1_1_points_with_original_coordinates_still_verify(output, contract):
+    legacy = contract == "1.0"
     manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
-    manifest["gis_attribute_contract"] = "1.0"
+    manifest["gis_attribute_contract"] = contract
+    columns = export.POINT_COLUMNS_V10 if legacy else export.POINT_COLUMNS
     for item in [a for a in manifest["assets"] if a["kind"] == "annual_points"]:
         path = output / item["path"]
-        ids = {}
-        for category in ("sales", "presale", "rent"):
-            if item["category"] == category:
-                for r in pq.read_table(monthly(output, category)).to_pylist():
-                    ids[make_source_ref(r["src_batch"], r["member_path"], r["source_row_number"])] = r["raw_record_id"]
-        lines = path.read_text(encoding="utf-8").splitlines()
-        out = [",".join(lines[0].split(",")[:-1] + ["raw_record_id"])]
-        for line in lines[1:]:
-            head, ref = line.rsplit(",", 1)
-            out.append(head + "," + ids[ref])
-        path.write_text("\n".join(out) + "\n", encoding="utf-8")
-        item["columns"] = export.POINT_COLUMNS_V10
+        with path.open("w", encoding="utf-8", newline="") as stream:
+            writer = csv.writer(stream, lineterminator="\n")
+            writer.writerow(columns)
+            writer.writerows(export.iter_points(monthly(output, item["category"]), legacy))
+        item["columns"] = columns
         item["bytes"], item["sha256"] = path.stat().st_size, sha256_file(path)
+        rows = list(csv.DictReader(path.read_text(encoding="utf-8").splitlines()))
+        assert {(r["longitude"], r["latitude"]) for r in rows} == {("121.5", "25.0")}
     packaging.write_json(output / "manifest.json", manifest)
-    assert verify_output(output)["gis_attribute_contract"] == "1.0"
+    assert verify_output(output)["gis_attribute_contract"] == contract
+
+
+# ---- contract 1.2: display spread of yearly points that share one building coordinate ----
+
+def _refs(n):
+    return [("k", f"2026-01-{i % 28 + 1:02d}", f"114q1-a-a-{i + 1}") for i in range(n)]
+
+
+def _spread(n, lon=121.5, lat=25.0):
+    ranks = export.spread_ranks(_refs(n))
+    return [export.spread_coordinate(lon, lat, *ranks.get(ref, (0, 1))) for _, _, ref in _refs(n)]
+
+
+def test_single_point_is_not_spread():
+    assert _spread(1) == [("121.5", "25.0")]
+    assert export.spread_ranks(_refs(1)) == {}
+
+
+@pytest.mark.parametrize("n", [2, 3, 7, 50, 500])
+def test_spread_points_are_unique_and_within_one_metre(n):
+    got = _spread(n)
+    assert len(set(got)) == n
+    assert ("121.5", "25.0") not in got
+    assert max(export.haversine_m(float(a), float(b), 121.5, 25.0) for a, b in got) <= 1.0
+    assert all(len(a.split(".")[1]) >= 7 and len(b.split(".")[1]) >= 7 for a, b in got)
+    assert _spread(n) == got  # no randomness
+
+
+@pytest.mark.parametrize("lat", [0.0, 23.5, 25.3, 78.0])
+def test_spread_limit_holds_at_any_latitude_for_many_points(lat):
+    got = _spread(500, lat=lat)
+    assert len(set(got)) == 500
+    assert max(export.haversine_m(float(a), float(b), 121.5, lat) for a, b in got) <= 1.0
+
+
+def test_spread_rank_orders_by_trade_date_then_source_ref():
+    ranks = export.spread_ranks([
+        ("k", "2026-02-01", "b"), ("k", "2026-01-01", "z"), ("k", "2026-01-01", "a"),
+        ("k", None, "n"), ("other", "2026-01-01", "o"),
+    ])
+    assert ranks == {"n": (0, 4), "a": (1, 4), "z": (2, 4), "b": (3, 4)}
+
+
+def test_spread_is_independent_of_input_order():
+    entries = _refs(30)
+    assert export.spread_ranks(entries) == export.spread_ranks(reversed(entries))
+
+
+def test_yearly_points_are_spread_by_rule_and_monthly_unchanged(output):
+    names = [(c, f) for c in ("sales", "presale", "rent") for f in ("parquet", "geojson", "ndjson")]
+    before = {n: sha256_file(monthly(output, *n)) for n in names}
+    manifest = verify_output(output)
+    assert manifest["gis_attribute_contract"] == "1.2"
+    rows = list(csv.DictReader((output / points_item(output)["path"]).read_text(encoding="utf-8").splitlines()))
+    singles = [r for r in pq.read_table(monthly(output, "sales")).to_pylist()
+               if r["location_status"] == "complete" and r["longitude"] is not None]
+    assert all((r["longitude"], r["latitude"]) == (121.5, 25.0) for r in singles)  # monthly keep the original
+    ordered = sorted(rows, key=lambda r: (r["trade_date"], r["source_ref"]))
+    ranks = export.spread_ranks(("k", r["trade_date"], r["source_ref"]) for r in ordered)
+    assert [(r["longitude"], r["latitude"]) for r in ordered] == [
+        export.spread_coordinate(121.5, 25.0, *ranks[r["source_ref"]]) for r in ordered]
+    assert before == {n: sha256_file(monthly(output, *n)) for n in names}
+
+
+def test_rebuilt_output_has_identical_points(built, tmp_path):
+    converted, state, _ = built
+    a = package_output(converted, state, tmp_path / "a", notices=NOTICES)
+    b = package_output(converted, state, tmp_path / "b", notices=NOTICES)
+    for category in ("sales", "presale", "rent"):
+        first = next(a.rglob(f"2026_{category}_points.csv"))
+        second = next(b.rglob(f"2026_{category}_points.csv"))
+        assert first.read_bytes() == second.read_bytes()
+
+
+def test_tampered_spread_coordinates_are_detected(output):
+    item = points_item(output)
+    original = (output / item["path"]).read_text(encoding="utf-8")
+    header, first, second = original.splitlines()[:3]
+    cells = first.split(",")
+    lon_i = export.POINT_COLUMNS.index("longitude")
+
+    def put(**kw):
+        edited = list(cells)
+        edited[lon_i] = kw.get("lon", cells[lon_i])
+        edited[lon_i + 1] = kw.get("lat", cells[lon_i + 1])
+        retamper(output, item, "\n".join([header, ",".join(edited), second]) + "\n")
+
+    put(lon=f"{float(cells[lon_i]) + 0.0000001:.8f}")  # within 1 m, but not the value the rule gives
+    with pytest.raises(ValueError, match="content differs"):
+        verify_output(output)
+    put(lon="121.5", lat="25.0")  # the unspread building coordinate
+    with pytest.raises(ValueError, match="content differs"):
+        verify_output(output)
+    put(lon=f"{float(cells[lon_i]) + 0.0001:.8f}")  # about 10 m away
+    with pytest.raises(ValueError, match="more than 1 m"):
+        verify_output(output)
+    retamper(output, item, original)
+    verify_output(output)
+
+
+def test_kepler_script_spread_matches_official_rule(tmp_path):
+    sys.path.insert(0, "scripts")
+    import export_kepler_csv
+
+    month = tmp_path / "monthly" / "2024" / "202401"
+    month.mkdir(parents=True)
+    records = []
+    for number, coordinates in [(100, [121.5, 25.0]), (101, [121.5, 25.0]), (102, [121.5, 25.0]), (999, [121.6, 25.1])]:
+        records.append({
+            **_row("sales", RENT_PROPS), "raw_record_id": f"r{number}", "tx_yyyymm": 202401,
+            "location_status": "complete", "is_approximation": False, "unique_point_count": 1,
+            "geometry": export.wkb({"type": "Point", "coordinates": coordinates}),
+            "src_batch": "114q2", "source_row_number": number,
+        })
+    pq.write_table(pa.Table.from_pylist(records), month / "202401_sales.parquet")
+    out = tmp_path / "k.csv"
+    export_kepler_csv.main(["--output-root", str(tmp_path), "--category", "sales", "--out", str(out)])
+    rows = list(csv.DictReader(out.read_text(encoding="utf-8-sig").splitlines()))
+    alone = next(r for r in rows if r["source_ref"].endswith("-999"))
+    assert (alone["longitude"], alone["latitude"]) == ("121.6", "25.1")
+    shared = [r for r in rows if r is not alone]
+    assert len(shared) == 3 and len({(r["longitude"], r["latitude"]) for r in shared}) == 3
+    ranks = export.spread_ranks(((1,), r["trade_date"], r["source_ref"]) for r in shared)
+    for r in shared:
+        assert (r["longitude"], r["latitude"]) == export.spread_coordinate(121.5, 25.0, *ranks[r["source_ref"]])
+        assert export.haversine_m(float(r["longitude"]), float(r["latitude"]), 121.5, 25.0) <= 1.0

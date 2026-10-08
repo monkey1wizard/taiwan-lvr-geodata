@@ -24,6 +24,9 @@ from .export import (
     export_month,
     is_legacy_month,
     iter_points,
+    iter_spread_points,
+    SPREAD_LIMIT_M,
+    haversine_m,
     iter_points_with_id,
     verify_month,
 )
@@ -41,8 +44,9 @@ from .storage.runs import sha256_file
 FORMATS = ("geoparquet", "geojson", "ndjson")
 CATEGORIES = ("sales", "presale", "rent")
 MAX_ASSET_BYTES = 2**31 - 1
-GIS_CONTRACT = "1.1"
-GIS_CONTRACTS = {"1.0", "1.1"}  # 1.0 yearly points carry raw_record_id; 1.1 carry source_ref
+GIS_CONTRACT = "1.2"
+# 1.0 yearly points carry raw_record_id; 1.1 carry source_ref; 1.2 also spreads shared coordinates (<= 1 m)
+GIS_CONTRACTS = {"1.0", "1.1", "1.2"}
 
 
 class PointsWriter:
@@ -51,26 +55,27 @@ class PointsWriter:
     def __init__(self, staging):
         self.staging = staging
         self.files = {}
+        self.sources = {}
 
     def add(self, year, category, monthly_parquet):
-        for values in iter_points(monthly_parquet):
-            key = (year, category)
-            if key not in self.files:
-                path = (
-                    self.staging / "yearly" / str(year) / f"{year}_{category}_points.csv"
-                )
-                path.parent.mkdir(parents=True, exist_ok=True)
-                stream = path.open("w", encoding="utf-8", newline="")
-                writer = csv.writer(stream, lineterminator="\n")
-                writer.writerow(POINT_COLUMNS)
-                self.files[key] = [path, stream, writer, 0]
-            entry = self.files[key]
-            entry[2].writerow(values)
-            entry[3] += 1
+        self.sources.setdefault((year, category), []).append(monthly_parquet)
 
     def close(self):
-        for _, stream, _, _ in self.files.values():
-            stream.close()
+        """Write each yearly file once all its monthly files are known (the spread needs the whole group)."""
+        for (year, category), months in sorted(self.sources.items()):
+            path = self.staging / "yearly" / str(year) / f"{year}_{category}_points.csv"
+            rows = 0
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("w", encoding="utf-8", newline="") as stream:
+                writer = csv.writer(stream, lineterminator="\n")
+                writer.writerow(POINT_COLUMNS)
+                for values, _, _ in iter_spread_points(months):
+                    writer.writerow(values)
+                    rows += 1
+            if rows:
+                self.files[(year, category)] = [path, None, None, rows]
+            else:
+                path.unlink()
 
     def assets(self, max_asset_bytes):
         out = []
@@ -592,6 +597,14 @@ def verify_output(root: Path):
     return manifest
 
 
+def _within_one_metre(row, original):
+    try:
+        lon, lat = float(row[POINT_COLUMNS.index("longitude")]), float(row[POINT_COLUMNS.index("latitude")])
+    except (ValueError, IndexError, TypeError):
+        return False
+    return haversine_m(lon, lat, *original) <= SPREAD_LIMIT_M
+
+
 def verify_points(root, manifest, expected_points, gis):
     """Yearly point CSVs equal the fully located single-Point rows of the monthly files.
 
@@ -625,7 +638,11 @@ def verify_points(root, manifest, expected_points, gis):
                 raise ValueError("Yearly points CSV must not have a BOM")
         if item["columns"] != columns:
             raise ValueError("Yearly points columns differ from contract")
-        expected = (v for f in expected_points[key] for v in iter_points_with_id(f, legacy))
+        spread = gis == "1.2"
+        if spread:
+            expected = iter_spread_points(expected_points[key])
+        else:
+            expected = (v + (None,) for f in expected_points[key] for v in iter_points_with_id(f, legacy))
         count = 0
         seen = set()
         with path.open(encoding="utf-8", newline="") as stream:
@@ -633,7 +650,11 @@ def verify_points(root, manifest, expected_points, gis):
             if next(reader, None) != columns:
                 raise ValueError("Yearly points columns differ from contract")
             for row, want in zip_longest(reader, expected):
-                if want is None or row != want[0]:
+                if want is None or row is None:
+                    raise ValueError("Yearly points content differs from monthly files")
+                if spread and not _within_one_metre(row, want[2]):
+                    raise ValueError("Yearly points coordinate is more than 1 m from its monthly coordinate")
+                if row != want[0]:
                     raise ValueError("Yearly points content differs from monthly files")
                 if not legacy:
                     ref = row[-1]

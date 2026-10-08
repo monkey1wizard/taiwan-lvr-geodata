@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
-from lvr_pipeline.export import county_letters, read_wkb
+from lvr_pipeline.export import county_letters, read_wkb, spread_coordinate, spread_ranks
 from lvr_pipeline.source_ref import make_source_ref
 
 COUNTY_BY_LETTER = county_letters()
@@ -35,6 +35,34 @@ def number(value):
     return value if value.replace(".", "", 1).isdigit() else ""
 
 
+def located_point(row):
+    """(lng, lat) of a fully located single-Point row, else None (same rule as the exclusion counts below)."""
+    if row["location_status"] != "complete" or row["geometry"] is None:
+        return None
+    if row["is_approximation"] or row["unique_point_count"] != 1:
+        return None
+    geometry = read_wkb(row["geometry"])
+    return tuple(geometry["coordinates"]) if geometry.get("type") == "Point" else None
+
+
+def year_ranks(files, years, category):
+    """Spread ranks as in the official yearly points files: every located row of the whole year and category
+    counts, whatever --county or month filters select, so a filtered export matches the official file."""
+    entries = []
+    for path in files:
+        if int(path.name.split("_")[0]) // 100 not in years:
+            continue
+        for row in pq.read_table(path, columns=COLUMNS).to_pylist():
+            point = located_point(row)
+            if point is not None:
+                entries.append((
+                    (int(path.name.split("_")[0]) // 100, *point),
+                    roc_date(row["tx_date_raw"]) or "",
+                    make_source_ref(row["src_batch"], row["member_path"], row["source_row_number"]),
+                ))
+    return spread_ranks(entries)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-root", type=Path, required=True, help="package-output folder with monthly/")
@@ -51,6 +79,9 @@ def main(argv=None):
 
     counties = set(args.county)
     files = sorted((args.output_root / "monthly").glob(f"*/*/*_{args.category}.parquet"))
+    selected_years = {m // 100 for m in (int(p.name.split("_")[0]) for p in files)
+                      if args.from_yyyymm <= m <= args.to_yyyymm}
+    ranks = year_ranks(files, selected_years, args.category)
     reasons = Counter()
     per_year = {}
     handles = {}
@@ -89,6 +120,9 @@ def main(argv=None):
                 reasons["excluded_not_point"] += 1
                 continue
             lng, lat = geometry["coordinates"]
+            source_ref = make_source_ref(row["src_batch"], row["member_path"], row["source_row_number"])
+            rank, count = ranks.get(source_ref, (0, 1))
+            lng, lat = spread_coordinate(lng, lat, rank, count)  # contract 1.2 display spread, <= 1 m
             props = json.loads(row["props_json"])
             rent = row["category"] == "rent"  # rent: total_price is the rent total
             record = {
@@ -104,7 +138,7 @@ def main(argv=None):
                 "longitude": lng,
                 "latitude": lat,
                 "category": row["category"],
-                "source_ref": make_source_ref(row["src_batch"], row["member_path"], row["source_row_number"]),
+                "source_ref": source_ref,
             }
             writer_for(year).writerow({k: record[k] for k in fields})
             reasons["written"] += 1
