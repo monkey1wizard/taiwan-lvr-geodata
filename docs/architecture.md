@@ -543,7 +543,7 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
    | `data/output/fast2-output-b/` | 已通過 `verify-output` 的輸出，約 25 GB。只有要直接取用或比對時才需要 |
 
    帶走快照時，連同該快照資料夾的所有檔案一起複製，並在新主機執行對應的 `verify-offline-state`、`verify-converted`、`verify-tgos-state`、`verify-output`。
-4. 不必帶走：`data/work/` 內剩下的舊快照，以及 `data/output/` 內第一次失敗的殘留輸出與重組檢查產物。這些已列入 2026-10-08 的刪除清單。
+4. 舊快照、第一次失敗的殘留輸出與重組檢查產物已由擁有者於 2026-10-08 刪除，`data/work/` 目前不存在。
 5. 不可進 Git：`data/`（整個資料夾已列入 `.gitignore`）、`.env` 與 `.env.*`（`.env.example` 除外）、原始 ZIP、工作快照、TGOS 交換檔與回傳、發布候選、憑證、第三方地址資料列。地址資料專案是同層的獨立儲存庫，不複製進本專案。
 6. 搬移後的檢查：
    1. `bash scripts/setup.sh` 通過。
@@ -570,7 +570,7 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
 
    `fetch-output --maintenance` 找到 `role: index` 的資產，走 `extract_handoff`：核對每片雜湊與成員清單、解開、再核對每個成員的雜湊與檔案集合，缺片、多檔、雜湊不符都會失敗。`verify-output` 也做同樣檢查。小於上限的輸出仍是單一 `<id>_maintenance.zip`，兩種格式都能讀。F-5 第二次實測的重組檢查是在 Python 內直接呼叫 `extract_handoff`：索引列 889 個成員、3,706,456,067 bytes，約 698 秒，通過。`fetch-output --maintenance` 本身只有合成資料測試，沒有對全量輸出實測。
 7. **不要上傳已取消批次的資料夾。** 原因：資料夾存在不代表批次有效。例如已取消的 `tgos-17de02009526` 含 124 筆已送出的地址，其資料夾 `data/tgos/20261008-17de0200/` 已於 2026-10-08 刪除。上傳前先確認批次在最新 TGOS 狀態快照中是 `prepared`。
-8. **失敗後殘留的 staging 目錄不會自動刪除。** 原因：處理規則尚未決定，待擁有者在 R06-4 裁定。已知殘留：`data/tmp/work/fast2/tgos-state/staging/tgos-state-ec7ef08f829fc60dc623ac41`、`data/output/fast2-20261008/.staging/fast2-output/`（約 25 GB）。不要刪除；換新的 run ID 重跑。需要磁碟空間時，先請擁有者決定。
+8. **失敗後殘留的 staging 目錄不會自動刪除。** 原因：處理規則尚未決定，待擁有者在 R06-4 裁定。已知殘留：`data/tmp/work/fast2/tgos-state/staging/tgos-state-ec7ef08f829fc60dc623ac41`。2026-10-08 擁有者已刪除 `data/output/fast2-20261008/`。不要刪除；換新的 run ID 重跑。需要磁碟空間時，先請擁有者決定。
 
 ### 全量循環 10 下一次 TGOS 循環（目前狀態）
 
