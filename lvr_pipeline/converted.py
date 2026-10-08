@@ -4,14 +4,18 @@ from __future__ import annotations
 from pathlib import Path
 
 from .storage.parquet import verify_relations
-from .storage.runs import Stage, bindings, load_snapshot
+from .storage.runs import SnapshotStore, Stage, bindings, load_snapshot
 from .sources import sha256_file
 
 
 def export_converted(normalized_snapshot: Path, work_dir: Path, *, run_id=None, code_commit=None) -> Path:
     normalized_snapshot = Path(normalized_snapshot)
     manifest, previous = load_snapshot(normalized_snapshot, "normalize")
-    binding = bindings("converted", {}, [sha256_file(normalized_snapshot / "manifest.json")], code_commit)
+    # The converted snapshot carries address components, so it records the rule version they were made under.
+    version = SnapshotStore.snapshot_normalization_version(normalized_snapshot, manifest)
+    if version is None:
+        raise ValueError("Input normalized snapshot records no normalization_version; re-run normalize")
+    binding = bindings("converted", {"normalization_version": version}, [sha256_file(normalized_snapshot / "manifest.json")], code_commit)
     stage = Stage(Path(work_dir) / "converted", "converted", binding, run_id)
     if stage.reused:
         return stage.path

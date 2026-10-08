@@ -72,3 +72,41 @@ def test_same_version_with_wrong_key_still_fails(old_snapshot, monkeypatch):
     assert store.key_rule_status(old) == "recomputed"
     with pytest.raises(ValueError, match="Component key does not match v2 rule"):
         store.verify(old)
+
+
+from lvr_pipeline.converted import export_converted
+
+
+def _converted(old, work):
+    return export_converted(old, work, code_commit=CODE)
+
+
+def test_converted_snapshot_records_input_normalization_version(old_snapshot):
+    _, work, _, old = old_snapshot
+    converted = _converted(old, work)
+    store = SnapshotStore(work / "converted")
+    manifest = json.loads((converted / "manifest.json").read_text(encoding="utf-8"))
+    assert store.snapshot_normalization_version(converted, manifest) == "v2.0-old"
+
+
+def test_converted_old_rule_is_readable_and_not_reusable(old_snapshot, monkeypatch):
+    _, work, _, old = old_snapshot
+    converted = _converted(old, work)
+    store = SnapshotStore(work / "converted")
+    bindings = json.loads((converted / "manifest.json").read_text(encoding="utf-8"))["bindings"]
+    assert store.reusable(converted.name, bindings)
+    _change_key_rule(monkeypatch, "v2.9-new")
+    assert store.verify(converted)
+    assert store.key_rule_status(converted) == OLD_RULE_NOTE
+    assert not store.reusable(converted.name, bindings)
+
+
+def test_converted_same_version_with_wrong_key_still_fails(old_snapshot, monkeypatch):
+    _, work, _, old = old_snapshot
+    converted = _converted(old, work)
+    store = SnapshotStore(work / "converted")
+    original = identity.building_key_v2
+    monkeypatch.setattr(identity, "building_key_v2", lambda address: None if original(address) is None else original(address).replace("door", "gate"))
+    assert store.key_rule_status(converted) == "recomputed"
+    with pytest.raises(ValueError, match="Component key does not match v2 rule"):
+        store.verify(converted)
