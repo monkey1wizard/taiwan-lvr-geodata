@@ -9,7 +9,7 @@ import duckdb
 from ..storage.parquet import BatchWriter, duckdb_config
 from ..storage.runs import Stage, bindings, digest
 from ..storage.runs import SnapshotStore
-from ..sources import sha256_file
+from ..storage.runs import sha256_file
 
 
 def load_p2(path: Path, kind: str):

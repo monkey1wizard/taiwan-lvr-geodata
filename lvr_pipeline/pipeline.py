@@ -22,8 +22,8 @@ from .tgos import (
     transition_batch,
 )
 from .converted import export_converted
-from .ingest import ingest
-from .normalize import normalize
+from .transactions.read import ingest
+from .transactions.normalize import normalize
 from .storage.runs import peak_rss_bytes, load_snapshot
 
 

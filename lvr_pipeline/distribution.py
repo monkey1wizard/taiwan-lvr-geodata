@@ -18,7 +18,7 @@ from .packaging import (
     write_json,
     MAX_ASSET_BYTES,
 )
-from .sources import sha256_file
+from .storage.runs import sha256_file
 
 
 def download(url, path, *, max_bytes=MAX_ASSET_BYTES):

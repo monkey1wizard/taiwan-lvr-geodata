@@ -5,8 +5,8 @@ import json
 import pytest
 
 from lvr_pipeline.addresses import identity
-from lvr_pipeline import normalize as normalize_module
-from lvr_pipeline.normalize import normalize
+from lvr_pipeline.transactions import normalize as normalize_module
+from lvr_pipeline.transactions.normalize import normalize
 from lvr_pipeline.storage.runs import OLD_RULE_NOTE, SnapshotStore
 from tests.integration.test_p1_conversion import CODE, ingest, make_source, rules
 

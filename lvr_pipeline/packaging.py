@@ -36,7 +36,7 @@ from .storage.runs import (
     peak_rss_bytes,
     PRODUCER_CONFIGS,
 )
-from .sources import sha256_file
+from .storage.runs import sha256_file
 
 FORMATS = ("geoparquet", "geojson", "ndjson")
 CATEGORIES = ("sales", "presale", "rent")

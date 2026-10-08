@@ -15,7 +15,7 @@ from lvr_pipeline.addresses.parse import _COUNTY_CODE
 from lvr_pipeline.export import attributes, county_letters, parse_float, parse_int, roc_date
 from lvr_pipeline.packaging import package_output, verify_output
 from lvr_pipeline.source_ref import make_source_ref, parse_source_ref, resolve_source_ref
-from lvr_pipeline.sources import sha256_file
+from lvr_pipeline.storage.runs import sha256_file
 from test_p2_offline import run
 
 NOTICES = {"publication_authorized": True, "sources": ["synthetic"]}

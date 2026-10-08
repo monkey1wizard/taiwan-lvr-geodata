@@ -13,11 +13,11 @@ import subprocess
 
 from ..addresses import identity
 from ..addresses.identity import building_key_v2
-from ..normalize import normalize_address
+from ..transactions.normalize import normalize_address
 from ..storage.parquet import BatchWriter
 from ..contracts.validate import valid_coordinate
 from ..storage.runs import Stage, bindings, digest
-from ..sources import sha256_file
+from ..storage.runs import sha256_file
 from .match import COUNTY_NAMES, AdministrativeNames
 
 ADMINISTRATIVE = [

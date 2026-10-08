@@ -9,10 +9,11 @@ import re
 import shutil
 import zipfile
 
-from .contracts import observation_id
-from .storage.parquet import BatchWriter
-from .storage.runs import Stage, bindings, canonical_json, digest
-from .sources import sha256_file, verify_raw
+from ..contracts import observation_id
+from ..storage.parquet import BatchWriter
+from ..storage.runs import Stage, bindings, canonical_json, digest
+from ..storage.runs import sha256_file
+from .inventory import verify_raw
 
 FIELD_ALIASES = {
     "sales": {"date": ["交易年月日"], "amount": ["總價元"], "area": ["建物移轉總面積平方公尺"]},

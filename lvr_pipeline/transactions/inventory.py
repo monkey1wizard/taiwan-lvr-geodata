@@ -8,7 +8,7 @@ import re
 import zipfile
 from pathlib import Path
 
-from .storage.runs import sha256_file
+from ..storage.runs import sha256_file
 
 TRANSACTION_MEMBER = re.compile(r"^[a-z]_lvr_land_([abc])\.csv$", re.I)
 CATEGORIES = {"a": "sales", "b": "presale", "c": "rent"}

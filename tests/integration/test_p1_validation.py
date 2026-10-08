@@ -7,8 +7,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from lvr_pipeline.ingest import ingest
-from lvr_pipeline.normalize import normalize, normalize_record
+from lvr_pipeline.transactions.read import ingest
+from lvr_pipeline.transactions.normalize import normalize, normalize_record
 from lvr_pipeline.storage.parquet import BatchWriter, inspect_parquet, verify_relations
 from lvr_pipeline.storage.runs import load_snapshot
 from lvr_pipeline.storage.runs import SnapshotStore
@@ -113,7 +113,7 @@ def test_arrow_rows_and_bytes_both_bound_buffers(tmp_path):
 
 
 def test_disk_preflight_refuses_to_publish_insufficient_scope(tmp_path,monkeypatch):
-    import lvr_pipeline.ingest as module
+    import lvr_pipeline.transactions.read as module
     raw,manifest=make_source(tmp_path,categories=("sales",))
     real=module.shutil.disk_usage(tmp_path)
     monkeypatch.setattr(module.shutil,"disk_usage",lambda _:real._replace(free=1024))

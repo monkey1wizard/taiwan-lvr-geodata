@@ -66,7 +66,7 @@ def validate_rows(rows: list[dict], schema_name: str) -> None:
         if schema_name == "observation":
             if row["raw_record_id"] != observation_id(row["input_sha256"], row["member_path"], row["source_row_number"]):
                 raise ValueError("Observation identity does not match source lineage")
-            from ..tx_date import validated_roc_to_tx_yyyymm
+            from ..transactions.dates import validated_roc_to_tx_yyyymm
             expected_month = validated_roc_to_tx_yyyymm(row["tx_date_raw"], run_cutoff_yyyymm=row["run_cutoff_yyyymm"])
             if row["tx_yyyymm"] != expected_month:
                 raise ValueError("Transaction month does not match the fixed date rule")

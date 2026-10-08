@@ -9,8 +9,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "integration"))
 
-from lvr_pipeline.ingest import ingest  # noqa: E402
-from lvr_pipeline.normalize import normalize  # noqa: E402
+from lvr_pipeline.transactions.read import ingest  # noqa: E402
+from lvr_pipeline.transactions.normalize import normalize  # noqa: E402
 from test_p1_conversion import CODE, dataset, make_source  # noqa: E402
 
 RULES = Path(__file__).resolve().parents[2] / "config" / "rules" / "character-fixes.csv"

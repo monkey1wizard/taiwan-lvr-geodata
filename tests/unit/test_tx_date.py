@@ -1,4 +1,4 @@
-"""Tests for lvr_pipeline.tx_date.
+"""Tests for lvr_pipeline.transactions.dates.
 
 Test cases grounded in §8 V2 of the plan:
   - sales batch 2026q1 had 5 observed 6-digit bad dates (e.g. '990311').
@@ -9,7 +9,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from lvr_pipeline.tx_date import roc_to_tx_yyyymm
+from lvr_pipeline.transactions.dates import roc_to_tx_yyyymm
 
 
 # ── Valid conversions ────────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ from lvr_pipeline.packaging import (
     verify_output,
     write_maintenance,
 )
-from lvr_pipeline.sources import sha256_file
+from lvr_pipeline.storage.runs import sha256_file
 from test_p2_distribution import local_transport
 from test_p2_offline import run
 

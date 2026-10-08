@@ -11,7 +11,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from lvr_pipeline.offline.index import EARTH_RADIUS_M, audit_address_source
-from lvr_pipeline.sources import sha256_file
+from lvr_pipeline.storage.runs import sha256_file
 
 ROOT = Path(__file__).resolve().parents[2]
 HEADER = ["FULL_ADDR", "COUNTY", "TOWN", "ROAD", "X", "Y"]

@@ -13,7 +13,7 @@ from lvr_pipeline.offline.match import AdministrativeNames
 from lvr_pipeline.packaging import extract_handoff, package_output, verify_output
 from lvr_pipeline.export import geometry, read_wkb, wkb
 from lvr_pipeline.storage.parquet import rows
-from lvr_pipeline.sources import sha256_file
+from lvr_pipeline.storage.runs import sha256_file
 from test_p1_conversion import pipeline, ADDRESS
 
 

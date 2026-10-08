@@ -4,7 +4,7 @@ import zipfile
 
 import pytest
 
-from lvr_pipeline.sources import describe_zip, verify_raw
+from lvr_pipeline.transactions.inventory import describe_zip, verify_raw
 
 FIXTURES=Path(__file__).parents[1] / "fixtures/p0"
 

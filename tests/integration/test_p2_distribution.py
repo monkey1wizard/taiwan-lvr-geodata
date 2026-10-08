@@ -12,7 +12,7 @@ from lvr_pipeline.distribution import (
     commit_pointer,
 )
 from lvr_pipeline.packaging import package_output
-from lvr_pipeline.sources import sha256_file
+from lvr_pipeline.storage.runs import sha256_file
 from test_p2_offline import run
 
 

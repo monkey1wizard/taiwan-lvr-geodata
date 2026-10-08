@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .storage.parquet import verify_relations
 from .storage.runs import SnapshotStore, Stage, bindings, load_snapshot
-from .sources import sha256_file
+from .storage.runs import sha256_file
 
 
 def export_converted(normalized_snapshot: Path, work_dir: Path, *, run_id=None, code_commit=None) -> Path:

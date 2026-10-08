@@ -8,7 +8,7 @@ import zipfile
 from lvr_pipeline.address import building_key, building_key_v2, norm
 from lvr_pipeline.contracts import component_id, observation_id, validate_relations
 from lvr_pipeline.storage.runs import SnapshotStore
-from lvr_pipeline.sources import CATEGORIES, TRANSACTION_MEMBER, describe_zip, verify_raw
+from lvr_pipeline.transactions.inventory import CATEGORIES, TRANSACTION_MEMBER, describe_zip, verify_raw
 from lvr_pipeline.tx_date import validated_roc_to_tx_yyyymm
 
 

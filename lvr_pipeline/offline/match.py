@@ -7,8 +7,8 @@ from pathlib import Path
 import re
 
 from ..addresses.parse import _COUNTY_CODE, _CITY_RE, norm
-from ..normalize import normalize_address
-from ..sources import sha256_file
+from ..transactions.normalize import normalize_address
+from ..storage.runs import sha256_file
 
 COUNTY_NAMES = {
     code: name for name, code in _COUNTY_CODE.items() if not name.startswith("台")

@@ -12,7 +12,7 @@ from .addresses.identity import building_key_v2
 from .addresses.parse import norm
 from .storage.parquet import BatchWriter, rows
 from .storage.runs import Stage, bindings, digest, load_snapshot
-from .sources import sha256_file
+from .storage.runs import sha256_file
 from .tgos import load_state
 
 

@@ -8,7 +8,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lvr_pipeline.sources import describe_zip, sha256_file
+from lvr_pipeline.storage.runs import sha256_file
+from lvr_pipeline.transactions.inventory import describe_zip
 
 
 def inventory_json(value, depth=0):
