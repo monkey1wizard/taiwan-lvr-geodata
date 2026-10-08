@@ -501,7 +501,7 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
 目前沒有增量讀取。選取的批次集合改變，讀取階段的綁定也改變，必須重跑整條鏈。以新增 115q3 為例：
 
 1. 把 `115q3_lvr_landcsv.zip` 放進 `data/raw/`。
-2. 在 `config/sources/raw_manifest.json` 新增該批次的條目（大小、SHA-256、ZIP 成員）。目前沒有只更新 raw manifest 的正式命令。`scripts/inventory_sources.py --raw-dir data/raw --address-repo ../taiwan-address-data --output-dir <暫存目錄>` 會同時重算 raw manifest 與地址來源描述。使用時只取 `raw_manifest.json`，不要覆蓋 `address_source.json`，並以 `git diff` 確認只新增一個批次。這個做法對全量資料尚未實測。`verify-sources` 規劃在 R-06。
+2. 在 `config/sources/raw_manifest.json` 新增該批次的條目（大小、SHA-256、ZIP 成員）。用 `python -m lvr_pipeline inventory-sources --raw-dir data/raw --output <暫存目錄>/raw_manifest.json` 重算 raw manifest（輸出放 `data/tmp/<用途>/`），以 `git diff` 確認只新增一個批次後，把新批次的條目併入 `config/sources/raw_manifest.json`，並更新 `raw_count` 與 `size_bytes`。對現行 58 批，此命令的輸出與已提交的清單逐位元組相同（R06-2 實測）。再以 `python -m lvr_pipeline verify-sources` 核對所有批次；任何缺檔、雜湊不符或 ZIP 成員不符，結束代碼為 1。地址來源描述不由此命令產生，見 `pin-address-source`。
 3. 由擁有者決定新的 `--cutoff` 年月，不要自行推定。
 4. 以新的 `<run-id>` 重跑「全量循環 3」。工作目錄的選擇：只有正規化規則與程式都沒變時才能沿用；否則用新的工作目錄（規則 1）。離線索引只取決於地址來源、縣市範圍與規則；補字規則、`NORMALIZATION_VERSION` 或程式有變更時，綁定不同，必須重建。
 5. TGOS：新的離線狀態沒有舊帳本。用 `prepare-tgos --ledger <舊 TGOS 狀態>` 在新的工作目錄把舊批次帶入（程式會依目前規則重算帶入紀錄的地址鍵，見規則 4），再對每個已回傳的批次重新 `import-tgos`。F-4 已對 `tgos-0358ee6e90df` 驗證過此流程。
