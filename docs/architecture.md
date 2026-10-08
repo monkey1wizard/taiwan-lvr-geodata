@@ -669,7 +669,7 @@ GeoParquet 使用 WKB，地理中繼資料採 GeoParquet 1.1.0 與 CRS84。GeoJS
 
 `source_row_number` 是成員 CSV 的實體行號，從 1 起算，並把檔首的中文與英文兩行標題算在內。以程式逐行讀成清單時，第 N 行對應索引 N−1；例如 `113q1-h-a-1521` 是 `h_lvr_land_a.csv` 的第 1521 行，在 Python `csv.reader` 讀出的清單中為 `rows[1520]`。回推命令要用模組方式執行：`python -m scripts.resolve_source_ref <source_ref>`。
 
-回推方式：`raw_record_id` = `observation_id(input_sha256, member_path, source_row_number)`，`input_sha256` 依批次查 `config/sources/raw_manifest.json`（輸出的 `manifest.json` 也有同一份 `source_sha256`）。執行 `python scripts/resolve_source_ref.py 114q2-e-a-6076` 會印出成員檔、列號與 `raw_record_id`；用成員檔與列號即可在 `data/raw/` 的 ZIP 內找到原始列。
+回推方式：`raw_record_id` = `observation_id(input_sha256, member_path, source_row_number)`，`input_sha256` 依批次查 `config/sources/raw_manifest.json`（輸出的 `manifest.json` 也有同一份 `source_sha256`）。執行 `python -m scripts.resolve_source_ref 114q2-e-a-6076` 會印出成員檔、列號與 `raw_record_id`；用成員檔與列號即可在 `data/raw/` 的 ZIP 內找到原始列。
 
 `verify-output` 檢查每個年度點位檔的 `source_ref` 不重複，且每個 `source_ref` 回推的 `raw_record_id` 等於同一列在月檔中的 `raw_record_id`。契約 `1.0` 的舊輸出（年度點位檔欄位為 `raw_record_id`）與無此契約的更舊輸出仍可驗證。
 
