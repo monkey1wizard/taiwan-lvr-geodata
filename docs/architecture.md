@@ -558,7 +558,7 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
 
 以下規則來自 F-3～F-5a 的失敗。照做可避免重蹈。
 
-1. **改變地址鍵規則（`NORMALIZATION_VERSION`）後，用全新的 `--work-dir` 重跑。** 原因：`normalize` 啟動時用目前規則驗證工作目錄內既有的快照；舊規則產生的快照在新規則下驗證失敗，錯誤為 `Component key does not match v2 rule`。F-3 第一次以 `data/work` 執行失敗，改用 `data/tmp/work/fast2` 成功。這是任務卡 R03-12，尚未修正。
+1. **改變地址鍵規則（`NORMALIZATION_VERSION`）後，用全新的 `--work-dir` 重跑。** 原因：`normalize` 啟動時用目前規則驗證工作目錄內既有的快照；舊規則產生的快照在新規則下驗證失敗，錯誤為 `Component key does not match v2 rule`。F-3 第一次以 `data/work` 執行失敗，改用 `data/tmp/work/fast2` 成功。R03-12 已修正此驗證：快照綁定的規則版本（`quality.json` 的 `producer_config.parameters.normalization_version`，須與 `config_sha256` 相符）與目前程式不同時，舊快照仍可讀、可作前版，只核對檔案雜湊與結構，回報標示「舊規則版本，未重算鍵」；但不可重用。改規則後仍建議用全新 `--work-dir`，因為舊快照不會被重用。
 2. **`prepare-tgos` 以離線狀態為來源時，工作目錄不能已有 TGOS 狀態。** 原因：程式拒絕，錯誤為 `TGOS work directory already has state; use its latest snapshot`，帶 `--ledger` 也一樣。要重新從離線狀態產生批次，用全新的 `--work-dir`（F-4 用 `data/tmp/work/fast2b`），並以路徑傳入 `--state`（離線狀態快照）與 `--ledger`（舊 TGOS 狀態快照）。
 3. **`prepare-tgos` 前先確認 `data/tgos/date.json`。** 原因：交換資料夾名稱取自該檔日期，格式 `data/tgos/YYYYMMDD-<8 碼>/`。日期錯了，資料夾名稱就錯。
 4. **帶入的舊查詢會自動以目前規則重算地址鍵；已送出的地址文字不會再被選。** 原因（F-4b）：規則升版後，舊批次 10,000 筆查詢中有 134 筆的鍵改變，若不重算，`import-tgos` 會因證據不一致失敗，`prepare-tgos` 也會再送出 124 筆文字相同的地址。重算筆數記在狀態 quality report 的 `carried_query_keys_recomputed`（本輪 134）。重算後鍵為 `None` 時，程式直接報錯停止。
