@@ -23,6 +23,7 @@ from .tgos import (
     transition_batch,
 )
 from .converted import export_converted
+from .transactions.inventory import verify_inventory, write_raw_manifest
 from .transactions.read import ingest
 from .transactions.normalize import normalize
 from .storage.runs import peak_rss_bytes, load_snapshot
@@ -73,6 +74,16 @@ def run(args):
 def _run_offline_and_output(args):
     read = _read
     command = args.command
+    if command == "verify-sources":
+        start = time.perf_counter()
+        report = verify_inventory(args.raw_dir, read(args.manifest))
+        report["elapsed_seconds"] = round(time.perf_counter() - start, 3)
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0 if report["verified"] else 1
+    if command == "inventory-sources":
+        document = write_raw_manifest(args.raw_dir, args.output)
+        print(json.dumps({"output": str(args.output), "raw_count": document["raw_count"]}))
+        return 0
     if command == "pin-address-source":
         descriptor = pin_address_source(args.address_dir, args.output)
         print(json.dumps({"output": str(args.output), "commit": descriptor["commit"], "road_count": descriptor["road_count"]}))

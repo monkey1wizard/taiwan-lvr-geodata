@@ -17,6 +17,12 @@ def _add_offline_and_output_commands(sub):
     p = sub.add_parser("pin-address-source")
     p.add_argument("--address-dir", type=Path, required=True)
     p.add_argument("--output", type=Path, default=Path("config/sources/address_source.json"))
+    p = sub.add_parser("verify-sources", help="Check raw ZIPs against the raw manifest (read-only)")
+    p.add_argument("--raw-dir", type=Path, default=Path("data/raw"))
+    p.add_argument("--manifest", type=Path, default=Path("config/sources/raw_manifest.json"))
+    p = sub.add_parser("inventory-sources", help="Write a raw manifest from a directory of raw ZIPs")
+    p.add_argument("--raw-dir", type=Path, default=Path("data/raw"))
+    p.add_argument("--output", type=Path, required=True)
     p = sub.add_parser("build-offline-index")
     p.add_argument("--address-dir", type=Path, required=True)
     p.add_argument(
