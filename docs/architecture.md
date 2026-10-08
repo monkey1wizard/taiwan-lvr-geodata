@@ -283,8 +283,8 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline verify-converted --input
 | `data/raw/` | 58 個原始交易 ZIP |
 | `data/cache/` | 官方來源快取 |
 | `data/tgos/` | `date.json` 與各批交換資料夾，含人工下載的回傳檔 |
-| `data/output/fast2-output-d/` | 快速版 v2 最新輸出：`monthly/`（含 GIS 屬性欄位）、`yearly/`（年度包與 `<年>_<類別>_points.csv` 點位檔）、維護包分片與索引 |
-| `data/output/fast2-output-c/` | 被 `fast2-output-d` 取代的前一版（租賃總額與面積為 null），待擁有者決定是否刪除 |
+| `data/output/fast2-output-e/` | 快速版 v2 最新輸出：`monthly/`（含 GIS 屬性欄位）、`yearly/`（年度包與 `<年>_<類別>_points.csv` 點位檔，追溯欄位為 `source_ref`）、維護包分片與索引 |
+| `data/output/fast2-output-c/`、`fast2-output-d/` | 被 `fast2-output-e` 取代的前兩版（c 的租賃總額與面積為 null；d 的點位檔用 `raw_record_id`），待擁有者決定是否刪除 |
 | `data/output/p2-115q1-offline-v2/` | 目前公開版本的本機副本 |
 | `data/tmp/work/ingested/`、`fast2/`、`fast2b/` | 接續工作用的階段快照，以 `--work-dir` 指定 |
 | `data/tmp/work/tgos-state/` | F-1 的 TGOS 狀態，作為來源紀錄 |
@@ -462,7 +462,7 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
 
 ### 全量循環 5 輸出
 
-命令與實測值來自 F-5 第二次執行（run `fast2-output-b`）。之後 F-8、F-8a 以相同命令產生 `fast2-output-c`、`fast2-output-d`，`package-output` 約 64～70 分鐘。
+命令與實測值來自 F-5 第二次執行（run `fast2-output-b`）。之後 F-8、F-8a、F-8b 以相同命令產生 `fast2-output-c`、`fast2-output-d`、`fast2-output-e`，`package-output` 約 64～70 分鐘；F-8b 的 `verify-output` 約 17 分鐘。
 
 1. 產生月檔與年度包：
 
@@ -542,7 +542,7 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
    | `data/tmp/work/fast2/offline-state/snapshots/fast2-offline` | 之後 `prepare-tgos` 的 `--state` |
    | `data/tmp/work/fast2/converted/snapshots/fast2-converted` | `package-output` 的 `--input` |
    | `data/tmp/work/fast2b/tgos-state/snapshots/tgos-state-1867e36677c54cbc8fd3fbd5` | 目前的 TGOS 狀態（已含在上列 `tgos-state/`） |
-   | `data/output/fast2-output-d/` | 已通過 `verify-output` 的最新輸出，約 26 GB，Kepler.gl 用的年度點位檔在其中的 `yearly/`。只有要直接取用或比對時才需要 |
+   | `data/output/fast2-output-e/` | 已通過 `verify-output` 的最新輸出，約 26 GB，Kepler.gl 用的年度點位檔在其中的 `yearly/`。只有要直接取用或比對時才需要 |
 
    帶走快照時，連同該快照資料夾的所有檔案一起複製，並在新主機執行對應的 `verify-offline-state`、`verify-converted`、`verify-tgos-state`、`verify-output`。
 4. 舊快照、第一次失敗的殘留輸出與重組檢查產物已由擁有者於 2026-10-08 刪除，`data/work/` 目前不存在。
@@ -602,7 +602,7 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
    $LVR verify-tgos-state --input data/tmp/work/fast2b/tgos-state/snapshots/<匯入後的快照>
    ```
 
-6. 重新輸出：以匯入後的快照作 `--state`，使用新的 `--run-id` 與新的 `--output-dir`，重跑 `package-output` 與 `verify-output`（見「全量循環 5」）。不要覆寫既有的輸出版本，例如 `fast2-output-d`。
+6. 重新輸出：以匯入後的快照作 `--state`，使用新的 `--run-id` 與新的 `--output-dir`，重跑 `package-output` 與 `verify-output`（見「全量循環 5」）。不要覆寫既有的輸出版本，例如 `fast2-output-e`。
 7. 產生再下一批時，不能在 `data/tmp/work/fast2b` 內從離線狀態重新開始（規則 2）。目前沒有在已有 TGOS 狀態的工作目錄內產生下一批的命令；程式只支援從離線狀態加 `--ledger` 在新的工作目錄重建（例如 `data/tmp/work/fast2c`）。這個流程對下一批尚未實測。
 
 ## 資料規格
