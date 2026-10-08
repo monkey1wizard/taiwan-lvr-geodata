@@ -284,7 +284,7 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline verify-converted --input
 | `data/cache/` | 官方來源快取 |
 | `data/tgos/` | `date.json` 與各批交換資料夾，含人工下載的回傳檔 |
 | `data/output/fast2-output-e/` | 快速版 v2 最新輸出：`monthly/`（含 GIS 屬性欄位）、`yearly/`（年度包與 `<年>_<類別>_points.csv` 點位檔，追溯欄位為 `source_ref`）、維護包分片與索引 |
-| `data/output/fast2-output-c/`、`fast2-output-d/` | 被 `fast2-output-e` 取代的前兩版（c 的租賃總額與面積為 null；d 的點位檔用 `raw_record_id`），待擁有者決定是否刪除 |
+| `data/output/fast2-output-d/` | 被 `fast2-output-e` 取代的前一版（點位檔用 `raw_record_id`），待擁有者決定是否刪除 |
 | `data/output/p2-115q1-offline-v2/` | 目前公開版本的本機副本 |
 | `data/tmp/work/ingested/`、`fast2/`、`fast2b/` | 接續工作用的階段快照，以 `--work-dir` 指定 |
 | `data/tmp/work/tgos-state/` | F-1 的 TGOS 狀態，作為來源紀錄 |
