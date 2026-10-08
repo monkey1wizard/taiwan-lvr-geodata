@@ -9,4 +9,8 @@ duckdb_threads = 2
 duckdb_memory_limit = "4GiB"
 duckdb_temp_limit = "4GiB"
 disk_headroom_fraction = 0.20
+# R05-4 (owner decision 2026-10-08): same-key coordinates whose pairwise haversine
+# distances are all at most this many metres are located at their medoid; any pair
+# above it is a conflict. Bound into the offline-state stage; changing it rebuilds.
+coordinate_tolerance_m = 30.0
 # Resource limits are proposed settings. P1/P5 must measure before real runs.

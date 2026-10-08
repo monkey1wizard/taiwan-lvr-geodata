@@ -17,6 +17,9 @@ stage produces the codes that existing snapshot data can decide:
   parse, but the door text yields no key, such as a range or several doors).
 - ``offline_unmatched`` and ``coordinate_conflict``: address status of the TGOS
   state when one is given (its final status after TGOS), else the offline state.
+  Since R05-4 a conflict is a key whose coordinates are more than the tolerance
+  apart; ``related_json`` lists every coordinate and the largest pairwise
+  haversine distance ``max_distance_m``.
 - ``tgos_isolated``, ``tgos_response_incomplete``, ``tgos_coordinate_invalid``:
   TGOS results rejected with the matching reason text recorded by ``import-tgos``.
 """
@@ -36,6 +39,7 @@ from ..offline.resolve import _find_candidates
 from ..addresses.parse import parse
 from ..storage.parquet import BatchWriter, duckdb_config
 from ..storage.runs import Stage, bindings, digest, load_snapshot, sha256_file
+from ..offline.index import _haversine_sql
 from .reconcile import load_p2
 
 # Reason codes for TGOS results rejected by import-tgos, keyed by its recorded reason text.
@@ -104,6 +108,14 @@ coordinates AS (
          to_json(list(struct_pack(lng := lng, lat := lat, evidence_count := n) ORDER BY lng, lat)) points
   FROM (SELECT building_key, lng, lat, count(*) n FROM evidence WHERE validity = 'valid' GROUP BY ALL)
   GROUP BY building_key),
+conflict_points AS (
+  SELECT DISTINCT e.building_key, e.lng, e.lat FROM evidence e JOIN result s USING (building_key)
+  WHERE e.validity = 'valid' AND s.status = 'conflict'),
+spans AS (
+  SELECT a.building_key, max({distance}) max_distance_m
+  FROM conflict_points a JOIN conflict_points b
+    ON a.building_key = b.building_key AND (a.lng, a.lat) < (b.lng, b.lat)
+  GROUP BY a.building_key),
 chosen AS (
   SELECT 'invalid_admin' reason_code, b.*, '' disc, NULL::VARCHAR related_json
   FROM base b WHERE b.reason = 'invalid_admin'
@@ -119,8 +131,10 @@ chosen AS (
   SELECT 'offline_unmatched', b.*, '', NULL
   FROM base b JOIN result s USING (building_key) WHERE s.status = 'unmatched'
   UNION ALL
-  SELECT 'coordinate_conflict', b.*, '', json_object('coordinates', c.points)::VARCHAR
+  SELECT 'coordinate_conflict', b.*, '',
+         json_object('coordinates', c.points, 'max_distance_m', d.max_distance_m)::VARCHAR
   FROM base b JOIN result s USING (building_key) LEFT JOIN coordinates c USING (building_key)
+  LEFT JOIN spans d USING (building_key)
   WHERE s.status = 'conflict'
   {tgos}
 )
@@ -213,7 +227,10 @@ def build_review(
                 db.execute("CREATE TEMP TABLE rejection_codes (reason VARCHAR, code VARCHAR)")
                 db.executemany("INSERT INTO rejection_codes VALUES (?, ?)", list(TGOS_REJECTION_CODES.items()))
                 tgos_sql = _TGOS_SQL
-            db.execute("CREATE TEMP TABLE picked AS " + _SQL.format(tgos=tgos_sql))
+            db.execute(
+                "CREATE TEMP TABLE picked AS "
+                + _SQL.format(tgos=tgos_sql, distance=_haversine_sql("a", "b"))
+            )
             if prior_paths:
                 db.read_parquet(prior_paths).create_view("prior")
             else:
@@ -226,6 +243,7 @@ def build_review(
                 LEFT JOIN prior p USING (exception_id) ORDER BY i.reason_code, i.exception_id""",
                 [stage.id],
             )
+            # Column names of the cursor, not a row choice.
             names = [x[0] for x in cursor.description]
             output = csv.writer(stream)
             output.writerow(COLUMNS)
@@ -234,6 +252,7 @@ def build_review(
                     row = dict(zip(names, values))
                     row.pop("disc")
                     if row["reason_code"] == "garbled_pending":
+                        # cache_key[0] below is the county code of this tuple, not a row choice.
                         cache_key = (row["county_code"] or "", row["normalized_address"])
                         if cache_key not in candidate_cache:
                             candidate_cache[cache_key] = garbled_candidates(

@@ -99,6 +99,36 @@ def validate_relations(observations: list[dict], components: list[dict], exclusi
         ordinals.add(identity)
 
 
+def _validate_coordinate_resolution(row):
+    """Recompute the R05-4 adoption rule from the listed coordinates."""
+    from ..results.reconcile import EXCEEDS_TOLERANCE, WITHIN_TOLERANCE, adopt_coordinates
+
+    basis = {"located": WITHIN_TOLERANCE, "conflict": EXCEEDS_TOLERANCE}
+    if basis.get(row["status"]) != row["resolution_basis"]:
+        raise ValueError("Invalid coordinate resolution status or basis")
+    if row["coordinate_count"] < 2 or row["evidence_count"] < row["coordinate_count"]:
+        raise ValueError("Invalid coordinate resolution counts")
+    try:
+        listed = json.loads(row["coordinates_json"])
+        points = {(item["lng"], item["lat"]): item for item in listed}
+    except (TypeError, ValueError, KeyError) as exc:
+        raise ValueError("Invalid coordinate resolution list") from exc
+    if len(points) != len(listed) or len(points) != row["coordinate_count"]:
+        raise ValueError("Coordinate resolution list differs from counts")
+    if sum(item["evidence_count"] for item in listed) != row["evidence_count"]:
+        raise ValueError("Coordinate resolution list differs from counts")
+    adoption = adopt_coordinates(points, row["tolerance_m"])
+    representative = adoption["representative"]
+    if (
+        adoption["status"] != row["status"]
+        or adoption["max_distance_m"] != row["max_distance_m"]
+        or (row["lng"], row["lat"]) != (representative or (None, None))
+        or row["evidence_id"]
+        != (points[representative]["evidence_id"] if representative else None)
+    ):
+        raise ValueError("Coordinate resolution differs from adoption rule")
+
+
 def validate_dataset_rows(values, dataset):
     if dataset == "unmatched-address":
         if any(row["status"] == "located" for row in values):
@@ -132,24 +162,26 @@ def validate_dataset_rows(values, dataset):
         }:
             raise ValueError("Invalid address resolution status")
         if dataset == "address-result":
+            # R05-4: several distinct coordinates are located when all lie within the
+            # tolerance; the coordinate-resolution dataset carries that evidence.
             expected = (
-                "located"
+                {"located"}
                 if row["coordinate_count"] == 1
-                else "conflict"
+                else {"located", "conflict"}
                 if row["coordinate_count"] > 1
-                else None
+                else {"unmatched", "outside_scope"}
             )
             if (
                 row["coordinate_count"] < 0
                 or row["evidence_count"] < row["coordinate_count"]
             ):
                 raise ValueError("Invalid evidence counts")
-            if (expected and row["status"] != expected) or (
-                not expected and row["status"] not in {"unmatched", "outside_scope"}
-            ):
+            if row["status"] not in expected:
                 raise ValueError("Resolution and evidence counts disagree")
             if (row["status"] == "located") != (row["evidence_id"] is not None):
                 raise ValueError("Located evidence required")
+        if dataset == "coordinate-resolution":
+            _validate_coordinate_resolution(row)
         if "lng" in row:
             coordinate = row["lng"], row["lat"]
             if (coordinate[0] is None) != (coordinate[1] is None):

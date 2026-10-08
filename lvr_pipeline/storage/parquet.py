@@ -171,6 +171,20 @@ def verify_relations(groups: dict[str, list[Path]], *, source_scope: dict | None
             if "address-result" in groups and "offline-row" in groups:
                 reject("SELECT count(*) FROM address_result a LEFT JOIN offline_row e USING(evidence_id) WHERE a.status='located' AND (e.evidence_id IS NULL OR e.validity<>'valid' OR e.building_key<>a.building_key OR e.lng<>a.lng OR e.lat<>a.lat)", "Located evidence mismatch")
                 reject("SELECT count(*) FROM (SELECT building_key,count(*) coordinate_count,sum(n) evidence_count FROM (SELECT building_key,lng,lat,count(*) n FROM offline_row WHERE validity='valid' GROUP BY 1,2,3) GROUP BY 1) e FULL JOIN address_result a USING(building_key) WHERE coalesce(e.coordinate_count,0)<>coalesce(a.coordinate_count,0) OR coalesce(e.evidence_count,0)<>coalesce(a.evidence_count,0)", "Resolution counts differ from evidence")
+            if "address-result" in groups and "coordinate-resolution" in groups:
+                # R05-4: every key with several coordinates has exactly one adoption row that agrees with the result.
+                reject("SELECT count(*) FROM address_result a ANTI JOIN coordinate_resolution r USING(key_version,building_key) WHERE a.coordinate_count>1", "Multi-coordinate result lacks coordinate resolution")
+                reject("SELECT count(*) FROM coordinate_resolution r LEFT JOIN address_result a USING(key_version,building_key) WHERE a.building_key IS NULL OR a.status<>r.status OR a.coordinate_count<>r.coordinate_count OR a.evidence_count<>r.evidence_count OR a.lng IS DISTINCT FROM r.lng OR a.lat IS DISTINCT FROM r.lat OR a.evidence_id IS DISTINCT FROM r.evidence_id", "Coordinate resolution differs from address result")
+                if "offline-row" in groups:
+                    reject("""SELECT count(*) FROM (
+                        (SELECT building_key,lng,lat,count(*) n FROM offline_row WHERE validity='valid' AND building_key IN (SELECT building_key FROM coordinate_resolution) GROUP BY 1,2,3
+                         EXCEPT SELECT building_key,c.lng,c.lat,c.evidence_count FROM (SELECT building_key,unnest(from_json(coordinates_json,'[{"lng":"DOUBLE","lat":"DOUBLE","evidence_count":"BIGINT"}]')) c FROM coordinate_resolution))
+                        UNION ALL
+                        (SELECT building_key,c.lng,c.lat,c.evidence_count FROM (SELECT building_key,unnest(from_json(coordinates_json,'[{"lng":"DOUBLE","lat":"DOUBLE","evidence_count":"BIGINT"}]')) c FROM coordinate_resolution)
+                         EXCEPT SELECT building_key,lng,lat,count(*) n FROM offline_row WHERE validity='valid' AND building_key IN (SELECT building_key FROM coordinate_resolution) GROUP BY 1,2,3))""", "Coordinate resolution list differs from evidence")
+            elif "address-result" in groups:
+                # States built before R05-4 have no adoption rows; there several coordinates are always a conflict.
+                reject("SELECT count(*) FROM address_result WHERE status='located' AND coordinate_count>1", "Located result needs coordinate resolution")
             if "unmatched-address" in groups and "address-result" in groups:
                 reject("SELECT count(*) FROM ((SELECT * FROM address_result WHERE status<>'located' EXCEPT SELECT * FROM unmatched_address) UNION ALL (SELECT * FROM unmatched_address EXCEPT SELECT * FROM address_result WHERE status<>'located'))", "Unmatched selection differs from state")
             if "tgos-query" in groups:

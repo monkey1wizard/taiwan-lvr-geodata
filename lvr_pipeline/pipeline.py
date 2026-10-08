@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .address_pool import build_pool
 from .offline.index import audit_address_source, pin_address_source, build_index
-from .results.reconcile import resolve_offline, load_p2
+from .results.reconcile import load_coordinate_tolerance, resolve_offline, load_p2
 from .results.review import build_review
 from .backfill import backfill_output
 from .address_patch import export_address_patch, verify_address_patch
@@ -140,6 +140,7 @@ def _run_offline_and_output(args):
             args.index,
             args.work_dir,
             prior_state=args.prior_state,
+            coordinate_tolerance_m=load_coordinate_tolerance(args.config),
             run_id=args.run_id,
         )
     elif command == "verify-offline-state":

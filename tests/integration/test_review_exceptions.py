@@ -148,6 +148,17 @@ def test_each_produced_reason_code_has_rows(built):
     assert detail["reason"] == "TGOS response address differs from submitted address"
 
 
+def test_coordinate_conflict_lists_largest_distance(built):
+    # R05-4: only keys whose coordinates are more than 30 m apart stay a conflict.
+    from lvr_pipeline.results.reconcile import haversine_m
+
+    conflict = _by_reason(built["rows"], "coordinate_conflict")
+    related = json.loads(conflict[0]["related_json"])
+    expected = haversine_m((121.5, 25.0), (121.6, 25.1))
+    assert related["max_distance_m"] == pytest.approx(expected, rel=1e-9)
+    assert related["max_distance_m"] > 30
+
+
 def test_without_tgos_state_offline_status_is_used(built):
     review = build_review(built["converted"], built["state"], built["tmp"] / "review-offline",
                           descriptor=built["descriptor"], run_id="review-offline")

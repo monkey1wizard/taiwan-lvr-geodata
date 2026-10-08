@@ -253,6 +253,28 @@ OFFLINE_SCHEMAS["unmatched-address"] = _schema(
 )
 PRIMARY["unmatched-address"] = PRIMARY["address-result"]
 
+# Coordinate adoption detail (R05-4): one row per address key with two or more
+# distinct valid coordinates. coordinates_json lists every distinct coordinate
+# with its source row count, smallest evidence_id and distance sum (metres).
+OFFLINE_SCHEMAS["coordinate-resolution"] = _schema(
+    "coordinate-resolution",
+    [
+        ("key_version", S, False),
+        ("building_key", S, False),
+        ("status", S, False),
+        ("resolution_basis", S, False),
+        ("tolerance_m", F, False),
+        ("max_distance_m", F, False),
+        ("coordinate_count", I, False),
+        ("evidence_count", I, False),
+        ("lng", F, True),
+        ("lat", F, True),
+        ("evidence_id", S, True),
+        ("coordinates_json", S, False),
+    ],
+)
+PRIMARY["coordinate-resolution"] = ["key_version", "building_key"]
+
 # Review table (R05-8): every address that has no key, no location or needs a person's review.
 # All reason codes are defined here; a stage that starts producing a new kind of review row
 # appends its code to this tuple. Rows never remove or replace the source observation.

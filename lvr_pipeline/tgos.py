@@ -12,7 +12,12 @@ import tempfile
 from datetime import date
 from pathlib import Path
 
-from .results.reconcile import load_p2
+from .results.reconcile import (
+    EXCEEDS_TOLERANCE,
+    WITHIN_TOLERANCE,
+    load_p2,
+    resolution_row,
+)
 from .addresses.identity import building_key_v2
 from .transactions.normalize import normalize_address
 from .storage.parquet import BatchWriter, rows
@@ -93,6 +98,7 @@ def _write_state(
     address_rows: list[dict] | None = None,
     evidence_rows: list[dict] | None = None,
     unmatched_rows: list[dict] | None = None,
+    resolution_rows: list[dict] | None = None,
     extra_report: dict | None = None,
     run_id: str | None = None,
 ):
@@ -113,11 +119,13 @@ def _write_state(
         "address-result": address_rows,
         "offline-row": evidence_rows,
         "unmatched-address": unmatched_rows,
+        "coordinate-resolution": resolution_rows,
     }
     names = {
         "address-result": "address_index.parquet",
         "offline-row": "address_observations.parquet",
         "unmatched-address": "unmatched_addresses.parquet",
+        "coordinate-resolution": "coordinate_resolutions.parquet",
         "address-pool": "unique_addresses.parquet",
         "address-occurrence": "address_occurrences.parquet",
         "tgos-ledger": "tgos_results.parquet",
@@ -547,7 +555,18 @@ def _tgos_coordinate(x: str, y: str):
     return lng, lat
 
 
-def _rebuild_resolution(pool_rows: list[dict], evidence_rows: list[dict], source_commit: str):
+def _rebuild_resolution(
+    pool_rows: list[dict],
+    evidence_rows: list[dict],
+    source_commit: str,
+    tolerance_m: float | None = None,
+):
+    """Rebuild address status with the offline adoption rule (R05-4).
+
+    ``tolerance_m`` is the state's ``coordinate_tolerance_m``. States built
+    before R05-4 have none; for them several coordinates stay a conflict and
+    no coordinate-resolution rows are returned (None).
+    """
     coordinates = {}
     for row in evidence_rows:
         if row["validity"] == "valid" and row["building_key"]:
@@ -556,13 +575,31 @@ def _rebuild_resolution(pool_rows: list[dict], evidence_rows: list[dict], source
             ).append(row["evidence_id"])
     address_rows = []
     unmatched = []
+    resolutions = [] if tolerance_m is not None else None
     statuses = {name: 0 for name in ["located", "conflict", "unmatched", "outside_scope"]}
     for row in pool_rows:
         points = coordinates.get(row["building_key"], {})
         count = len(points)
-        status = "located" if count == 1 else "conflict" if count > 1 else "unmatched"
-        point = next(iter(points)) if status == "located" else (None, None)
-        evidence_ids = next(iter(points.values())) if status == "located" else []
+        point, evidence_id = (None, None), None
+        if count == 1:
+            # The only distinct coordinate, not a first-row pick.
+            ((point, ids),) = points.items()
+            status, evidence_id = "located", min(ids)
+        elif count > 1 and tolerance_m is not None:
+            detail = resolution_row(
+                row["key_version"],
+                row["building_key"],
+                {
+                    key: {"evidence_count": len(ids), "evidence_id": min(ids)}
+                    for key, ids in points.items()
+                },
+                tolerance_m,
+            )
+            resolutions.append(detail)
+            status = detail["status"]
+            point, evidence_id = (detail["lng"], detail["lat"]), detail["evidence_id"]
+        else:
+            status = "conflict" if count > 1 else "unmatched"
         result = {
             "key_version": row["key_version"],
             "building_key": row["building_key"],
@@ -573,7 +610,7 @@ def _rebuild_resolution(pool_rows: list[dict], evidence_rows: list[dict], source
             "status": status,
             "lng": point[0],
             "lat": point[1],
-            "evidence_id": min(evidence_ids) if evidence_ids else None,
+            "evidence_id": evidence_id,
             "evidence_count": sum(len(v) for v in points.values()),
             "coordinate_count": count,
             "source_commit": source_commit,
@@ -582,7 +619,7 @@ def _rebuild_resolution(pool_rows: list[dict], evidence_rows: list[dict], source
         address_rows.append(result)
         if status != "located":
             unmatched.append(result)
-    return address_rows, unmatched, statuses
+    return address_rows, unmatched, statuses, resolutions
 
 
 def import_tgos(
@@ -697,7 +734,12 @@ def import_tgos(
     batch["status"] = "completed"
     batch["response_sha256"] = response_hash
     pool = _table(paths["address-pool"])
-    address_rows, unmatched, statuses = _rebuild_resolution(pool, evidence, report["address_source_commit"])
+    address_rows, unmatched, statuses, resolutions = _rebuild_resolution(
+        pool,
+        evidence,
+        report["address_source_commit"],
+        report.get("coordinate_tolerance_m"),
+    )
     before = report["status_counts"]
     return _write_state(
         source,
@@ -711,11 +753,22 @@ def import_tgos(
         address_rows=address_rows,
         evidence_rows=evidence,
         unmatched_rows=unmatched,
+        resolution_rows=resolutions,
         extra_report={
             "last_tgos_batch_id": batch_id,
             "last_tgos_response_sha256": response_hash,
             "status_counts_before_import": before,
             "status_counts": statuses,
+            **(
+                {
+                    "coordinate_resolution_basis_counts": {
+                        basis: sum(r["resolution_basis"] == basis for r in resolutions)
+                        for basis in (WITHIN_TOLERANCE, EXCEEDS_TOLERANCE)
+                    }
+                }
+                if resolutions is not None
+                else {}
+            ),
         },
         run_id=run_id,
     )
