@@ -292,6 +292,8 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline verify-converted --input
 | `data/tmp/review/` | 補字規則查核表 |
 | `data/tmp/legacy-evidence/` | R09-4 舊錯配清查要用的舊輸出、舊地址 patch 與發布收據 |
 
+檢查、驗證、診斷與查核用的輸出，例如維護包重組檢查或匯出的分析檔，以及失敗後需要保留的產物，一律放在 `data/tmp/<用途>/`，不放進 `data/output/`。
+
 程式的 `--work-dir` 預設仍是 `data/work`。本節命令一律明確指定工作目錄。
 
 ### 全量循環 1 環境
