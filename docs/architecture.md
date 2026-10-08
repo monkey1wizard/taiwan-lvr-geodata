@@ -650,6 +650,17 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
 
 GeoParquet 使用 WKB，地理中繼資料採 GeoParquet 1.1.0 與 CRS84。GeoJSON 與 NDJSON 的 Feature 識別、屬性、筆數及 null 語意須一致。現行空 NDJSON 使用換行作為空檔表示。年度包必須保留原月檔位元組及雜湊。
 
+#### GIS 屬性欄位
+
+三種月檔與年度點位檔最外層帶有 `trade_date`、`county`、`district`、`address`、`building_type`、`total_price`、`unit_price_sqm`、`building_area_sqm`、`longitude`、`latitude`。價格、面積取自 `props_json`，非數字時為 null，不補 0。`longitude`、`latitude` 只在單一 Point 時填值。價格與面積的來源依 `category` 區分：
+
+| category | `total_price` | `building_area_sqm` | `unit_price_sqm` |
+| --- | --- | --- | --- |
+| sales、presale | 總價元 | 建物移轉總面積平方公尺 | 單價元平方公尺 |
+| rent | 總額元（租金總額，不是成交價） | 建物總面積平方公尺 | 單價元平方公尺 |
+
+租賃資料沒有「總價元」與「建物移轉總面積平方公尺」，所以 rent 的 `total_price` 是租金總額，不能與買賣成交價直接比較或加總；使用時須以 `category` 區分。
+
 ### 地址補充資料
 
 對地址專案交接的 CSV 契約包含下列 14 欄：

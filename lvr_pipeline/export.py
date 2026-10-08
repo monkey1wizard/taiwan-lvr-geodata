@@ -118,15 +118,17 @@ def attributes(row, shape):
         return value if isinstance(value, str) and value else None
 
     point = shape["coordinates"] if shape and shape["type"] == "Point" else (None, None)
+    # Rent has no sale price: total_price is the rent total and area is the whole-building area.
+    rent = row["category"] == "rent"
     return {
         "trade_date": roc_date(row["tx_date_raw"]),
         "county": county_of(row["member_path"]),
         "district": text("鄉鎮市區"),
         "address": row["raw_address"],
         "building_type": text("建物型態"),
-        "total_price": parse_int(props.get("總價元")),
+        "total_price": parse_int(props.get("總額元" if rent else "總價元")),
         "unit_price_sqm": parse_int(props.get("單價元平方公尺")),
-        "building_area_sqm": parse_float(props.get("建物移轉總面積平方公尺")),
+        "building_area_sqm": parse_float(props.get("建物總面積平方公尺" if rent else "建物移轉總面積平方公尺")),
         "longitude": point[0],
         "latitude": point[1],
     }

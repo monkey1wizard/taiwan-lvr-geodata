@@ -85,6 +85,7 @@ def test_number_parsing_keeps_real_values():
 
 def test_attributes_null_rules_and_point_only_coordinates():
     row = {
+        "category": "sales",
         "props_json": json.dumps({"鄉鎮市區": "中正區", "總價元": "x"}),
         "tx_date_raw": "1150230",
         "member_path": "dir/a_lvr_land_a.csv",
@@ -99,6 +100,54 @@ def test_attributes_null_rules_and_point_only_coordinates():
         assert attributes(row, shape)["longitude"] is None
     broken = attributes({**row, "props_json": "not json", "member_path": "unknown.csv"}, None)
     assert broken["district"] is None and broken["county"] is None
+
+
+RENT_PROPS = {"總價元": "999", "總額元": "13500", "建物移轉總面積平方公尺": "9.9",
+              "建物總面積平方公尺": "115.83", "單價元平方公尺": "117"}
+
+
+def _row(category, props):
+    return {"category": category, "props_json": json.dumps(props), "tx_date_raw": "1130105",
+            "member_path": "a_lvr_land_c.csv", "raw_address": "地址"}
+
+
+def test_rent_maps_rent_total_and_building_area():
+    got = attributes(_row("rent", RENT_PROPS), None)
+    assert (got["total_price"], got["building_area_sqm"], got["unit_price_sqm"]) == (13500, 115.83, 117)
+
+
+@pytest.mark.parametrize("category", ["sales", "presale"])
+def test_sales_and_presale_keep_sale_sources(category):
+    got = attributes(_row(category, RENT_PROPS), None)
+    assert (got["total_price"], got["building_area_sqm"], got["unit_price_sqm"]) == (999, 9.9, 117)
+
+
+def test_rent_non_numeric_is_null_and_ignores_sale_keys():
+    props = {**RENT_PROPS, "總額元": "abc", "建物總面積平方公尺": "x"}
+    got = attributes(_row("rent", props), None)
+    assert got["total_price"] is None and got["building_area_sqm"] is None
+    only_sale = attributes(_row("rent", {"總價元": "5", "建物移轉總面積平方公尺": "1"}), None)
+    assert only_sale["total_price"] is None and only_sale["building_area_sqm"] is None
+
+
+def test_kepler_script_agrees_with_output_rule_for_rent(tmp_path):
+    sys.path.insert(0, "scripts")
+    import export_kepler_csv
+
+    shape = {"type": "Point", "coordinates": [121.5, 25.0]}
+    for category, expected in [("rent", ("13500", "115.83")), ("sales", ("999", "9.9"))]:
+        month = tmp_path / category / "monthly" / "2024" / "202401"
+        month.mkdir(parents=True)
+        base = _row(category, RENT_PROPS)
+        record = {**base, "raw_record_id": "r1", "tx_yyyymm": 202401, "location_status": "complete",
+                  "is_approximation": False, "unique_point_count": 1, "geometry": export.wkb(shape)}
+        pq.write_table(pa.Table.from_pylist([record]), month / f"202401_{category}.parquet")
+        out = tmp_path / f"{category}.csv"
+        export_kepler_csv.main(["--output-root", str(tmp_path / category), "--category", category, "--out", str(out)])
+        row = next(csv.DictReader(out.read_text(encoding="utf-8-sig").splitlines()))
+        ours = attributes(base, shape)
+        assert (row["total_price"], row["building_area_sqm"]) == expected
+        assert (int(row["total_price"]), float(row["building_area_sqm"])) == (ours["total_price"], ours["building_area_sqm"])
 
 
 def test_monthly_formats_carry_typed_attributes(output):
@@ -126,7 +175,9 @@ def test_monthly_formats_carry_typed_attributes(output):
         assert [f["properties"][name] for f in nd] == [f["properties"][name] for f in geo]
         assert [f["properties"][name] for f in nd] == table[name].to_pylist()
     rent = pq.read_table(monthly(output, "rent")).to_pylist()
-    assert all(r["total_price"] is None and r["building_area_sqm"] is None for r in rent)
+    # fixture rent rows carry 總額元 and 建物總面積平方公尺 (10.25); these are the rent sources
+    assert {r["total_price"] for r in rent} == {5000000, 6000000, None}
+    assert {r["building_area_sqm"] for r in rent} == {10.25}
 
 
 def test_yearly_points_only_fully_located_single_points(output):

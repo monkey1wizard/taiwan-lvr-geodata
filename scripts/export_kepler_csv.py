@@ -89,6 +89,7 @@ def main(argv=None):
                 continue
             lng, lat = geometry["coordinates"]
             props = json.loads(row["props_json"])
+            rent = row["category"] == "rent"  # rent: total_price is the rent total
             record = {
                 "trade_date": roc_date(row["tx_date_raw"]) or "",
                 "tx_yyyymm": row["tx_yyyymm"],
@@ -96,9 +97,9 @@ def main(argv=None):
                 "district": props.get("鄉鎮市區", ""),
                 "address": row["raw_address"],
                 "building_type": props.get("建物型態", ""),
-                "total_price": number(props.get("總價元")),
+                "total_price": number(props.get("總額元" if rent else "總價元")),
                 "unit_price_sqm": number(props.get("單價元平方公尺")),
-                "building_area_sqm": number(props.get("建物移轉總面積平方公尺")),
+                "building_area_sqm": number(props.get("建物總面積平方公尺" if rent else "建物移轉總面積平方公尺")),
                 "longitude": lng,
                 "latitude": lat,
                 "category": row["category"],
