@@ -26,5 +26,6 @@ def test_old_version_snapshot_not_reusable_under_new_version(tmp_path, monkeypat
     assert new != old
     assert new_bindings["config_sha256"] != old_bindings["config_sha256"]
     store = SnapshotStore(work / "normalized")
-    assert store.reusable(old.name, old_bindings)
+    # R03-12: from now on a snapshot whose rule version differs from the running code is never reusable.
+    assert not store.reusable(old.name, old_bindings)
     assert not store.reusable(old.name, new_bindings)

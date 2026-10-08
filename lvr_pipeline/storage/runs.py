@@ -14,7 +14,7 @@ import shutil
 import time
 import uuid
 
-from ..contracts import validate_relations, validate_rows
+from ..contracts import keys_not_recomputed, validate_relations, validate_rows
 
 
 def sha256_file(path: Path) -> str:
@@ -95,6 +95,9 @@ def _inspect(path: Path, format_name: str, schema: str | None) -> tuple[int | No
     if format_name == "binary":
         return None, None
     raise ValueError("Unsupported artifact format")
+
+
+OLD_RULE_NOTE = "舊規則版本，未重算鍵"
 
 
 def _check_bindings(bindings: dict) -> None:
@@ -179,7 +182,45 @@ class SnapshotStore:
         _json_write(temporary, draft)
         _replace(temporary, draft_path)
 
+    @staticmethod
+    def snapshot_normalization_version(directory: Path, manifest: dict) -> str | None:
+        """The NORMALIZATION_VERSION the snapshot was made under, or None when it records none.
+
+        The value is read from the producer configuration in quality.json, and only when that
+        configuration hashes to the manifest's config_sha256 (so it is part of the bindings).
+        """
+        report_path = directory / "quality.json"
+        if not report_path.is_file():
+            return None
+        try:
+            config = _read_json(report_path).get("producer_config")
+            if not isinstance(config, dict) or digest(config) != manifest["bindings"]["config_sha256"]:
+                return None
+            version = config.get("parameters", {}).get("normalization_version")
+        except (ValueError, OSError, AttributeError):
+            return None
+        return version if isinstance(version, str) and version else None
+
+    def key_rule_status(self, directory: Path) -> str:
+        """'recomputed' when verify() rechecks address keys; otherwise the note for an older rule version."""
+        version = self.snapshot_normalization_version(directory, _read_json(directory / "manifest.json"))
+        return OLD_RULE_NOTE if self._is_old_rule(version) else "recomputed"
+
+    @staticmethod
+    def _is_old_rule(version: str | None) -> bool:
+        from ..addresses import identity
+        return version is not None and version != identity.NORMALIZATION_VERSION
+
     def verify(self, directory: Path, *, draft: bool = False) -> dict:
+        manifest = _read_json(directory / ("draft.json" if draft else "manifest.json"))
+        version = self.snapshot_normalization_version(directory, manifest) if manifest.get("bindings") else None
+        if self._is_old_rule(version):
+            # Older rule version: hashes and structure are still checked, keys are not recomputed.
+            with keys_not_recomputed():
+                return self._verify(directory, draft=draft)
+        return self._verify(directory, draft=draft)
+
+    def _verify(self, directory: Path, *, draft: bool = False) -> dict:
         manifest = _read_json(directory / ("draft.json" if draft else "manifest.json"))
         if manifest["complete"] is not (not draft) or manifest["schema_version"] != "1.0":
             raise ValueError("Invalid snapshot completion/schema")
@@ -258,7 +299,10 @@ class SnapshotStore:
 
     def reusable(self, snapshot_id: str, bindings: dict) -> bool:
         _check_bindings(bindings)
-        manifest = self.verify(self.root / "snapshots" / _identifier(snapshot_id))
+        directory = self.root / "snapshots" / _identifier(snapshot_id)
+        manifest = self.verify(directory)
+        if self._is_old_rule(self.snapshot_normalization_version(directory, manifest)):
+            return False
         return manifest["bindings"] == bindings
 
 
