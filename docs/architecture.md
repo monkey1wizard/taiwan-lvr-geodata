@@ -661,9 +661,11 @@ GeoParquet 使用 WKB，地理中繼資料採 GeoParquet 1.1.0 與 CRS84。GeoJS
 
 租賃資料沒有「總價元」與「建物移轉總面積平方公尺」，所以 rent 的 `total_price` 是租金總額，不能與買賣成交價直接比較或加總；使用時須以 `category` 區分。
 
+年度點位檔（契約 `1.2` 起）的 `longitude`、`latitude` 已錯開，不是建物座標。同一年、同一類別的檔內，座標完全相同的交易依 `trade_date`、`source_ref` 排序，以等面積費馬螺旋（黃金角，半徑 `0.9 × sqrt((k+0.5)/n)` 公尺）排在建物點周圍，每點與建物座標距離不超過 1 m，筆數越多間距越小。只有一筆時座標不變。錯開的座標輸出 8 位小數，規則不用亂數，重跑結果相同。三種月檔維持原始建物座標；`verify-output` 核對年度點位檔座標與月檔座標距離不超過 1 m，並由同一規則重算比對。契約 `1.0`、`1.1` 的舊輸出（座標未錯開）仍可驗證。
+
 #### 年度點位檔的來源代碼 source_ref
 
-年度點位檔（`yearly/<年>/<年>_<類別>_points.csv`，契約版本 `gis_attribute_contract` 為 `1.1`）以 `source_ref` 取代月檔的 `raw_record_id`，使檔案變小，也避免 Kepler.gl 把 64 字元十六進位字串誤判為幾何欄位。三種月檔仍保留 `raw_record_id`。
+年度點位檔（`yearly/<年>/<年>_<類別>_points.csv`，契約版本 `gis_attribute_contract` 為 `1.2`；`1.1` 起使用 `source_ref`）以 `source_ref` 取代月檔的 `raw_record_id`，使檔案變小，也避免 Kepler.gl 把 64 字元十六進位字串誤判為幾何欄位。三種月檔仍保留 `raw_record_id`。
 
 格式為 `<src_batch>-<縣市字母>-<類別字母>-<source_row_number>`，例如 `114q2-e-a-6076` 表示 114q2 批次 ZIP 中 `e_lvr_land_a.csv` 的第 6076 列。縣市字母與類別字母（a 買賣、b 預售屋、c 租賃）取自 `member_path`，須符合 `^([a-z])_lvr_land_([abc])\.csv$`（不分大小寫，輸出小寫）；不符合時直接報錯，不猜測。
 
