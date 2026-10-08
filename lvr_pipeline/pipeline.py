@@ -8,6 +8,7 @@ from pathlib import Path
 from .address_pool import build_pool
 from .offline.index import audit_address_source, pin_address_source, build_index
 from .results.reconcile import resolve_offline, load_p2
+from .results.review import build_review
 from .backfill import backfill_output
 from .address_patch import export_address_patch, verify_address_patch
 from .distribution import fetch_output, publish_release, commit_pointer
@@ -205,6 +206,33 @@ def _run_offline_and_output(args):
             notices=read(args.notices),
             run_id=args.run_id,
         )
+    elif command == "build-review":
+        start = time.perf_counter()
+        path = build_review(
+            args.input,
+            args.state,
+            args.work_dir,
+            descriptor=read(args.address_source),
+            tgos_state=args.tgos_state,
+            prior_review=args.prior_review,
+            run_id=args.run_id,
+        )
+        report = read(Path(path) / "quality.json")
+        print(
+            json.dumps(
+                {
+                    "path": str(path),
+                    "completed": True,
+                    "reason_counts": report["reason_counts"],
+                    "reason_distinct_addresses": report["reason_distinct_addresses"],
+                    "csv_bytes": report["csv_bytes"],
+                    "elapsed_seconds": round(time.perf_counter() - start, 3),
+                    "process_peak_rss_bytes": peak_rss_bytes(),
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 0
     elif command == "verify-output":
         manifest = verify_output(args.input)
         print(

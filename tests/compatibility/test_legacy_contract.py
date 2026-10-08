@@ -37,6 +37,8 @@ SUBCOMMANDS = {
     "commit-release-pointer",
     # R05-2 依卡片新增 audit-address-source，規劃者核准。
     "audit-address-source",
+    # R05-8 依卡片新增 build-review（例外地址與待查核表），規劃者預先核准。
+    "build-review",
 }
 
 
@@ -55,8 +57,9 @@ def test_retained_symbols_exist(module_name):
 
 
 # R05-2 依卡片新增 audit-address-source，規劃者核准。
-def test_cli_subcommand_set_is_exactly_24():
-    assert len(SUBCOMMANDS) == 24
+# R05-8 依卡片新增 build-review，規劃者預先核准由 24 改為 25。
+def test_cli_subcommand_set_is_exactly_25():
+    assert len(SUBCOMMANDS) == 25
     result = subprocess.run([sys.executable, "-m", "lvr_pipeline", "--help"], cwd=ROOT, capture_output=True,
                             text=True, encoding="utf-8", check=True)
     match = re.search(r"\{([a-z0-9,\-]+)\}", result.stdout)

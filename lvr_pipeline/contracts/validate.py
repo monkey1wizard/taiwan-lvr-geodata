@@ -202,6 +202,14 @@ def validate_dataset_rows(values, dataset):
                 raise ValueError("Unsupported address patch source")
         if dataset == "address-patch-quarantine" and not row["reason"]:
             raise ValueError("Address patch quarantine reason required")
+        if dataset == "exception-address":
+            from .schemas import EXCEPTION_REASON_CODES
+            if row["reason_code"] not in EXCEPTION_REASON_CODES:
+                raise ValueError("Unknown exception reason code")
+            if len(row["exception_id"]) != 64 or any(c not in "0123456789abcdef" for c in row["exception_id"]):
+                raise ValueError("Invalid exception identifier")
+            if row["related_json"] is not None:
+                json.loads(row["related_json"])
 
 
 def valid_coordinate(lng, lat):

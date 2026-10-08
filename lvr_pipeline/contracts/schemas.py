@@ -253,6 +253,41 @@ OFFLINE_SCHEMAS["unmatched-address"] = _schema(
 )
 PRIMARY["unmatched-address"] = PRIMARY["address-result"]
 
+# Review table (R05-8): every address that has no key, no location or needs a person's review.
+# All reason codes are defined here; a stage that starts producing a new kind of review row
+# appends its code to this tuple. Rows never remove or replace the source observation.
+EXCEPTION_REASON_CODES = (
+    "invalid_admin",
+    "district_missing",
+    "district_ambiguous",
+    "road_only_not_unique",
+    "garbled_pending",
+    "subdoor_variant_pair",
+    "offline_unmatched",
+    "coordinate_conflict",
+    "tgos_isolated",
+)
+OFFLINE_SCHEMAS["exception-address"] = _schema(
+    "exception-address",
+    [
+        ("exception_id", S, False),
+        ("reason_code", S, False),
+        ("first_run_id", S, False),
+        ("component_id", S, False),
+        ("raw_record_id", S, False),
+        ("src_batch", S, False),
+        ("category", S, False),
+        ("raw_address", S, False),
+        ("normalized_address", S, False),
+        ("building_key", S, True),
+        ("county_code", S, True),
+        ("town_code", S, True),
+        ("source_district", S, True),
+        ("related_json", S, True),
+    ],
+)
+PRIMARY["exception-address"] = ["exception_id"]
+
 overlap = set(P1_SCHEMAS) & set(OFFLINE_SCHEMAS)
 if overlap:
     raise RuntimeError(f"Dataset defined twice: {sorted(overlap)}")
