@@ -11,11 +11,12 @@ from pathlib import Path
 import pyarrow.parquet as pq
 
 from lvr_pipeline.export import county_letters, read_wkb
+from lvr_pipeline.source_ref import make_source_ref
 
 COUNTY_BY_LETTER = county_letters()
 FIELDS = ["trade_date", "tx_yyyymm", "county", "district", "address", "building_type", "total_price",
-          "unit_price_sqm", "building_area_sqm", "longitude", "latitude", "category", "raw_record_id"]
-COLUMNS = ["raw_record_id", "category", "member_path", "raw_address", "tx_date_raw", "tx_yyyymm",
+          "unit_price_sqm", "building_area_sqm", "longitude", "latitude", "category", "source_ref"]
+COLUMNS = ["src_batch", "source_row_number", "category", "member_path", "raw_address", "tx_date_raw", "tx_yyyymm",
            "props_json", "location_status", "is_approximation", "unique_point_count", "geometry"]
 
 
@@ -44,9 +45,9 @@ def main(argv=None):
     parser.add_argument("--out", type=Path, required=True, help="CSV file, or a directory with --by-year")
     parser.add_argument("--by-year", action="store_true", help="Write one CSV per transaction year")
     parser.add_argument("--prefix", default="sales", help="File name prefix with --by-year")
-    parser.add_argument("--no-id", action="store_true", help="Omit raw_record_id and category to shrink files")
+    parser.add_argument("--no-id", action="store_true", help="Omit source_ref and category to shrink files")
     args = parser.parse_args(argv)
-    fields = [f for f in FIELDS if not (args.no_id and f in {"raw_record_id", "category"})]
+    fields = [f for f in FIELDS if not (args.no_id and f in {"source_ref", "category"})]
 
     counties = set(args.county)
     files = sorted((args.output_root / "monthly").glob(f"*/*/*_{args.category}.parquet"))
@@ -103,7 +104,7 @@ def main(argv=None):
                 "longitude": lng,
                 "latitude": lat,
                 "category": row["category"],
-                "raw_record_id": row["raw_record_id"],
+                "source_ref": make_source_ref(row["src_batch"], row["member_path"], row["source_row_number"]),
             }
             writer_for(year).writerow({k: record[k] for k in fields})
             reasons["written"] += 1

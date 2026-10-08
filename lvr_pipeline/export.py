@@ -17,6 +17,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from .storage.parquet import SCHEMAS
+from .source_ref import make_source_ref
 from .storage.runs import canonical_json
 
 
@@ -37,11 +38,13 @@ ATTRIBUTE_FIELDS = [
     ("latitude", pa.float64()),
 ]
 ATTRIBUTE_NAMES = [name for name, _ in ATTRIBUTE_FIELDS]
-POINT_COLUMNS = [
+_POINT_LEADING = [
     "trade_date", "county", "district", "address", "building_type", "total_price",
     "unit_price_sqm", "building_area_sqm", "location_status", "longitude", "latitude",
-    "raw_record_id",
 ]
+POINT_COLUMNS_V10 = _POINT_LEADING + ["raw_record_id"]  # contract 1.0, still verified
+POINT_COLUMNS = _POINT_LEADING + ["source_ref"]  # contract 1.1
+POINT_SOURCE_COLUMNS = _POINT_LEADING + ["src_batch", "member_path", "source_row_number"]
 _NUMBER = re.compile(r"\d+(\.\d+)?")
 
 
@@ -139,21 +142,31 @@ def is_legacy_month(path):
     return "trade_date" not in pq.ParquetFile(path).schema_arrow.names
 
 
-def point_values(row):
+def point_values(row, legacy=False):
     """CSV cells of one fully located single-Point observation, else None."""
     if row["location_status"] != "complete" or row["longitude"] is None:
         return None
-    return ["" if row[k] is None else str(row[k]) for k in POINT_COLUMNS]
+    cells = ["" if row[k] is None else str(row[k]) for k in _POINT_LEADING]
+    if legacy:
+        return cells + [row["raw_record_id"]]
+    return cells + [make_source_ref(row["src_batch"], row["member_path"], row["source_row_number"])]
 
 
-def iter_points(path):
+def iter_points(path, legacy=False):
     """Yield point_values for every fully located single-Point row of one monthly file."""
+    for values, _ in iter_points_with_id(path, legacy):
+        yield values
+
+
+def iter_points_with_id(path, legacy=False):
+    """Yield (point_values, raw_record_id) for every fully located single-Point row."""
     parquet = pq.ParquetFile(path)
-    for batch in parquet.iter_batches(batch_size=4096, columns=POINT_COLUMNS):
+    columns = _POINT_LEADING + ["raw_record_id", "src_batch", "member_path", "source_row_number"]
+    for batch in parquet.iter_batches(batch_size=4096, columns=columns):
         for row in batch.to_pylist():
-            values = point_values(row)
+            values = point_values(row, legacy)
             if values is not None:
-                yield values
+                yield values, row["raw_record_id"]
 
 
 def geometry(points, category):

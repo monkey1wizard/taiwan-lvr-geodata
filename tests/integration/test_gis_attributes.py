@@ -2,6 +2,7 @@
 
 import csv
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from lvr_pipeline import export, packaging
 from lvr_pipeline.addresses.parse import _COUNTY_CODE
 from lvr_pipeline.export import attributes, county_letters, parse_float, parse_int, roc_date
 from lvr_pipeline.packaging import package_output, verify_output
+from lvr_pipeline.source_ref import make_source_ref, parse_source_ref, resolve_source_ref
 from lvr_pipeline.sources import sha256_file
 from test_p2_offline import run
 
@@ -30,6 +32,7 @@ COORDS = [
     ("臺北市中正區測試路10號", "63", "6300100", 121.5, 25.0),
     ("臺北市中正區測試路11號", "63", "6300100", 121.6, 25.1),
 ]
+SOURCE_REF = re.compile(r"^[0-9a-z]+-[a-z]-[abc]-[1-9][0-9]*$")
 BOM = "﻿"
 
 
@@ -140,7 +143,8 @@ def test_kepler_script_agrees_with_output_rule_for_rent(tmp_path):
         month.mkdir(parents=True)
         base = _row(category, RENT_PROPS)
         record = {**base, "raw_record_id": "r1", "tx_yyyymm": 202401, "location_status": "complete",
-                  "is_approximation": False, "unique_point_count": 1, "geometry": export.wkb(shape)}
+                  "is_approximation": False, "unique_point_count": 1, "geometry": export.wkb(shape),
+                  "src_batch": "114q2", "source_row_number": 6076}
         pq.write_table(pa.Table.from_pylist([record]), month / f"202401_{category}.parquet")
         out = tmp_path / f"{category}.csv"
         export_kepler_csv.main(["--output-root", str(tmp_path / category), "--category", category, "--out", str(out)])
@@ -182,7 +186,7 @@ def test_monthly_formats_carry_typed_attributes(output):
 
 def test_yearly_points_only_fully_located_single_points(output):
     manifest = verify_output(output)
-    assert manifest["gis_attribute_contract"] == "1.0"
+    assert manifest["gis_attribute_contract"] == "1.1"
     items = [a for a in manifest["assets"] if a["kind"] == "annual_points"]
     assert sorted(a["category"] for a in items) == ["presale", "rent", "sales"]
     for item in items:
@@ -204,7 +208,11 @@ def test_yearly_points_only_fully_located_single_points(output):
     assert sales["path"] in manifest["years"][0]["points"]
     with (output / sales["path"]).open(encoding="utf-8", newline="") as stream:
         rows = list(csv.DictReader(stream))
-    assert sorted(r["raw_record_id"] for r in rows) == sorted(r["raw_record_id"] for r in singles)
+    hashes = manifest["source_sha256"]
+    assert sorted(resolve_source_ref(r["source_ref"], hashes)["raw_record_id"] for r in rows) == sorted(
+        r["raw_record_id"] for r in singles)
+    assert len({r["source_ref"] for r in rows}) == len(rows)
+    assert all(SOURCE_REF.match(r["source_ref"]) for r in rows) and "raw_record_id" not in rows[0]
     full = next(r for r in rows if r["building_type"])
     assert full["total_price"] == "5000000" and full["building_area_sqm"] == "10.25"
     blank = next(r for r in rows if not r["building_type"])
@@ -293,3 +301,65 @@ def test_old_contract_output_still_verifies(built, tmp_path, monkeypatch):
     packaging.write_json(old / "manifest.json", manifest)
     with pytest.raises(ValueError, match="lacks the declared"):
         verify_output(old)
+
+
+def test_source_ref_format_and_bad_member_path():
+    assert make_source_ref("114q2", "e_lvr_land_a.csv", 6076) == "114q2-e-a-6076"
+    assert make_source_ref("114q2", "E_LVR_LAND_B.CSV", 3) == "114q2-e-b-3"
+    assert parse_source_ref("114q2-e-a-6076") == ("114q2", "e_lvr_land_a.csv", 6076)
+    for bad in ["dir/a_lvr_land_a.csv", "a_lvr_land_a_build.csv", "a_lvr_land_d.csv", "manifest.csv", "", None]:
+        with pytest.raises(ValueError):
+            make_source_ref("114q2", bad, 1)
+    for bad in ["114q2-e-a-0", "114q2-e-d-5", "e-a-5", "114q2-ee-a-5", ""]:
+        with pytest.raises(ValueError):
+            parse_source_ref(bad)
+    with pytest.raises(ValueError, match="Unknown source batch"):
+        resolve_source_ref("999q9-a-a-1", {})
+
+
+def test_source_ref_reverse_matches_monthly_raw_record_id(output):
+    manifest = verify_output(output)
+    table = pq.read_table(monthly(output, "sales")).to_pylist()
+    assert table
+    for row in table:
+        ref = make_source_ref(row["src_batch"], row["member_path"], row["source_row_number"])
+        got = resolve_source_ref(ref, manifest["source_sha256"])
+        assert got["raw_record_id"] == row["raw_record_id"]
+        assert (got["member_path"], got["source_row_number"]) == (row["member_path"].lower(), row["source_row_number"])
+
+
+def test_duplicate_or_unmapped_source_ref_is_detected(output):
+    item = points_item(output)
+    original = (output / item["path"]).read_text(encoding="utf-8")
+    header, first, second = original.splitlines()[:3]
+    ref = first.rsplit(",", 1)[1]
+    retamper(output, item, "\n".join([header, first, second.rsplit(",", 1)[0] + "," + ref]) + "\n")
+    with pytest.raises(ValueError, match="content differs|not unique"):
+        verify_output(output)
+    retamper(output, item, original.replace(ref, ref.rsplit("-", 1)[0] + "-999999"))
+    with pytest.raises(ValueError, match="content differs|does not map"):
+        verify_output(output)
+    retamper(output, item, original)
+    verify_output(output)
+
+
+def test_contract_1_0_points_with_raw_record_id_still_verify(output):
+    manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+    manifest["gis_attribute_contract"] = "1.0"
+    for item in [a for a in manifest["assets"] if a["kind"] == "annual_points"]:
+        path = output / item["path"]
+        ids = {}
+        for category in ("sales", "presale", "rent"):
+            if item["category"] == category:
+                for r in pq.read_table(monthly(output, category)).to_pylist():
+                    ids[make_source_ref(r["src_batch"], r["member_path"], r["source_row_number"])] = r["raw_record_id"]
+        lines = path.read_text(encoding="utf-8").splitlines()
+        out = [",".join(lines[0].split(",")[:-1] + ["raw_record_id"])]
+        for line in lines[1:]:
+            head, ref = line.rsplit(",", 1)
+            out.append(head + "," + ids[ref])
+        path.write_text("\n".join(out) + "\n", encoding="utf-8")
+        item["columns"] = export.POINT_COLUMNS_V10
+        item["bytes"], item["sha256"] = path.stat().st_size, sha256_file(path)
+    packaging.write_json(output / "manifest.json", manifest)
+    assert verify_output(output)["gis_attribute_contract"] == "1.0"

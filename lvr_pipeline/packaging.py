@@ -20,11 +20,14 @@ from .address_state import load_p2
 from .storage.parquet import duckdb_config
 from .export import (
     POINT_COLUMNS,
+    POINT_COLUMNS_V10,
     export_month,
     is_legacy_month,
     iter_points,
+    iter_points_with_id,
     verify_month,
 )
+from .source_ref import resolve_source_ref
 from .storage.runs import (
     bindings,
     canonical_json,
@@ -38,7 +41,8 @@ from .sources import sha256_file
 FORMATS = ("geoparquet", "geojson", "ndjson")
 CATEGORIES = ("sales", "presale", "rent")
 MAX_ASSET_BYTES = 2**31 - 1
-GIS_CONTRACT = "1.0"
+GIS_CONTRACT = "1.1"
+GIS_CONTRACTS = {"1.0", "1.1"}  # 1.0 yearly points carry raw_record_id; 1.1 carry source_ref
 
 
 class PointsWriter:
@@ -519,7 +523,7 @@ def verify_output(root: Path):
                 item["format"]
             ] = path
     gis = manifest.get("gis_attribute_contract")
-    if gis not in {None, GIS_CONTRACT}:
+    if gis is not None and gis not in GIS_CONTRACTS:
         raise ValueError("Unsupported GIS attribute contract")
     expected_points = {}
     for (month, category), files in sorted(monthly.items()):
@@ -598,16 +602,19 @@ def verify_points(root, manifest, expected_points, gis):
         if declared:
             raise ValueError("Old-contract output must not declare yearly points")
         return
+    legacy = gis == "1.0"
     keys = [(a["year"], a["category"]) for a in declared]
     if len(set(keys)) != len(keys):
         raise ValueError("Duplicate yearly points file")
     present = {
         key
         for key, files in expected_points.items()
-        if any(True for f in files for _ in iter_points(f))
+        if any(True for f in files for _ in iter_points(f, legacy))
     }
     if set(keys) != present:
         raise ValueError("Yearly points files differ from located monthly rows")
+    columns = POINT_COLUMNS_V10 if legacy else POINT_COLUMNS
+    hashes = manifest.get("source_sha256", {})
     for item in declared:
         key = (item["year"], item["category"])
         if item["path"] != f"yearly/{key[0]}/{key[0]}_{key[1]}_points.csv":
@@ -616,17 +623,25 @@ def verify_points(root, manifest, expected_points, gis):
         with path.open("rb") as stream:
             if stream.read(3) == codecs.BOM_UTF8:
                 raise ValueError("Yearly points CSV must not have a BOM")
-        if item["columns"] != POINT_COLUMNS:
+        if item["columns"] != columns:
             raise ValueError("Yearly points columns differ from contract")
-        expected = (v for f in expected_points[key] for v in iter_points(f))
+        expected = (v for f in expected_points[key] for v in iter_points_with_id(f, legacy))
         count = 0
+        seen = set()
         with path.open(encoding="utf-8", newline="") as stream:
             reader = csv.reader(stream)
-            if next(reader, None) != POINT_COLUMNS:
+            if next(reader, None) != columns:
                 raise ValueError("Yearly points columns differ from contract")
             for row, want in zip_longest(reader, expected):
-                if row != want:
+                if want is None or row != want[0]:
                     raise ValueError("Yearly points content differs from monthly files")
+                if not legacy:
+                    ref = row[-1]
+                    if ref in seen:
+                        raise ValueError("Yearly points source_ref is not unique")
+                    seen.add(ref)
+                    if resolve_source_ref(ref, hashes)["raw_record_id"] != want[1]:
+                        raise ValueError("Yearly points source_ref does not map to its monthly observation")
                 count += 1
         if count != item["rows"]:
             raise ValueError("Yearly points row count differs from monthly files")
