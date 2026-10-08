@@ -9,7 +9,7 @@
   rule_hits.csv  UTF-8 with BOM；每個「規則 x 不同原始地址」一列。
   summary.csv    每條規則的範圍內/範圍外命中數、不同地址數；無命中的規則列 0。
 
-縣市：ZIP 成員檔名首字母對照 LVR 官方縣市代碼表（repo 內無此對照，故內建 COUNTY_BY_LETTER）。
+縣市：ZIP 成員檔名首字母對照 LVR 官方縣市代碼表（對照表在 config/reference/lvr_county_letters.csv）。
 區：原始欄位「鄉鎮市區」。取不到時留空。
 補字後地址：只套用該規則本身（不含其他規則的連鎖效果）；範圍外時等於原始地址。
 """
@@ -35,12 +35,9 @@ from audit_character_fixes import (  # noqa: E402
 INGEST = os.path.join(ROOT, "data", "tmp", "work", "ingested", "snapshots", "fast-all58-v3-ingest")
 OUT_BASE = os.path.join(ROOT, "data", "tmp", "review", "character-rules")
 
-COUNTY_BY_LETTER = {
-    "a": "臺北市", "b": "臺中市", "c": "基隆市", "d": "臺南市", "e": "高雄市", "f": "新北市",
-    "g": "宜蘭縣", "h": "桃園市", "i": "嘉義市", "j": "新竹縣", "k": "苗栗縣", "m": "南投縣",
-    "n": "彰化縣", "o": "新竹市", "p": "雲林縣", "q": "嘉義縣", "t": "屏東縣", "u": "花蓮縣",
-    "v": "臺東縣", "w": "金門縣", "x": "澎湖縣", "z": "連江縣",
-}
+COUNTY_LETTERS_CSV = os.path.join(ROOT, "config", "reference", "lvr_county_letters.csv")
+with open(COUNTY_LETTERS_CSV, encoding="utf-8", newline="") as _stream:
+    COUNTY_BY_LETTER = {r["letter"]: r["county"] for r in csv.DictReader(_stream)}
 HIT_FIELDS = ["規則_原文", "規則_修正", "規則_範圍", "規則_狀態", "是否套用", "縣市", "區",
               "原始地址", "補字後地址", "出現次數", "批次清單", "類別清單", "範例raw_record_id"]
 SUM_FIELDS = ["規則_原文", "規則_修正", "規則_範圍", "規則_狀態", "範圍內命中", "範圍外命中", "不同地址數"]

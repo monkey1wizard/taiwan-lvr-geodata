@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import codecs
+import csv
 import hashlib
+from itertools import zip_longest
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -15,7 +18,13 @@ import duckdb
 
 from .address_state import load_p2
 from .storage.parquet import duckdb_config
-from .export import export_month, verify_month
+from .export import (
+    POINT_COLUMNS,
+    export_month,
+    is_legacy_month,
+    iter_points,
+    verify_month,
+)
 from .storage.runs import (
     bindings,
     canonical_json,
@@ -29,6 +38,54 @@ from .sources import sha256_file
 FORMATS = ("geoparquet", "geojson", "ndjson")
 CATEGORIES = ("sales", "presale", "rent")
 MAX_ASSET_BYTES = 2**31 - 1
+GIS_CONTRACT = "1.0"
+
+
+class PointsWriter:
+    """One UTF-8 (no BOM) point CSV per year and category, written month by month."""
+
+    def __init__(self, staging):
+        self.staging = staging
+        self.files = {}
+
+    def add(self, year, category, monthly_parquet):
+        for values in iter_points(monthly_parquet):
+            key = (year, category)
+            if key not in self.files:
+                path = (
+                    self.staging / "yearly" / str(year) / f"{year}_{category}_points.csv"
+                )
+                path.parent.mkdir(parents=True, exist_ok=True)
+                stream = path.open("w", encoding="utf-8", newline="")
+                writer = csv.writer(stream, lineterminator="\n")
+                writer.writerow(POINT_COLUMNS)
+                self.files[key] = [path, stream, writer, 0]
+            entry = self.files[key]
+            entry[2].writerow(values)
+            entry[3] += 1
+
+    def close(self):
+        for _, stream, _, _ in self.files.values():
+            stream.close()
+
+    def assets(self, max_asset_bytes):
+        out = []
+        for (year, category), (path, _, _, rows) in sorted(self.files.items()):
+            item = artifact(
+                self.staging,
+                path,
+                kind="annual_points",
+                year=year,
+                category=category,
+                rows=rows,
+                columns=POINT_COLUMNS,
+            )
+            if item["bytes"] > max_asset_bytes:
+                raise ValueError(
+                    f"Annual points file exceeds configured asset limit: {item['path']}"
+                )
+            out.append(item)
+        return out
 
 
 def safe_path(value):
@@ -194,6 +251,7 @@ def package_output(
     years = []
     write_json(staging / "NOTICE.json", notices)
     assets.append(artifact(staging, staging / "NOTICE.json", kind="notice"))
+    points = PointsWriter(staging)
     with tempfile.TemporaryDirectory(prefix="export-", dir=staging) as spill:
         with duckdb.connect(
             config=duckdb_config(spill)
@@ -240,6 +298,7 @@ def package_output(
                     paths, stats = export_month(db, month, category, directory)
                     if verify_month(paths) != stats:
                         raise ValueError("Month quality readback differs")
+                    points.add(month // 100, category, paths["geoparquet"])
                     entries = [
                         artifact(
                             staging,
@@ -263,6 +322,8 @@ def package_output(
                 write_json(path, month_record)
                 assets.append(artifact(staging, path, kind="month-manifest"))
                 months.append(month_record)
+    points.close()
+    assets.extend(points.assets(max_asset_bytes))
     for year in sorted({m["tx_yyyymm"] // 100 for m in months}):
         included = [m["tx_yyyymm"] for m in months if m["tx_yyyymm"] // 100 == year]
         coverage = {
@@ -325,6 +386,11 @@ def package_output(
                     raise ValueError("Annual ZIP exceeds declared asset budget")
                 assets.append(item)
                 coverage["formats"][fmt].append(item["path"])
+        coverage["points"] = [
+            a["path"]
+            for a in assets
+            if a["kind"] == "annual_points" and a["year"] == year
+        ]
         path = staging / "yearly" / str(year) / f"{year}_manifest.json"
         write_json(path, coverage)
         assets.append(artifact(staging, path, kind="year-manifest"))
@@ -366,6 +432,9 @@ def package_output(
         "release_asset_bytes": sum(a["bytes"] for a in assets),
         "monthly_bytes": sum(a["bytes"] for a in assets if a["kind"] == "monthly"),
         "annual_bytes": sum(a["bytes"] for a in assets if a["kind"] == "annual"),
+        "annual_points_bytes": sum(
+            a["bytes"] for a in assets if a["kind"] == "annual_points"
+        ),
         "maintenance_bytes": sum(a["bytes"] for a in maintenance_assets),
         "maintenance_parts": sum(
             1 for a in maintenance_assets if a.get("role") == "part"
@@ -394,6 +463,7 @@ def package_output(
         "bindings": binding,
         "producer_config": PRODUCER_CONFIGS[binding["config_sha256"]],
         "record_grain": "source_observation",
+        "gis_attribute_contract": GIS_CONTRACT,
         "source_batches": cr["batches"],
         "source_sha256": cr["source_sha256"],
         "scope_limited": True,
@@ -448,10 +518,20 @@ def verify_output(root: Path):
             monthly.setdefault((item["tx_yyyymm"], item["category"]), {})[
                 item["format"]
             ] = path
-    for (month, category), files in monthly.items():
+    gis = manifest.get("gis_attribute_contract")
+    if gis not in {None, GIS_CONTRACT}:
+        raise ValueError("Unsupported GIS attribute contract")
+    expected_points = {}
+    for (month, category), files in sorted(monthly.items()):
         if set(files) != set(FORMATS):
             raise ValueError("Missing monthly output format")
+        if gis and is_legacy_month(files["geoparquet"]):
+            raise ValueError("Monthly file lacks the declared GIS attribute contract")
         stats = verify_month(files)
+        if gis:
+            expected_points.setdefault((month // 100, category), []).append(
+                files["geoparquet"]
+            )
         declared = next(m for m in manifest["months"] if m["tx_yyyymm"] == month)[
             "categories"
         ][category]
@@ -463,6 +543,7 @@ def verify_output(root: Path):
         or total != manifest["retained_rows"]
     ):
         raise ValueError("Output month coverage/count mismatch")
+    verify_points(root, manifest, expected_points, gis)
     annual_members = []
     for item in manifest["assets"]:
         if item["kind"] != "annual":
@@ -505,6 +586,50 @@ def verify_output(root: Path):
     with tempfile.TemporaryDirectory(prefix="handoff-verify-") as folder:
         extract_handoff(entry, Path(folder))
     return manifest
+
+
+def verify_points(root, manifest, expected_points, gis):
+    """Yearly point CSVs equal the fully located single-Point rows of the monthly files.
+
+    Output without gis_attribute_contract is the old contract: it has no such files.
+    """
+    declared = [a for a in manifest["assets"] if a["kind"] == "annual_points"]
+    if not gis:
+        if declared:
+            raise ValueError("Old-contract output must not declare yearly points")
+        return
+    keys = [(a["year"], a["category"]) for a in declared]
+    if len(set(keys)) != len(keys):
+        raise ValueError("Duplicate yearly points file")
+    present = {
+        key
+        for key, files in expected_points.items()
+        if any(True for f in files for _ in iter_points(f))
+    }
+    if set(keys) != present:
+        raise ValueError("Yearly points files differ from located monthly rows")
+    for item in declared:
+        key = (item["year"], item["category"])
+        if item["path"] != f"yearly/{key[0]}/{key[0]}_{key[1]}_points.csv":
+            raise ValueError("Yearly points path differs from contract")
+        path = root / item["path"]
+        with path.open("rb") as stream:
+            if stream.read(3) == codecs.BOM_UTF8:
+                raise ValueError("Yearly points CSV must not have a BOM")
+        if item["columns"] != POINT_COLUMNS:
+            raise ValueError("Yearly points columns differ from contract")
+        expected = (v for f in expected_points[key] for v in iter_points(f))
+        count = 0
+        with path.open(encoding="utf-8", newline="") as stream:
+            reader = csv.reader(stream)
+            if next(reader, None) != POINT_COLUMNS:
+                raise ValueError("Yearly points columns differ from contract")
+            for row, want in zip_longest(reader, expected):
+                if row != want:
+                    raise ValueError("Yearly points content differs from monthly files")
+                count += 1
+        if count != item["rows"]:
+            raise ValueError("Yearly points row count differs from monthly files")
 
 
 def extract_zip(archive_path, target, budget=8 * 2**30):

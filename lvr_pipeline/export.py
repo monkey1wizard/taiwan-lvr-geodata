@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import csv
+import datetime
 import json
 import base64
+import math
+from decimal import Decimal, InvalidOperation
+from functools import lru_cache
 from pathlib import Path
+import re
 import struct
 
 import pyarrow as pa
@@ -12,6 +18,140 @@ import pyarrow.parquet as pq
 
 from .storage.parquet import SCHEMAS
 from .storage.runs import canonical_json
+
+
+COUNTY_LETTERS = (
+    Path(__file__).resolve().parent.parent / "config" / "reference" / "lvr_county_letters.csv"
+)
+# Top-level GIS attribute contract (plan 6.4). location_status is already a base field.
+ATTRIBUTE_FIELDS = [
+    ("trade_date", pa.string()),
+    ("county", pa.string()),
+    ("district", pa.string()),
+    ("address", pa.string()),
+    ("building_type", pa.string()),
+    ("total_price", pa.int64()),
+    ("unit_price_sqm", pa.int64()),
+    ("building_area_sqm", pa.float64()),
+    ("longitude", pa.float64()),
+    ("latitude", pa.float64()),
+]
+ATTRIBUTE_NAMES = [name for name, _ in ATTRIBUTE_FIELDS]
+POINT_COLUMNS = [
+    "trade_date", "county", "district", "address", "building_type", "total_price",
+    "unit_price_sqm", "building_area_sqm", "location_status", "longitude", "latitude",
+    "raw_record_id",
+]
+_NUMBER = re.compile(r"\d+(\.\d+)?")
+
+
+@lru_cache(maxsize=1)
+def county_letters():
+    """Member-file letter to county name, from config/reference/lvr_county_letters.csv."""
+    with COUNTY_LETTERS.open(encoding="utf-8", newline="") as stream:
+        return {r["letter"]: r["county"] for r in csv.DictReader(stream)}
+
+
+def county_of(member_path):
+    base = (member_path or "").replace("\\", "/").rsplit("/", 1)[-1]
+    if len(base) > 1 and base[1] == "_":
+        return county_letters().get(base[0].lower())
+    return None
+
+
+def roc_date(value):
+    value = (value or "").strip()
+    if len(value) != 7 or not value.isdigit():
+        return None
+    try:
+        return datetime.date(
+            int(value[:3]) + 1911, int(value[3:5]), int(value[5:])
+        ).isoformat()
+    except ValueError:
+        return None
+
+
+def _decimal(value):
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        text = repr(value)
+    elif isinstance(value, str):
+        text = value.strip()
+    else:
+        return None
+    if not _NUMBER.fullmatch(text):
+        return None
+    try:
+        return Decimal(text)
+    except InvalidOperation:
+        return None
+
+
+def parse_int(value):
+    number = _decimal(value)
+    if number is None or number != number.to_integral_value():
+        return None
+    number = int(number)
+    return number if number < 2**63 else None
+
+
+def parse_float(value):
+    number = _decimal(value)
+    if number is None:
+        return None
+    number = float(number)
+    return number if math.isfinite(number) else None
+
+
+def attributes(row, shape):
+    """Top-level GIS attributes for one observation; missing or invalid values are None."""
+    try:
+        props = json.loads(row["props_json"])
+    except (TypeError, ValueError):
+        props = {}
+    if not isinstance(props, dict):
+        props = {}
+
+    def text(key):
+        value = props.get(key)
+        return value if isinstance(value, str) and value else None
+
+    point = shape["coordinates"] if shape and shape["type"] == "Point" else (None, None)
+    return {
+        "trade_date": roc_date(row["tx_date_raw"]),
+        "county": county_of(row["member_path"]),
+        "district": text("鄉鎮市區"),
+        "address": row["raw_address"],
+        "building_type": text("建物型態"),
+        "total_price": parse_int(props.get("總價元")),
+        "unit_price_sqm": parse_int(props.get("單價元平方公尺")),
+        "building_area_sqm": parse_float(props.get("建物移轉總面積平方公尺")),
+        "longitude": point[0],
+        "latitude": point[1],
+    }
+
+
+def is_legacy_month(path):
+    """True for monthly GeoParquet written before the GIS attribute contract."""
+    return "trade_date" not in pq.ParquetFile(path).schema_arrow.names
+
+
+def point_values(row):
+    """CSV cells of one fully located single-Point observation, else None."""
+    if row["location_status"] != "complete" or row["longitude"] is None:
+        return None
+    return ["" if row[k] is None else str(row[k]) for k in POINT_COLUMNS]
+
+
+def iter_points(path):
+    """Yield point_values for every fully located single-Point row of one monthly file."""
+    parquet = pq.ParquetFile(path)
+    for batch in parquet.iter_batches(batch_size=4096, columns=POINT_COLUMNS):
+        for row in batch.to_pylist():
+            values = point_values(row)
+            if values is not None:
+                yield values
 
 
 def geometry(points, category):
@@ -80,7 +220,7 @@ def read_wkb(data):
     raise ValueError("Invalid output WKB geometry")
 
 
-def output_schema(geometry_types=None):
+def output_schema(geometry_types=None, legacy=False):
     from pyproj import CRS
 
     fields = list(SCHEMAS["observation"]) + [
@@ -89,8 +229,10 @@ def output_schema(geometry_types=None):
         pa.field("address_component_count", pa.int64(), nullable=False),
         pa.field("located_component_count", pa.int64(), nullable=False),
         pa.field("unique_point_count", pa.int64(), nullable=False),
-        pa.field("geometry", pa.binary(), nullable=True),
     ]
+    if not legacy:
+        fields += [pa.field(n, k, nullable=True) for n, k in ATTRIBUTE_FIELDS]
+    fields.append(pa.field("geometry", pa.binary(), nullable=True))
     geo = {
         "version": "1.1.0",
         "primary_column": "geometry",
@@ -168,6 +310,7 @@ class MonthWriter:
             "address_component_count": component_count,
             "located_component_count": located_count,
             "unique_point_count": len(set(points)),
+            **attributes(row, shape),
             "geometry": wkb(shape),
         }
         line = canonical_json(feature(value))
@@ -260,8 +403,9 @@ def verify_month(paths):
     declared_types = json.loads(parquet.schema_arrow.metadata[b"geo"])["columns"][
         "geometry"
     ]["geometry_types"]
+    legacy = "trade_date" not in parquet.schema_arrow.names
     if not parquet.schema_arrow.equals(
-        output_schema(declared_types), check_metadata=True
+        output_schema(declared_types, legacy), check_metadata=True
     ):
         raise ValueError("GeoParquet schema/CRS metadata mismatch")
     observed_types = set()
@@ -288,6 +432,10 @@ def verify_month(paths):
                     ):
                         raise ValueError("Output format parity mismatch")
                     shape = expected["geometry"]
+                    if not legacy:
+                        derived = attributes(row, shape)
+                        if any(row[k] != derived[k] for k in ATTRIBUTE_NAMES):
+                            raise ValueError("GIS attribute fields differ from source")
                     if shape:
                         observed_types.add(shape["type"])
                     n = row["address_component_count"]

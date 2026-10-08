@@ -10,14 +10,9 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
-from lvr_pipeline.export import read_wkb
+from lvr_pipeline.export import county_letters, read_wkb
 
-COUNTY_BY_LETTER = {
-    "a": "臺北市", "b": "臺中市", "c": "基隆市", "d": "臺南市", "e": "高雄市", "f": "新北市",
-    "g": "宜蘭縣", "h": "桃園市", "i": "嘉義市", "j": "新竹縣", "k": "苗栗縣", "m": "南投縣",
-    "n": "彰化縣", "o": "新竹市", "p": "雲林縣", "q": "嘉義縣", "t": "屏東縣", "u": "花蓮縣",
-    "v": "臺東縣", "w": "金門縣", "x": "澎湖縣", "z": "連江縣",
-}
+COUNTY_BY_LETTER = county_letters()
 FIELDS = ["trade_date", "tx_yyyymm", "county", "district", "address", "building_type", "total_price",
           "unit_price_sqm", "building_area_sqm", "longitude", "latitude", "category", "raw_record_id"]
 COLUMNS = ["raw_record_id", "category", "member_path", "raw_address", "tx_date_raw", "tx_yyyymm",

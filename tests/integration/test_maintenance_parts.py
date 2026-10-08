@@ -22,7 +22,7 @@ NOTICES = {
     "legacy_coordinates_authorized": True,
     "sources": ["synthetic"],
 }
-SMALL = 20000
+SMALL = 24000  # F-8: monthly GeoParquet grew ~2.8KB with the GIS attribute columns
 
 
 @pytest.fixture(scope="module")

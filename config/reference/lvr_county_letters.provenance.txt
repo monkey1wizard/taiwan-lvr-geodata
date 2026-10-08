@@ -1,0 +1,8 @@
+Dataset:       LVR 原始 ZIP 成員檔名首字母與縣市對照（22 個字母）
+Local file:    config/reference/lvr_county_letters.csv
+Columns:       letter,county,county_code
+Origin:        內建於 scripts/export_kepler_csv.py 與 scripts/export_rule_review.py 的 COUNTY_BY_LETTER，
+               2026-10-08 移入本檔（F-8）。縣市名稱一律用「臺」。
+county_code:   取自 lvr_pipeline/addresses/parse.py 的 _COUNTY_CODE（同一組縣市代碼）。
+Validation:    2026-10-08 對照 fast-all58-v3 ingest 快照，每個字母最常見的地址縣市前綴皆與本檔縣市相符。
+Note:          成員檔名格式為 <字母>_lvr_land_<a|b|c>.csv。本檔不得用來推斷檔名以外的任何歸屬。
