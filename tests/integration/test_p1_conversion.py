@@ -294,3 +294,54 @@ def test_exporting_existing_normalized_snapshot_cannot_ignore_cutoff(tmp_path):
         "--cutoff","202512","--work-dir",str(tmp_path/"fresh")],capture_output=True,text=True)
     assert completed.returncode==1 and "Cutoff differs" in json.loads(completed.stdout)["error"]
     assert not (tmp_path/"fresh/converted/current.json").exists()
+
+
+def _mk(path):
+    path.mkdir()
+    return path
+
+
+def _break_quote(tmp_path, batch, names):
+    raw,_=make_source(tmp_path,[{},{"unknown":"MARK"},{},{}],batch=batch,categories=("sales","rent"))
+    path=raw/f"{batch}_lvr_landcsv.zip"
+    with zipfile.ZipFile(path) as archive:
+        texts={name:archive.read(name).decode("utf-8-sig") for name in archive.namelist()}
+    with zipfile.ZipFile(path,"w") as archive:
+        for name,text in texts.items():
+            archive.writestr(name,codecs_bom(text.replace("MARK",'"6號') if name in names else text))
+    return raw,describe_zip(path)
+
+
+def test_member_destination_report_balances_across_batches_and_line_mode(tmp_path):
+    raw1,e1=_break_quote(_mk(tmp_path/"one"),"115q1",{"a_lvr_land_a.csv"})
+    raw2,e2=_break_quote(_mk(tmp_path/"two"),"115q2",set())
+    raw=tmp_path/"raw"; raw.mkdir()
+    for source in list(raw1.glob("*.zip"))+list(raw2.glob("*.zip")):
+        (raw/source.name).write_bytes(source.read_bytes())
+    work=tmp_path/"work"
+    ingested=ingest(raw,{"inputs":[e1,e2]},["115q1","115q2"],work,code_commit=CODE)
+    normalized=normalize(ingested,work,cutoff=202610,rules_path=rules(tmp_path),code_commit=CODE)
+    report=load_snapshot(normalized,"normalize")[1]
+    members=report["member_dispositions"]
+    assert len(members)==4
+    for member in members:
+        assert member["equation"]=="holds"
+        assert member["input_rows"]==member["retained"]+member["excluded"]+member["failed"]
+        assert member["blank_rows"]==0 and member["repeated_headers"]==0 and member["english_rows"]==1
+    assert sum(m["input_rows"] for m in members)==report["input_rows"]==16
+    assert sum(m["failed"] for m in members)==report["failed_rows"]==1
+    broken=[m for m in members if m["line_mode"]]
+    assert [(m["batch"],m["path"],m["failed"]) for m in broken]==[("115q1","a_lvr_land_a.csv",1)]
+    assert report["line_mode_members"]==[{"batch":"115q1","path":"a_lvr_land_a.csv"}]
+    failed=[row for row in dataset(normalized,"disposition") if row["outcome"]=="failed"]
+    assert len(failed)==1 and json.loads(failed[0]["raw_values_json"])[0].endswith('"6號')
+
+
+def test_member_destination_report_rejects_unbalanced_counts():
+    from lvr_pipeline.transactions.normalize import member_dispositions
+    member={"batch":"115q1","path":"x.csv","category":"sales","input_rows":3,"parse_failed_rows":0}
+    ok={("115q1","x.csv"):{"retained":2,"excluded":1,"failed":0,"excluded_by_reason":{"land":1}}}
+    assert member_dispositions([member],ok)[0]["equation"]=="holds"
+    bad={("115q1","x.csv"):{"retained":2,"excluded":0,"failed":0,"excluded_by_reason":{}}}
+    with pytest.raises(ValueError,match="accounting mismatch"):
+        member_dispositions([member],bad)

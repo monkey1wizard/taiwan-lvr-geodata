@@ -141,6 +141,36 @@ def normalize_record(raw: dict, cutoff: int, char_map: dict, token_patterns: lis
     return output
 
 
+def member_dispositions(ingest_members: list[dict], tallies: dict) -> list[dict]:
+    """R06-3 destination report: per (batch, member), input = retained + excluded + failed.
+
+    Blank, repeated-header and English label lines are not input rows; they are
+    listed in their own columns. Raises when any equation fails.
+    """
+    result = []
+    for member in ingest_members:
+        key = (member["batch"], member["path"])
+        tally = tallies.pop(key, None) or {"retained": 0, "excluded": 0, "failed": 0, "excluded_by_reason": {}}
+        entry = {"batch": member["batch"], "path": member["path"], "category": member["category"],
+                 "input_rows": member.get("input_rows"), "retained": tally["retained"],
+                 "excluded": tally["excluded"], "excluded_by_reason": dict(sorted(tally["excluded_by_reason"].items())),
+                 "failed": tally["failed"], "line_mode": member.get("line_mode"),
+                 "blank_rows": member.get("blank_rows"), "repeated_headers": member.get("repeated_headers"),
+                 "english_rows": member.get("english_rows")}
+        if entry["input_rows"] is None:  # ingest snapshot written before R06-3
+            entry["equation"] = "not_checkable_legacy_ingest"
+        else:
+            if entry["input_rows"] != entry["retained"] + entry["excluded"] + entry["failed"]:
+                raise ValueError(f"Member row accounting mismatch: {member['batch']}/{member['path']}")
+            if entry["failed"] != member.get("parse_failed_rows", entry["failed"]):
+                raise ValueError(f"Member failed-row mismatch: {member['batch']}/{member['path']}")
+            entry["equation"] = "holds"
+        result.append(entry)
+    if tallies:
+        raise ValueError("Rows belong to a member absent from the ingest report")
+    return result
+
+
 def normalize(ingest_snapshot: Path, work_dir: Path, *, cutoff: int, rules_path: Path, batch_rows=1024, run_id=None, code_commit=None) -> Path:
     # Validate cutoff even for known-empty source scopes.
     validated_roc_to_tx_yyyymm("0010101", run_cutoff_yyyymm=cutoff)
@@ -163,6 +193,7 @@ def normalize(ingest_snapshot: Path, work_dir: Path, *, cutoff: int, rules_path:
               "retained_rows": 0, "excluded_rows": 0, "failed_rows": 0, "diagnostic_rows": 0,
               "component_rows": 0, "amount_minor_sum": 0}
     artifacts = []
+    tallies = {}
     for item in manifest["artifacts"]:
         if item["schema"] != "ingest-record":
             continue
@@ -173,6 +204,13 @@ def normalize(ingest_snapshot: Path, work_dir: Path, *, cutoff: int, rules_path:
                 output = normalize_record(raw, cutoff, char_map, patterns)
                 outcome = output["disposition"][0]["outcome"]
                 report[outcome + "_rows"] += 1
+                disposition = output["disposition"][0]
+                tally = tallies.setdefault((raw["src_batch"], raw["member_path"]),
+                                           {"retained": 0, "excluded": 0, "failed": 0, "excluded_by_reason": {}})
+                tally[outcome] += 1
+                if outcome == "excluded":
+                    reasons = tally["excluded_by_reason"]
+                    reasons[disposition["reason"]] = reasons.get(disposition["reason"], 0) + 1
                 report["diagnostic_rows"] += len(output["diagnostic"])
                 report["component_rows"] += len(output["address-component"])
                 if output["observation"]:
@@ -190,6 +228,8 @@ def normalize(ingest_snapshot: Path, work_dir: Path, *, cutoff: int, rules_path:
             report["max_buffer_bytes"] = max(report["max_buffer_bytes"], writer.max_buffer_bytes)
     if report["retained_rows"] + report["excluded_rows"] + report["failed_rows"] != report["input_rows"]:
         raise ValueError("Normalization source accounting mismatch")
+    report["member_dispositions"] = member_dispositions(previous["members"], tallies)
+    report["line_mode_members"] = previous.get("line_mode_members", [])
     if sha256_file(rules_path) != rules_hash:
         raise ValueError("Garbled rules changed during normalization")
     for item in manifest["artifacts"]:

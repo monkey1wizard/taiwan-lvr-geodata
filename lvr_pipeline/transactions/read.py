@@ -144,8 +144,14 @@ def ingest(raw_dir: Path, manifest: dict, batches: list[str], work_dir: Path, *,
                             if not required.issubset(header) or not any(field in header for field in FIELD_ALIASES[category]["date"]):
                                 raise ValueError("Required transaction CSV columns missing")
                             mapped = required | {"編號"} | {field for values in FIELD_ALIASES[category].values() for field in values}
+                            # R06-3: per-member row accounting. Blank, repeated-header and English
+                            # label lines are not input rows; they are counted beside them.
+                            counts = {"input_rows": 0, "parse_failed_rows": 0, "blank_rows": 0,
+                                      "repeated_headers": 0, "english_rows": 0}
                             members.append({"path": member["path"], "batch": entry["batch"], "category": category,
-                                            "header": header, "unmapped_columns": sorted(set(header) - mapped)})
+                                            "header": header, "unmapped_columns": sorted(set(header) - mapped),
+                                            "line_mode": line_mode, **counts})
+                            member_counts = members[-1]
                             while True:
                                 start = reader.line_num + 1
                                 try:
@@ -154,9 +160,11 @@ def ingest(raw_dir: Path, manifest: dict, batches: list[str], work_dir: Path, *,
                                     break
                                 if not values:
                                     report["blank_rows"] += 1
+                                    member_counts["blank_rows"] += 1
                                     continue
                                 if values == header:
                                     report["repeated_headers"] += 1
+                                    member_counts["repeated_headers"] += 1
                                     continue
                                 if (len(values) == len(header)
                                     and values[header.index("土地位置建物門牌")].strip().lower() in ENGLISH_ADDRESSES
@@ -164,6 +172,7 @@ def ingest(raw_dir: Path, manifest: dict, batches: list[str], work_dir: Path, *,
                                     and all(not values[header.index(field)].strip().isdigit()
                                             for field in FIELD_ALIASES[category]["date"] if field in header)):
                                     report["english_rows"] += 1
+                                    member_counts["english_rows"] += 1
                                     continue
                                 valid = len(values) == len(header)
                                 row = {"raw_record_id": observation_id(entry["sha256"], member["path"], start),
@@ -175,6 +184,8 @@ def ingest(raw_dir: Path, manifest: dict, batches: list[str], work_dir: Path, *,
                                 writer.add(row)
                                 report["input_rows"] += 1
                                 report["parse_failed_rows"] += not valid
+                                member_counts["input_rows"] += 1
+                                member_counts["parse_failed_rows"] += not valid
                 finally:
                     writer.close()
                 report["max_buffer_rows"] = max(report["max_buffer_rows"], writer.max_buffer_rows)
