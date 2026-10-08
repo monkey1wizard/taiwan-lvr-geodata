@@ -22,6 +22,22 @@ stage produces the codes that existing snapshot data can decide:
   haversine distance ``max_distance_m``.
 - ``tgos_isolated``, ``tgos_response_incomplete``, ``tgos_coordinate_invalid``:
   TGOS results rejected with the matching reason text recorded by ``import-tgos``.
+
+R04-12 codes (``R04_12_CODES``). Pairs need the same county, town, village and
+neighbourhood; they are never merged and each side points at the other:
+
+- ``annex_variant_pair``: doors ``N附M`` and ``N號附M``. ``subdoor_variant_pair``
+  keeps the doors with 之 only.
+- ``named_lane_variant_pair``: same door; one street ends with an extra text lane
+  name (豐年街 and 豐年街豐二巷).
+- ``lane_numeral_variant_pair``: streets that differ only in lane or alley numbers
+  written in Chinese or Arabic numerals (十二巷 and 12巷).
+- ``bracket_note``: the transaction address carries a bracketed note, which takes
+  no part in the key; ``related_json`` lists the notes.
+- ``door_cross_check``: the key's candidates are several doors (village or
+  neighbourhood differ) with different coordinates. These rows go to the manual
+  cross-check list ``cross_check_addresses.parquet`` / ``.csv``, separate from the
+  general review table, and are not listed as ``coordinate_conflict``.
 """
 
 from __future__ import annotations
@@ -30,6 +46,7 @@ import csv
 import hashlib
 import json
 from pathlib import Path
+import re
 import tempfile
 
 import duckdb
@@ -39,8 +56,9 @@ from ..offline.resolve import _find_candidates
 from ..addresses.parse import parse
 from ..storage.parquet import BatchWriter, duckdb_config
 from ..storage.runs import Stage, bindings, digest, load_snapshot, sha256_file
+from ..addresses.identity import cjk_number
 from ..offline.index import _haversine_sql
-from .reconcile import load_p2
+from .reconcile import DOOR_CROSS_CHECK, load_p2
 
 # Reason codes for TGOS results rejected by import-tgos, keyed by its recorded reason text.
 TGOS_REJECTION_CODES = {
@@ -57,6 +75,23 @@ PRODUCED_CODES = (
     "coordinate_conflict",
     *TGOS_REJECTION_CODES.values(),
 )
+R04_12_CODES = (
+    "annex_variant_pair",
+    "named_lane_variant_pair",
+    "lane_numeral_variant_pair",
+    "bracket_note",
+)
+CROSS_CHECK_CODES = ("door_cross_check",)
+# A street that ends with a text lane name (豐年街豐二巷): group 1 is the street without it.
+NAMED_LANE_SQL = "^(.+[路街道段巷弄])([^0-9路街道段巷弄]*[^0-9一二三四五六七八九十百路街道段巷弄][^0-9路街道段巷弄]*巷)$"
+_LANE_NUMERAL = re.compile("([一二三四五六七八九十百]+)(?=[巷弄])")
+
+
+def lane_numeral_signature(locality_road: str) -> str | None:
+    """The street with Chinese lane and alley numbers in Arabic numerals; None when there are none."""
+    if not _LANE_NUMERAL.search(locality_road):
+        return None
+    return _LANE_NUMERAL.sub(lambda m: str(cjk_number(m.group(1)) or m.group(1)), locality_road)
 COLUMNS = [field.name for field in dataset_schema("exception-address")]
 
 
@@ -96,18 +131,40 @@ keys AS (
          json_extract_string(substr(building_key, 4), '$.county') c,
          json_extract_string(substr(building_key, 4), '$.town') t,
          json_extract_string(substr(building_key, 4), '$.locality_road') r,
-         json_extract_string(substr(building_key, 4), '$.door') d
+         json_extract_string(substr(building_key, 4), '$.door') d,
+         json_extract_string(substr(building_key, 4), '$.village') v,
+         json_extract_string(substr(building_key, 4), '$.neighborhood') n
   FROM pool),
+lane_named AS (
+  SELECT *, regexp_extract(r, '{named_lane}', 1) base_r FROM keys
+  WHERE regexp_full_match(r, '{named_lane}')),
+named AS (
+  SELECT a.building_key ka, a.canonical_address aa, b.building_key kb, b.canonical_address ab
+  FROM keys a JOIN lane_named b
+    ON a.c = b.c AND a.t = b.t AND a.d = b.d AND a.v IS NOT DISTINCT FROM b.v AND a.n IS NOT DISTINCT FROM b.n
+   AND a.r = b.base_r),
+numeral AS (
+  SELECT a.building_key ka, a.canonical_address aa, b.building_key kb, b.canonical_address ab
+  FROM lane_signatures s JOIN keys a ON a.building_key = s.building_key
+  JOIN keys b ON a.c = b.c AND a.t = b.t AND a.d = b.d AND a.v IS NOT DISTINCT FROM b.v
+   AND a.n IS NOT DISTINCT FROM b.n AND b.r = s.signature),
 pairs AS (
-  SELECT a.building_key, b.building_key pair_key, b.canonical_address pair_address
+  SELECT CASE WHEN contains(a.d, '附') THEN 'annex_variant_pair' ELSE 'subdoor_variant_pair' END code,
+         a.building_key, b.building_key pair_key, b.canonical_address pair_address
   FROM keys a JOIN keys b
-    ON a.c = b.c AND a.t = b.t AND a.r = b.r
-   AND replace(a.d, '號', '') = replace(b.d, '號', '') AND a.d <> b.d),
+    ON a.c = b.c AND a.t = b.t AND a.r = b.r AND a.v IS NOT DISTINCT FROM b.v AND a.n IS NOT DISTINCT FROM b.n
+   AND replace(a.d, '號', '') = replace(b.d, '號', '') AND a.d <> b.d
+  UNION ALL SELECT 'named_lane_variant_pair', ka, kb, ab FROM named
+  UNION ALL SELECT 'named_lane_variant_pair', kb, ka, aa FROM named
+  UNION ALL SELECT 'lane_numeral_variant_pair', ka, kb, ab FROM numeral
+  UNION ALL SELECT 'lane_numeral_variant_pair', kb, ka, aa FROM numeral),
 coordinates AS (
   SELECT building_key,
          to_json(list(struct_pack(lng := lng, lat := lat, evidence_count := n) ORDER BY lng, lat)) points
   FROM (SELECT building_key, lng, lat, count(*) n FROM evidence WHERE validity = 'valid' GROUP BY ALL)
   GROUP BY building_key),
+cross_keys AS (
+  SELECT building_key, coordinates_json FROM resolution WHERE resolution_basis = '{cross_check}'),
 conflict_points AS (
   SELECT DISTINCT e.building_key, e.lng, e.lat FROM evidence e JOIN result s USING (building_key)
   WHERE e.validity = 'valid' AND s.status = 'conflict'),
@@ -124,9 +181,17 @@ chosen AS (
   UNION ALL
   SELECT 'address_review', b.*, '', NULL FROM base b WHERE b.reason = 'address_review'
   UNION ALL
-  SELECT 'subdoor_variant_pair', b.*, p.pair_key,
+  SELECT p.code, b.*, p.pair_key,
          json_object('pair_building_key', p.pair_key, 'pair_address', p.pair_address)::VARCHAR
   FROM base b JOIN pairs p USING (building_key)
+  UNION ALL
+  SELECT 'bracket_note', b.*, '',
+         json_object('notes', regexp_extract_all(b.normalized_address, '\([^()]*\)|（[^（）]*）'))::VARCHAR
+  FROM base b WHERE regexp_matches(b.normalized_address, '\([^()]*\)|（[^（）]*）')
+  UNION ALL
+  SELECT 'door_cross_check', b.*, '', json_object('coordinates', k.coordinates_json::JSON)::VARCHAR
+  FROM base b JOIN result s USING (building_key) JOIN cross_keys k USING (building_key)
+  WHERE s.status = 'conflict'
   UNION ALL
   SELECT 'offline_unmatched', b.*, '', NULL
   FROM base b JOIN result s USING (building_key) WHERE s.status = 'unmatched'
@@ -135,7 +200,7 @@ chosen AS (
          json_object('coordinates', c.points, 'max_distance_m', d.max_distance_m)::VARCHAR
   FROM base b JOIN result s USING (building_key) LEFT JOIN coordinates c USING (building_key)
   LEFT JOIN spans d USING (building_key)
-  WHERE s.status = 'conflict'
+  WHERE s.status = 'conflict' AND building_key NOT IN (SELECT building_key FROM cross_keys)
   {tgos}
 )
 SELECT p.reason_code, p.component_id, p.disc, p.raw_record_id, o.src_batch, o.category, o.raw_address,
@@ -195,6 +260,7 @@ def build_review(
     binding = bindings(
         "review",
         {"reason_codes": list(EXCEPTION_REASON_CODES), "produced_codes": list(PRODUCED_CODES),
+         "r04_12_codes": list(R04_12_CODES), "cross_check_codes": list(CROSS_CHECK_CODES),
          "tgos_rejection_codes": TGOS_REJECTION_CODES, "prior_review": prior_review is not None,
          "final_status_from_tgos": tgos_state is not None},
         hashes,
@@ -205,12 +271,15 @@ def build_review(
     roads = _roads_by_county(descriptor)
     writer = BatchWriter(stage.build / "exception_addresses.parquet", "exception-address")
     csv_path = stage.build / "exception_addresses.csv"
+    # R04-12: the manual cross-check list is a separate file with the same columns.
+    cross_writer = BatchWriter(stage.build / "cross_check_addresses.parquet", "exception-address")
+    cross_csv_path = stage.build / "cross_check_addresses.csv"
     reason_rows = {code: 0 for code in EXCEPTION_REASON_CODES}
     candidate_cache: dict[tuple[str, str], list[str]] = {}
     with tempfile.TemporaryDirectory(prefix="review-", dir=stage.build) as spill:
         with duckdb.connect(config=duckdb_config(spill)) as db, csv_path.open(
             "w", encoding="utf-8-sig", newline=""
-        ) as stream:
+        ) as stream, cross_csv_path.open("w", encoding="utf-8-sig", newline="") as cross_stream:
             db.read_parquet(_paths(state, state_manifest, "address-occurrence")).create_view("occurrence")
             db.read_parquet(_paths(state, state_manifest, "address-pool")).create_view("pool")
             # With a TGOS state, its address status and evidence are the final ones.
@@ -220,6 +289,24 @@ def build_review(
             db.read_parquet(_paths(status_snapshot, status_manifest, "address-result")).create_view("result")
             db.read_parquet(_paths(status_snapshot, status_manifest, "offline-row")).create_view("evidence")
             db.read_parquet(_paths(converted, converted_manifest, "observation")).create_view("observations")
+            resolution_paths = _paths(status_snapshot, status_manifest, "coordinate-resolution")
+            if resolution_paths:
+                db.read_parquet(resolution_paths).create_view("resolution")
+            else:
+                db.execute("CREATE TEMP TABLE resolution (building_key VARCHAR, resolution_basis VARCHAR, "
+                           "coordinates_json VARCHAR)")
+            db.execute("CREATE TEMP TABLE lane_signatures (building_key VARCHAR, signature VARCHAR)")
+            signatures = []
+            for key, road in db.execute(
+                "SELECT building_key, json_extract_string(substr(building_key, 4), '$.locality_road') FROM pool "
+                "WHERE regexp_matches(json_extract_string(substr(building_key, 4), '$.locality_road'), "
+                "'[一二三四五六七八九十百]+[巷弄]') ORDER BY building_key"
+            ).fetchall():
+                signature = lane_numeral_signature(road)
+                if signature is not None and signature != road:
+                    signatures.append((key, signature))
+            if signatures:
+                db.executemany("INSERT INTO lane_signatures VALUES (?, ?)", signatures)
             tgos_sql = ""
             if tgos_manifest is not None:
                 db.read_parquet(_paths(tgos_state, tgos_manifest, "tgos-result")).create_view("tgos_result")
@@ -229,7 +316,8 @@ def build_review(
                 tgos_sql = _TGOS_SQL
             db.execute(
                 "CREATE TEMP TABLE picked AS "
-                + _SQL.format(tgos=tgos_sql, distance=_haversine_sql("a", "b"))
+                + _SQL.format(tgos=tgos_sql, distance=_haversine_sql("a", "b"), cross_check=DOOR_CROSS_CHECK,
+                              named_lane=NAMED_LANE_SQL)
             )
             if prior_paths:
                 db.read_parquet(prior_paths).create_view("prior")
@@ -247,6 +335,8 @@ def build_review(
             names = [x[0] for x in cursor.description]
             output = csv.writer(stream)
             output.writerow(COLUMNS)
+            cross_output = csv.writer(cross_stream)
+            cross_output.writerow(COLUMNS)
             while batch := cursor.fetchmany(1024):
                 for values in batch:
                     row = dict(zip(names, values))
@@ -264,13 +354,19 @@ def build_review(
                             ensure_ascii=False, separators=(",", ":"),
                         )
                     reason_rows[row["reason_code"]] += 1
-                    writer.add(row)
-                    output.writerow(["" if row[name] is None else row[name] for name in COLUMNS])
+                    cross = row["reason_code"] in CROSS_CHECK_CODES
+                    (cross_writer if cross else writer).add(row)
+                    (cross_output if cross else output).writerow(
+                        ["" if row[name] is None else row[name] for name in COLUMNS]
+                    )
             distinct = dict(
                 db.execute("SELECT reason_code, count(DISTINCT normalized_address) FROM picked GROUP BY 1").fetchall()
             )
     writer.close()
+    cross_writer.close()
     stage.store.add(stage.id, "exception_addresses.csv", csv_path, format_name="csv", row_count=writer.row_count)
+    stage.store.add(stage.id, "cross_check_addresses.csv", cross_csv_path, format_name="csv",
+                    row_count=cross_writer.row_count)
     report = {
         "converted_snapshot_sha256": converted_hash,
         "offline_state_manifest_sha256": hashes[1],
@@ -282,9 +378,13 @@ def build_review(
         "reason_counts": reason_rows,
         "reason_distinct_addresses": {code: distinct.get(code, 0) for code in EXCEPTION_REASON_CODES},
         "csv_bytes": csv_path.stat().st_size,
-        "dataset_counts": {"exception-address": writer.row_count},
+        "cross_check_rows": cross_writer.row_count,
+        "cross_check_csv_bytes": cross_csv_path.stat().st_size,
+        # Both files use the exception-address columns; the count covers both.
+        "dataset_counts": {"exception-address": writer.row_count + cross_writer.row_count},
     }
     return stage.finish(
-        [("exception_addresses.parquet", writer.path, "exception-address", writer.row_count)],
+        [("exception_addresses.parquet", writer.path, "exception-address", writer.row_count),
+         ("cross_check_addresses.parquet", cross_writer.path, "exception-address", cross_writer.row_count)],
         report,
     )

@@ -13,12 +13,13 @@ from datetime import date
 from pathlib import Path
 
 from .results.reconcile import (
+    DOOR_CROSS_CHECK,
     EXCEEDS_TOLERANCE,
     WITHIN_TOLERANCE,
     load_p2,
     resolution_row,
 )
-from .addresses.identity import building_key_v2
+from .addresses.identity import building_key_v2, door_parts, same_door
 from .transactions.normalize import normalize_address
 from .storage.parquet import BatchWriter, rows
 from .storage.runs import Stage, bindings, canonical_json, digest
@@ -560,19 +561,37 @@ def _rebuild_resolution(
     evidence_rows: list[dict],
     source_commit: str,
     tolerance_m: float | None = None,
+    door_rule: str | None = None,
 ):
     """Rebuild address status with the offline adoption rule (R05-4).
 
     ``tolerance_m`` is the state's ``coordinate_tolerance_m``. States built
     before R05-4 have none; for them several coordinates stay a conflict and
     no coordinate-resolution rows are returned (None).
+
+    ``door_rule`` is the state's ``door_rule`` (R04-12). With it, each address
+    row's door (village, neighbourhood) comes from the key of its own address
+    text, and coordinates from several doors are not adopted. TGOS results name
+    the queried key and add no door. States built before R04-12 have none and
+    keep the earlier behaviour.
     """
     coordinates = {}
+    doors = {}
+    door_cache = {}
     for row in evidence_rows:
         if row["validity"] == "valid" and row["building_key"]:
+            point = (row["lng"], row["lat"])
             coordinates.setdefault(row["building_key"], {}).setdefault(
-                (row["lng"], row["lat"]), []
+                point, []
             ).append(row["evidence_id"])
+            if door_rule is not None:
+                found = doors.setdefault(row["building_key"], {}).setdefault(point, set())
+                if row["source_kind"] != "tgos_result":
+                    text = row["normalized_address"]
+                    if text not in door_cache:
+                        own = building_key_v2(text)
+                        door_cache[text] = door_parts(own)[1:] if own else (None, None)
+                    found.add(door_cache[text])
     address_rows = []
     unmatched = []
     resolutions = [] if tolerance_m is not None else None
@@ -590,7 +609,15 @@ def _rebuild_resolution(
                 row["key_version"],
                 row["building_key"],
                 {
-                    key: {"evidence_count": len(ids), "evidence_id": min(ids)}
+                    key: {
+                        "evidence_count": len(ids),
+                        "evidence_id": min(ids),
+                        **(
+                            {"doors": sorted(doors[row["building_key"]][key], key=str)}
+                            if door_rule is not None
+                            else {}
+                        ),
+                    }
                     for key, ids in points.items()
                 },
                 tolerance_m,
@@ -680,8 +707,9 @@ def import_tgos(
                 if not target_key:
                     raise ValueError("TGOS response is not a complete address")
                 # A success flag or a shared district does not prove the same
-                # door number; only an identical address identity is adopted.
-                if target_key != query["building_key"]:
+                # door number; only the same door is adopted. R04-12: a village or
+                # neighbourhood the query writes must not differ in the response.
+                if not same_door(query["building_key"], target_key):
                     raise ValueError("TGOS response address differs from submitted address")
         except (TypeError, ValueError) as exc:
             coordinate = None
@@ -739,6 +767,7 @@ def import_tgos(
         evidence,
         report["address_source_commit"],
         report.get("coordinate_tolerance_m"),
+        report.get("door_rule"),
     )
     before = report["status_counts"]
     return _write_state(
@@ -764,7 +793,16 @@ def import_tgos(
                     "coordinate_resolution_basis_counts": {
                         basis: sum(r["resolution_basis"] == basis for r in resolutions)
                         for basis in (WITHIN_TOLERANCE, EXCEEDS_TOLERANCE)
-                    }
+                    },
+                    **(
+                        {
+                            "door_cross_check_keys": sum(
+                                r["resolution_basis"] == DOOR_CROSS_CHECK for r in resolutions
+                            )
+                        }
+                        if report.get("door_rule") is not None
+                        else {}
+                    ),
                 }
                 if resolutions is not None
                 else {}

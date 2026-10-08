@@ -12,6 +12,16 @@ Coordinate adoption rule (R05-4, owner decision 2026-10-08):
   averaged and the first row is never taken.
 - Any pair above the tolerance: conflict, not located.
 
+Door identity (R04-12, owner decision 2026-10-09): the candidates of a pool key
+are the address rows with the same door signature (county, town, street or
+place, door) whose village and neighbourhood agree with the ones the pool key
+writes. Each distinct (village, neighbourhood) among the candidates is one door.
+One distinct coordinate is located even when it comes from several doors. Several
+distinct coordinates from one door follow the tolerance rule above. Several
+distinct coordinates from several doors are not located (status ``conflict``,
+basis ``door_cross_check``); the tolerance is never applied between doors, and
+the key goes to the manual cross-check list of the review stage.
+
 The tolerance comes from ``coordinate_tolerance_m`` in the pipeline config and
 is part of the stage bindings, so changing it makes the stage not reusable.
 """
@@ -24,6 +34,8 @@ import tomllib
 
 import duckdb
 
+from ..addresses.identity import door_signature_sql, sub_identity_sql
+from ..contracts.schemas import dataset_schema
 from ..offline.index import EARTH_RADIUS_M
 from ..storage.parquet import BatchWriter, duckdb_config
 from ..storage.runs import ROOT, Stage, bindings, digest
@@ -33,6 +45,15 @@ from ..storage.runs import sha256_file
 DEFAULT_CONFIG = ROOT / "config" / "pipeline.example.toml"
 WITHIN_TOLERANCE = "within_tolerance_medoid"
 EXCEEDS_TOLERANCE = "exceeds_tolerance"
+DOOR_CROSS_CHECK = "door_cross_check"
+DOOR_RULE = "village_neighborhood_subid_v1"
+
+
+def projected_evidence_id(evidence_id: str, building_key: str) -> str:
+    """Identifier of an address row projected onto one pool key (SQL: sha256(id || chr(31) || key))."""
+    import hashlib
+
+    return hashlib.sha256(f"{evidence_id}\x1f{building_key}".encode("utf-8")).hexdigest()
 
 
 def load_coordinate_tolerance(config: Path | None = None) -> float:
@@ -97,12 +118,33 @@ def adopt_coordinates(points, tolerance_m: float | None) -> dict:
     }
 
 
+def door_list(doors) -> list[dict]:
+    """Sorted, distinct doors as JSON objects; a missing part sorts first."""
+    unique = {(village, neighborhood) for village, neighborhood in doors}
+    return [
+        {"village": village, "neighborhood": neighborhood}
+        for village, neighborhood in sorted(
+            unique, key=lambda d: (d[0] is not None, d[0] or "", d[1] is not None, d[1] or "")
+        )
+    ]
+
+
 def resolution_row(key_version, building_key, points: dict, tolerance_m: float) -> dict:
     """The coordinate-resolution row of a key with several distinct coordinates.
 
-    ``points`` maps (lng, lat) to {"evidence_count": rows, "evidence_id": smallest id}.
+    ``points`` maps (lng, lat) to {"evidence_count": rows, "evidence_id": smallest id}
+    and, in states built with the door rule, "doors": [(village, neighborhood), ...].
     """
     adoption = adopt_coordinates(points, tolerance_m)
+    door_aware = any("doors" in value for value in points.values())
+    doors = {tuple(door) for value in points.values() for door in value.get("doors", [])}
+    if door_aware and len(doors) > 1:
+        adoption = {
+            **adoption,
+            "status": "conflict",
+            "resolution_basis": DOOR_CROSS_CHECK,
+            "representative": None,
+        }
     point = adoption["representative"]
     # The medoid's own (lng, lat); None when the key is a conflict.
     representative_lng, representative_lat = point if point else (None, None)
@@ -126,6 +168,11 @@ def resolution_row(key_version, building_key, points: dict, tolerance_m: float) 
                     "evidence_count": points[(lng, lat)]["evidence_count"],
                     "evidence_id": points[(lng, lat)]["evidence_id"],
                     "distance_sum_m": total,
+                    **(
+                        {"doors": door_list(points[(lng, lat)]["doors"])}
+                        if door_aware
+                        else {}
+                    ),
                 }
                 for (lng, lat), total in adoption["distance_sums"]
             ],
@@ -188,6 +235,7 @@ def resolve_offline(
             "coordinate_equality": "exact_float64",
             "coordinate_rule": "pairwise_haversine_medoid",
             "coordinate_tolerance_m": tolerance,
+            "door_rule": DOOR_RULE,
             "earth_radius_m": EARTH_RADIUS_M,
             "prior_state": bool(prior_state),
         },
@@ -208,6 +256,7 @@ def resolve_offline(
         name: 0 for name in ["located", "conflict", "unmatched", "outside_scope"]
     }
     basis_counts = {WITHIN_TOLERANCE: 0, EXCEEDS_TOLERANCE: 0}
+    cross_check = 0
     with tempfile.TemporaryDirectory(prefix="state-", dir=stage.build) as spill:
         with duckdb.connect(
             config=duckdb_config(spill)
@@ -218,20 +267,38 @@ def resolve_offline(
             db.read_parquet(str(Path(index_path) / "offline_rows.parquet")).create_view(
                 "evidence"
             )
-            cursor = db.execute(
-                "SELECT e.* FROM evidence e JOIN pool p USING(building_key) ORDER BY e.evidence_id"
+            # Candidates of each pool key: same door signature, and the village and
+            # neighbourhood the pool key writes. Each candidate row is projected onto the
+            # pool key so evidence_id stays unique when one row supports several keys.
+            db.execute(
+                f"""CREATE TEMP TABLE projected AS
+      WITH p AS (SELECT building_key, {door_signature_sql("building_key")} sig,
+                        {sub_identity_sql("building_key", "village")} v,
+                        {sub_identity_sql("building_key", "neighborhood")} n FROM pool),
+           e AS (SELECT *, {door_signature_sql("building_key")} sig,
+                        {sub_identity_sql("building_key", "village")} v,
+                        {sub_identity_sql("building_key", "neighborhood")} n
+                 FROM evidence WHERE building_key IS NOT NULL)
+      SELECT sha256(e.evidence_id || chr(31) || p.building_key) evidence_id, e.key_version,
+             p.building_key, e.normalized_address, e.county_code, e.town_code, e.lng, e.lat,
+             e.validity, e.source_kind, e.source_ref, e.input_sha256, e.source_row_number,
+             e.v door_village, e.n door_neighborhood
+      FROM p JOIN e ON e.sig = p.sig AND (p.v IS NULL OR e.v = p.v) AND (p.n IS NULL OR e.n = p.n)"""
             )
-            # Column names of the cursor, not a row choice.
-            columns = [x[0] for x in cursor.description]
+            columns = [field.name for field in dataset_schema("offline-row")]
+            cursor = db.execute(
+                f"SELECT {','.join(columns)} FROM projected ORDER BY evidence_id"
+            )
             while batch := cursor.fetchmany(1024):
                 for values in batch:
                     evidence.add(dict(zip(columns, values)))
             evidence.close()
             query = """WITH coordinates AS (
-      SELECT building_key,lng,lat,min(evidence_id) evidence_id,count(*) evidence_count
-      FROM evidence WHERE validity='valid' GROUP BY building_key,lng,lat),
+      SELECT building_key,lng,lat,min(evidence_id) evidence_id,count(*) evidence_count,
+        list(DISTINCT [door_village, door_neighborhood]) doors
+      FROM projected WHERE validity='valid' GROUP BY building_key,lng,lat),
      summaries AS (SELECT building_key,count(*) coordinate_count,sum(evidence_count) evidence_count,
-       list(struct_pack(lng:=lng,lat:=lat,n:=evidence_count,eid:=evidence_id) ORDER BY lng,lat) points
+       list(struct_pack(lng:=lng,lat:=lat,n:=evidence_count,eid:=evidence_id,doors:=doors) ORDER BY lng,lat) points
        FROM coordinates GROUP BY building_key)
      SELECT p.key_version,p.building_key,p.canonical_address,p.county_code,p.town_code,p.address_family,
        coalesce(s.coordinate_count,0),coalesce(s.evidence_count,0),s.points
@@ -263,13 +330,17 @@ def resolve_offline(
                                 (p["lng"], p["lat"]): {
                                     "evidence_count": p["n"],
                                     "evidence_id": p["eid"],
+                                    "doors": [tuple(d) for d in p["doors"]],
                                 }
                                 for p in points
                             },
                             tolerance,
                         )
                         resolutions.add(detail)
-                        basis_counts[detail["resolution_basis"]] += 1
+                        if detail["resolution_basis"] == DOOR_CROSS_CHECK:
+                            cross_check += 1
+                        else:
+                            basis_counts[detail["resolution_basis"]] += 1
                         status = detail["status"]
                         lng, lat, eid = detail["lng"], detail["lat"], detail["evidence_id"]
                     else:
@@ -311,6 +382,8 @@ def resolve_offline(
         "coordinate_rule": "pairwise_haversine_medoid",
         "coordinate_tolerance_m": tolerance,
         "coordinate_resolution_basis_counts": basis_counts,
+        "door_rule": DOOR_RULE,
+        "door_cross_check_keys": cross_check,
         "tgos_started": False,
         "offline_source": index_report,
         "dataset_counts": {

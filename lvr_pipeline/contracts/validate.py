@@ -101,10 +101,11 @@ def validate_relations(observations: list[dict], components: list[dict], exclusi
 
 def _validate_coordinate_resolution(row):
     """Recompute the R05-4 adoption rule from the listed coordinates."""
-    from ..results.reconcile import EXCEEDS_TOLERANCE, WITHIN_TOLERANCE, adopt_coordinates
+    from ..results.reconcile import (DOOR_CROSS_CHECK, EXCEEDS_TOLERANCE, WITHIN_TOLERANCE,
+                                     adopt_coordinates)
 
-    basis = {"located": WITHIN_TOLERANCE, "conflict": EXCEEDS_TOLERANCE}
-    if basis.get(row["status"]) != row["resolution_basis"]:
+    basis = {"located": {WITHIN_TOLERANCE}, "conflict": {EXCEEDS_TOLERANCE, DOOR_CROSS_CHECK}}
+    if row["resolution_basis"] not in basis.get(row["status"], set()):
         raise ValueError("Invalid coordinate resolution status or basis")
     if row["coordinate_count"] < 2 or row["evidence_count"] < row["coordinate_count"]:
         raise ValueError("Invalid coordinate resolution counts")
@@ -118,6 +119,16 @@ def _validate_coordinate_resolution(row):
     if sum(item["evidence_count"] for item in listed) != row["evidence_count"]:
         raise ValueError("Coordinate resolution list differs from counts")
     adoption = adopt_coordinates(points, row["tolerance_m"])
+    # R04-12: coordinates from several doors (village, neighbourhood) are never adopted.
+    if any("doors" in item for item in listed):
+        doors = {(door["village"], door["neighborhood"]) for item in listed for door in item.get("doors", [])}
+        if len(doors) > 1:
+            adoption = {**adoption, "status": "conflict", "representative": None,
+                        "resolution_basis": DOOR_CROSS_CHECK}
+    elif row["resolution_basis"] == DOOR_CROSS_CHECK:
+        raise ValueError("Door cross-check needs the listed doors")
+    if adoption["resolution_basis"] != row["resolution_basis"]:
+        raise ValueError("Coordinate resolution differs from adoption rule")
     representative = adoption["representative"]
     if (
         adoption["status"] != row["status"]

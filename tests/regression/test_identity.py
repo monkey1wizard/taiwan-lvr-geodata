@@ -28,7 +28,6 @@ def _assert_different(a, b):
 SAME = [
     ("variant_tai", "台北市大安區和平東路二段100號", R + "100號"),
     ("floor_suffix", R + "100號", R + "100號5樓"),
-    ("same_road_other_li_lin", "臺北市大安區仁愛里3鄰和平東路二段100號", "臺北市大安區建安里5鄰和平東路二段100號"),
 ]
 DIFFERENT = [
     ("sub_door_10_vs_10_1", R + "10號", R + "10之1號"),
@@ -37,6 +36,9 @@ DIFFERENT = [
     ("door_64_vs_62", R + "64號", R + "62號"),
     ("other_road_same_door", "新北市三峽區中山路10號", "新北市三峽區民權街10號"),
     ("no_road_other_village", "嘉義縣竹崎鄉文峰村1號", "嘉義縣竹崎鄉內樹村1號"),
+    # R04-12 (owner rule 2026-10-09): a different village or neighbourhood is a different door.
+    # Until R04-12 this pair was asserted to be the same key.
+    ("same_road_other_li_lin", "臺北市大安區仁愛里3鄰和平東路二段100號", "臺北市大安區建安里5鄰和平東路二段100號"),
 ]
 
 

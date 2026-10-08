@@ -8,7 +8,7 @@ import re
 import duckdb
 
 from .addresses import identity
-from .addresses.identity import building_key_v2
+from .addresses.identity import building_key_v2, door_parts, door_signature_sql, sub_identity_sql
 from .offline.index import load_pinned_source
 from .storage.parquet import BatchWriter, duckdb_config, rows
 from .storage.runs import Stage, bindings, digest, load_snapshot
@@ -47,6 +47,14 @@ def build_pool(
         probe_db.read_parquet(
             str(Path(index_path) / "offline_rows.parquet")
         ).create_view("evidence")
+        # R04-12: candidates are matched by door signature and the written village and
+        # neighbourhood, as in resolve_offline.
+        probe_db.execute(
+            f"""CREATE TEMP TABLE doors AS SELECT {door_signature_sql('building_key')} sig,
+                   {sub_identity_sql('building_key', 'village')} v,
+                   {sub_identity_sql('building_key', 'neighborhood')} n, lng, lat
+               FROM evidence WHERE validity='valid' AND building_key IS NOT NULL ORDER BY sig"""
+        )
         for item in descriptor["roads"]:
             county, road = item["path"].split("/")[1][:-4].split("-", 1)
             roads.setdefault(county, set()).add(road)
@@ -87,10 +95,14 @@ def build_pool(
                         candidate_key = building_key_v2(
                             names.canonicalize(candidate)[0]
                         )
+                        if candidate_key is None:
+                            return False
+                        signature, village, neighborhood = door_parts(candidate_key)
                         return (
                             probe_db.execute(
-                                "SELECT count(*) FROM (SELECT lng,lat FROM evidence WHERE building_key=? AND validity='valid' GROUP BY lng,lat)",
-                                [candidate_key],
+                                "SELECT count(*) FROM (SELECT lng,lat FROM doors WHERE sig=? "
+                                "AND (?::VARCHAR IS NULL OR v=?) AND (?::VARCHAR IS NULL OR n=?) GROUP BY lng,lat)",
+                                [signature, village, village, neighborhood, neighborhood],
                             ).fetchone()[0]
                             == 1
                         )

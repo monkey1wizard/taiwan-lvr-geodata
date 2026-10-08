@@ -292,6 +292,12 @@ EXCEPTION_REASON_CODES = (
     "address_review",
     "tgos_response_incomplete",
     "tgos_coordinate_invalid",
+    # R04-12
+    "annex_variant_pair",
+    "named_lane_variant_pair",
+    "lane_numeral_variant_pair",
+    "bracket_note",
+    "door_cross_check",
 )
 OFFLINE_SCHEMAS["exception-address"] = _schema(
     "exception-address",

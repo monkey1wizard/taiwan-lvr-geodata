@@ -79,8 +79,9 @@ def test_numbered_scripts_load_by_path(filename):
     spec.loader.exec_module(module)
 
 
-def _v2(county, town, road, door):
-    return "v2:" + json.dumps({"county": county, "door": door, "locality_road": road, "town": town},
+def _v2(county, town, road, door, **sub_identity):
+    # R04-12: a written village and neighbourhood are separate key fields.
+    return "v2:" + json.dumps({"county": county, "door": door, "locality_road": road, "town": town, **sub_identity},
                               ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
@@ -93,8 +94,9 @@ BUILDING_KEY_V2_CASES = [
     ("臺中市西屯區臺灣大道三段99號之1", _v2("66", "西屯區", "臺灣大道三段", "99號之1")),
     ("高雄市前鎮區中山二路5號", _v2("64", "前鎮區", "中山二路", "5")),
     ("桃園市中壢區中正路100巷3弄2號", _v2("68", "中壢區", "中正路100巷3弄", "2")),
-    ("嘉義縣民雄鄉雙福村12鄰10號", _v2("10010", "民雄鄉", "雙福村12鄰", "10")),
-    ("宜蘭縣礁溪鄉大忠村五峰路1號", _v2("10002", "礁溪鄉", "五峰路", "1")),
+    # R04-12 changed these two: before, 雙福村12鄰 was locality text and 大忠村 was dropped.
+    ("嘉義縣民雄鄉雙福村12鄰10號", _v2("10010", "民雄鄉", "", "10", village="雙福村", neighborhood="12")),
+    ("宜蘭縣礁溪鄉大忠村五峰路1號", _v2("10002", "礁溪鄉", "五峰路", "1", village="大忠村")),
     ("臺北市士林區天母二路13巷12弄9號", _v2("63", "士林區", "天母二路13巷12弄", "9")),
     ("臺北市大安區和平東路二段106號一樓", _v2("63", "大安區", "和平東路二段", "106")),
     ("新北市新莊區中正路2號3樓之4", _v2("65", "新莊區", "中正路", "2")),
