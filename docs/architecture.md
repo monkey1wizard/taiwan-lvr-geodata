@@ -602,7 +602,7 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
    $LVR verify-tgos-state --input data/tmp/work/fast2b/tgos-state/snapshots/<匯入後的快照>
    ```
 
-6. 重新輸出：以匯入後的快照作 `--state`，使用新的 `--run-id` 與新的 `--output-dir`，重跑 `package-output` 與 `verify-output`（見「全量循環 5」）。不要覆寫 `fast2-output-b`。
+6. 重新輸出：以匯入後的快照作 `--state`，使用新的 `--run-id` 與新的 `--output-dir`，重跑 `package-output` 與 `verify-output`（見「全量循環 5」）。不要覆寫既有的輸出版本，例如 `fast2-output-d`。
 7. 產生再下一批時，不能在 `data/tmp/work/fast2b` 內從離線狀態重新開始（規則 2）。目前沒有在已有 TGOS 狀態的工作目錄內產生下一批的命令；程式只支援從離線狀態加 `--ledger` 在新的工作目錄重建（例如 `data/tmp/work/fast2c`）。這個流程對下一批尚未實測。
 
 ## 資料規格
