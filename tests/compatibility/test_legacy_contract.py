@@ -41,6 +41,8 @@ SUBCOMMANDS = {
     "build-review",
     # R06-2 依卡片新增 verify-sources 與 inventory-sources，規劃者核准。
     "verify-sources", "inventory-sources",
+    # R06-4 依卡片新增 run-full，卡片預期改動。
+    "run-full",
 }
 
 
@@ -61,8 +63,9 @@ def test_retained_symbols_exist(module_name):
 # R05-2 依卡片新增 audit-address-source，規劃者核准。
 # R05-8 依卡片新增 build-review，規劃者預先核准由 24 改為 25。
 # R06-2 依卡片新增 verify-sources、inventory-sources，規劃者核准，由 25 改為 27。
-def test_cli_subcommand_set_is_exactly_27():
-    assert len(SUBCOMMANDS) == 27
+# R06-4 依卡片新增 run-full，卡片預期改動，由 27 改為 28。
+def test_cli_subcommand_set_is_exactly_28():
+    assert len(SUBCOMMANDS) == 28
     result = subprocess.run([sys.executable, "-m", "lvr_pipeline", "--help"], cwd=ROOT, capture_output=True,
                             text=True, encoding="utf-8", check=True)
     match = re.search(r"\{([a-z0-9,\-]+)\}", result.stdout)

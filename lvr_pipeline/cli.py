@@ -23,6 +23,23 @@ def _add_offline_and_output_commands(sub):
     p = sub.add_parser("inventory-sources", help="Write a raw manifest from a directory of raw ZIPs")
     p.add_argument("--raw-dir", type=Path, default=Path("data/raw"))
     p.add_argument("--output", type=Path, required=True)
+    p = sub.add_parser("run-full", help="Full offline run over every manifest batch, committed stage by stage (R06-4)")
+    p.add_argument("--run-id", required=True)
+    p.add_argument("--cutoff", type=int, required=True)
+    p.add_argument("--address-dir", type=Path, required=True)
+    p.add_argument("--runs-root", type=Path, help="Run directories root (default data/runs)")
+    p.add_argument("--raw-dir", type=Path, default=Path("data/raw"))
+    p.add_argument("--manifest", type=Path, default=Path("config/sources/raw_manifest.json"))
+    p.add_argument(
+        "--address-source", type=Path, default=Path("config/sources/address_source.json")
+    )
+    p.add_argument("--garbled-rules", type=Path, default=Path("config/rules/character-fixes.csv"))
+    p.add_argument(
+        "--config",
+        type=Path,
+        help="Pipeline TOML with coordinate_tolerance_m and suspended_counties (default config/pipeline.example.toml)",
+    )
+    p.add_argument("--batch-rows", type=int, default=1024)
     p = sub.add_parser("build-offline-index")
     p.add_argument("--address-dir", type=Path, required=True)
     p.add_argument(
