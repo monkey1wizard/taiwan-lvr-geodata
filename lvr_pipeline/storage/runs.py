@@ -254,7 +254,8 @@ class SnapshotStore:
             from .parquet import verify_relations
             report_path = directory / "quality.json"
             report = _read_json(report_path) if report_path.exists() else {}
-            verify_relations(parquet_groups, source_scope=report.get("source_sha256"), cutoff=report.get("cutoff"))
+            verify_relations(parquet_groups, source_scope=report.get("source_sha256"), cutoff=report.get("cutoff"),
+                             uncarried_queries=report.get("tgos_uncarried_queries"))
         for name, rows in rows_by_schema.items():
             validate_rows(rows, name)
         if "address-component" in rows_by_schema:

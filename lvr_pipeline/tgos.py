@@ -31,6 +31,9 @@ from .storage.runs import sha256_file
 from .contracts.validate import TAIWAN_BOUNDS, within_taiwan_bounds  # noqa: F401  TAIWAN_BOUNDS kept as tgos.TAIWAN_BOUNDS
 
 DAILY_LIMIT = 10_000
+# R09-0: carried queries with no key under the current rules stay in the report, not in tgos-query.
+UNCARRIED = "tgos_uncarried_queries"
+UNCARRIED_REASON = "no_building_key_current_rules"
 DYNAMIC_SCHEMAS = {"tgos-batch", "tgos-query", "tgos-result", "alias-event"}
 TGOS_CSV_FIELDS = ["id", "Address", "Response_Address", "Response_X", "Response_Y"]
 
@@ -103,6 +106,7 @@ def _write_state(
     unmatched_rows: list[dict] | None = None,
     resolution_rows: list[dict] | None = None,
     extra_report: dict | None = None,
+    extra_inputs: list[str] | None = None,
     run_id: str | None = None,
 ):
     manifest, report, source_stage = load_state(source)
@@ -111,7 +115,8 @@ def _write_state(
     binding = bindings(
         "tgos-state",
         {"action": action, "daily_limit": DAILY_LIMIT},
-        [source_hash, digest(batches), digest(queries), digest(results), digest(alias_events)],
+        [source_hash, digest(batches), digest(queries), digest(results), digest(alias_events),
+         *(extra_inputs or [])],
     )
     stage = Stage(Path(work_dir) / "tgos-state", "tgos-state", binding, run_id)
     if stage.reused:
@@ -318,7 +323,7 @@ def repair_prepared_exchange(
     return state, exchange
 
 
-def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict], int]:
+def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict], int, list[dict]]:
     """Carry sent batches and queries so they are not resent.
 
     Earlier results, evidence and aliases are dropped. Completed batches go
@@ -330,13 +335,20 @@ def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict], int]:
     fingerprints recomputed, so a rule change cannot hide an address already
     sent or leave a key the address pool no longer contains. The old snapshot
     is not modified. The third value is how many queries changed key.
+
+    R09-0 (owner decision 2026-10-09, option A): a query with no key under the
+    current rules is not carried into tgos-query, whose key is not nullable.
+    It is returned in the fourth value with the ledger's own values, for the
+    state report and the review table. Queries already set aside in the
+    ledger's report are carried the same way.
     """
-    manifest, _, stage_name = load_state(ledger)
+    manifest, ledger_report, stage_name = load_state(ledger)
     if stage_name != "tgos-state":
         raise ValueError("TGOS ledger must be a TGOS state")
     paths = _artifact_paths(ledger, manifest)
     batches = _table(paths.get("tgos-batch"))
     queries = _table(paths.get("tgos-query"))
+    uncarried = [dict(row) for row in ledger_report.get(UNCARRIED, [])]
     reopened = set()
     for batch in batches:
         if batch["status"] == "completed":
@@ -347,21 +359,36 @@ def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict], int]:
         if query["batch_id"] in reopened:
             query["status"] = "submitted"
             query["result_id"] = None
+    for query in uncarried:
+        if query["batch_id"] in reopened:
+            query["status"] = "submitted"
     rekeyed = 0
+    carried = []
     for query in queries:
         key = building_key_v2(query["address"])
         if key is None:
-            # tgos-query.building_key is not nullable; the snapshot format must not change.
-            raise ValueError(
-                "Carried TGOS query has no building key under current rules: "
-                + query["address"]
+            uncarried.append(
+                {
+                    "batch_id": query["batch_id"],
+                    "ordinal": query["ordinal"],
+                    "query_fingerprint": query["query_fingerprint"],
+                    "building_key": query["building_key"],
+                    "address": query["address"],
+                    "county_code": query["county_code"],
+                    "address_family": query["address_family"],
+                    "status": query["status"],
+                    "reason": UNCARRIED_REASON,
+                }
             )
+            continue
+        carried.append(query)
         fingerprint = digest([key, query["address"]])
         if key != query["building_key"] or fingerprint != query["query_fingerprint"]:
             rekeyed += 1
         query["building_key"] = key
         query["query_fingerprint"] = fingerprint
-    return batches, queries, rekeyed
+    uncarried.sort(key=lambda row: (row["batch_id"], row["ordinal"]))
+    return batches, carried, rekeyed, uncarried
 
 
 def prepare_tgos(
@@ -389,10 +416,19 @@ def prepare_tgos(
     aliases = _table(paths.get("verified-alias"))
     events = _table(paths.get("alias-event"))
     rekeyed = 0
+    uncarried = report.get(UNCARRIED, [])
     if ledger is not None:
         if stage_name != "offline-state":
             raise ValueError("A TGOS ledger can only seed a fresh offline state")
-        batches, queries, rekeyed = _carry_ledger(ledger)
+        batches, queries, rekeyed, uncarried = _carry_ledger(ledger)
+    # R09-0 (owner decision 2026-10-09, option A): keys of suspended counties are not sent.
+    suspension = report.get("address_suspension")
+    suspended_codes = (
+        {item["code"] for item in check_suspended_counties(suspension["counties"])}
+        if suspension is not None
+        else set()
+    )
+    suspended_excluded = {code: 0 for code in sorted(suspended_codes)}
     available = limit
     retry_fingerprints = set(retry_fingerprints or [])
     if retry_fingerprints and not retry_reason:
@@ -411,15 +447,20 @@ def prepare_tgos(
         raise ValueError("TGOS retry is not in a retryable state")
     prior = set(query_history) - retry_fingerprints
     # The same address text must not be sent twice even when its key changed.
-    sent_text = {row["address"] for row in queries if row["status"] not in retryable}
+    sent_text = {
+        row["address"] for row in [*queries, *uncarried] if row["status"] not in retryable
+    }
     candidates = []
     for row in rows(paths["address-result"]):
         if row["status"] not in {"unmatched", "outside_scope"}:
             continue
         fingerprint = digest([row["building_key"], row["canonical_address"]])
-        if fingerprint in retry_fingerprints:
-            candidates.append({**row, "query_fingerprint": fingerprint})
-        elif fingerprint not in prior and row["canonical_address"] not in sent_text:
+        if fingerprint in retry_fingerprints or (
+            fingerprint not in prior and row["canonical_address"] not in sent_text
+        ):
+            if row["county_code"] in suspended_codes:
+                suspended_excluded[row["county_code"]] += 1
+                continue
             candidates.append({**row, "query_fingerprint": fingerprint})
     retry_candidates = [
         row for row in candidates if row["query_fingerprint"] in retry_fingerprints
@@ -481,7 +522,21 @@ def prepare_tgos(
         results=results,
         aliases=aliases,
         alias_events=events,
-        extra_report={"last_tgos_batch_id": batch_id, "carried_query_keys_recomputed": rekeyed},
+        extra_report={
+            "last_tgos_batch_id": batch_id,
+            "carried_query_keys_recomputed": rekeyed,
+            **(
+                {UNCARRIED: uncarried, "tgos_uncarried_query_count": len(uncarried)}
+                if ledger is not None
+                else {}
+            ),
+            **(
+                {"tgos_suspended_candidates_excluded": suspended_excluded}
+                if suspension is not None
+                else {}
+            ),
+        },
+        extra_inputs=[digest(uncarried)] if uncarried else None,
         run_id=run_id,
     )
     exchange = _write_exchange(
@@ -717,7 +772,11 @@ def import_tgos(
     if batch["status"] == "completed" and batch["response_sha256"] == response_hash:
         return Path(source)
     submitted = {row["address"]: row for row in queries if row["batch_id"] == batch_id}
-    if len(submitted) != batch["address_count"]:
+    # R09-0: queries set aside for having no key were sent too; their rows are not imported.
+    uncarried = {
+        row["address"] for row in report.get(UNCARRIED, []) if row["batch_id"] == batch_id
+    }
+    if len(submitted) + len(uncarried) != batch["address_count"] or uncarried & set(submitted):
         raise ValueError("TGOS submitted Address values are not one-to-one")
     with Path(response).open(encoding="utf-8-sig", newline="") as stream:
         reader = csv.DictReader(stream)
@@ -728,7 +787,7 @@ def import_tgos(
     addresses = [row["Address"] for row in returned]
     if len(addresses) != len(set(addresses)):
         raise ValueError("Duplicate Address in TGOS response")
-    if set(addresses) != set(submitted):
+    if set(addresses) != set(submitted) | uncarried:
         raise ValueError("TGOS response Address set differs from submitted batch")
     evidence = _table(paths["offline-row"])
     prior_coordinates = {
@@ -739,6 +798,8 @@ def import_tgos(
     new_results = []
     result_by_query = {}
     for line, row in enumerate(returned, 2):
+        if row["Address"] in uncarried:
+            continue
         query = submitted[row["Address"]]
         reason = None
         try:
@@ -837,6 +898,16 @@ def import_tgos(
         extra_report={
             "last_tgos_batch_id": batch_id,
             "last_tgos_response_sha256": response_hash,
+            **(
+                {
+                    "tgos_uncarried_response_rows": {
+                        **report.get("tgos_uncarried_response_rows", {}),
+                        batch_id: len(uncarried),
+                    }
+                }
+                if uncarried
+                else {}
+            ),
             "status_counts_before_import": before,
             "status_counts": statuses,
             **(

@@ -220,11 +220,34 @@ def test_tampered_suspension_fails_validation(built):
         check_suspension(state, manifest, changed)
 
 
+def _with_earlier_kinmen_query(built, prepared, work):
+    """Add a Kinmen query to the prepared batch, as a batch made before R09-0 would hold."""
+    from lvr_pipeline.storage.runs import digest
+    from lvr_pipeline.tgos import _artifact_paths, _write_state
+
+    manifest, _, _ = load_state(prepared)
+    paths = _artifact_paths(prepared, manifest)
+    batches = list(rows(paths["tgos-batch"]))
+    queries = list(rows(paths["tgos-query"]))
+    kinmen = _by_address(built["state"])[KINMEN_NONE]
+    queries.append({**queries[0], "ordinal": len(queries) + 1,
+                    "query_fingerprint": digest([kinmen["building_key"], KINMEN_NONE]),
+                    "building_key": kinmen["building_key"], "address": KINMEN_NONE,
+                    "county_code": "09020", "address_family": kinmen["address_family"]})
+    batches[0]["address_count"] = len(queries)
+    return _write_state(prepared, work, action="pre-r09-0-batch", batches=batches, queries=queries,
+                        results=[], aliases=[], alias_events=[])
+
+
 @pytest.fixture(scope="module")
 def tgos(built):
     tmp_path, work = built["tmp"], built["tmp"] / "tgos-work"
     prepared, _ = prepare_tgos(built["state"], work, tmp_path / "exchange", limit=10,
                                exchange_date="2026-10-09")
+    queries = list(rows(prepared / "tgos_queries.parquet"))
+    # R09-0: the suspended county is no longer selected; the Kinmen query stands for one sent before R09-0.
+    assert {q["address"] for q in queries} == {TAIPEI_TGOS}
+    prepared = _with_earlier_kinmen_query(built, prepared, work)
     queries = list(rows(prepared / "tgos_queries.parquet"))
     assert {q["address"] for q in queries} == {KINMEN_NONE, TAIPEI_TGOS}
     batch_id = queries[0]["batch_id"]

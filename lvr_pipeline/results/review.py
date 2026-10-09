@@ -59,6 +59,16 @@ R05-9 code (``R05_9_CODES``):
   county and town; ``related_json`` gives the county name, the suspension reason,
   the key's status and every coordinate of the evidence. These keys are not also
   listed as ``offline_unmatched``, ``coordinate_conflict`` or ``door_cross_check``.
+
+R09-0 code (``R09_0_CODES``), only with a TGOS state:
+
+- ``tgos_query_unkeyed``: a query carried from an earlier TGOS ledger that has no
+  key under the current rules, so it is kept out of the TGOS state's queries
+  (``tgos_uncarried_queries`` in its report). One row per transaction address
+  member whose normalized address is the query text, for each such query;
+  ``related_json`` gives the batch, ordinal, ledger fingerprint and key, and the
+  status. Its ``address_review`` rows stay. Queries that match no member are
+  counted in the report (``tgos_uncarried_queries_unlisted``).
 """
 
 from __future__ import annotations
@@ -105,6 +115,7 @@ R04_12_CODES = (
 CROSS_CHECK_CODES = ("door_cross_check",)
 R05_7_CODES = ("district_missing", "district_ambiguous", "road_only_not_unique")
 R05_9_CODES = ("address_source_suspended",)
+R09_0_CODES = ("tgos_query_unkeyed",)
 # A street that ends with a text lane name (豐年街豐二巷): group 1 is the street without it.
 NAMED_LANE_SQL = "^(.+[路街道段巷弄])([^0-9路街道段巷弄]*[^0-9一二三四五六七八九十百路街道段巷弄][^0-9路街道段巷弄]*巷)$"
 _LANE_NUMERAL = re.compile("([一二三四五六七八九十百]+)(?=[巷弄])")
@@ -262,6 +273,12 @@ _TGOS_SQL = r"""
   JOIN tgos_query q USING (batch_id, query_fingerprint)
   JOIN base b ON b.building_key = q.building_key
   WHERE r.status = 'rejected'
+  UNION ALL
+  SELECT 'tgos_query_unkeyed', b.*, u.batch_id || ':' || u.query_fingerprint,
+         json_object('batch_id', u.batch_id, 'ordinal', u.ordinal, 'submitted_address', u.address,
+                     'ledger_query_fingerprint', u.query_fingerprint, 'ledger_building_key', u.building_key,
+                     'status', u.status, 'reason', u.reason)::VARCHAR
+  FROM tgos_uncarried u JOIN base b ON b.normalized_address = u.address
 """
 
 
@@ -299,6 +316,9 @@ def build_review(
     # R05-9: the suspension list of the address status source; states before R05-9 have none.
     suspension = status_report.get("address_suspension")
     suspended = suspension["counties"] if suspension is not None else []
+    # R09-0: carried queries kept out of the TGOS state for having no key.
+    uncarried = tgos_report.get("tgos_uncarried_queries", []) if tgos_state is not None else []
+    unlisted = None
     prior_paths = []
     if prior_review is not None:
         prior_review = Path(prior_review)
@@ -311,6 +331,7 @@ def build_review(
         {"reason_codes": list(EXCEPTION_REASON_CODES), "produced_codes": list(PRODUCED_CODES),
          "r04_12_codes": list(R04_12_CODES), "cross_check_codes": list(CROSS_CHECK_CODES),
          "r05_7_codes": list(R05_7_CODES), "r05_9_codes": list(R05_9_CODES),
+         "r09_0_codes": list(R09_0_CODES),
          "tgos_rejection_codes": TGOS_REJECTION_CODES, "prior_review": prior_review is not None,
          "final_status_from_tgos": tgos_state is not None},
         hashes,
@@ -374,6 +395,14 @@ def build_review(
                 db.read_parquet(_paths(tgos_state, tgos_manifest, "tgos-query")).create_view("tgos_query")
                 db.execute("CREATE TEMP TABLE rejection_codes (reason VARCHAR, code VARCHAR)")
                 db.executemany("INSERT INTO rejection_codes VALUES (?, ?)", list(TGOS_REJECTION_CODES.items()))
+                db.execute("CREATE TEMP TABLE tgos_uncarried (batch_id VARCHAR, ordinal BIGINT, query_fingerprint "
+                           "VARCHAR, building_key VARCHAR, address VARCHAR, status VARCHAR, reason VARCHAR)")
+                if uncarried:
+                    db.executemany(
+                        "INSERT INTO tgos_uncarried VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        [(u["batch_id"], u["ordinal"], u["query_fingerprint"], u.get("building_key"), u["address"],
+                          u.get("status"), u.get("reason")) for u in uncarried],
+                    )
                 tgos_sql = _TGOS_SQL
             db.execute(
                 "CREATE TEMP TABLE picked AS "
@@ -423,6 +452,11 @@ def build_review(
             distinct = dict(
                 db.execute("SELECT reason_code, count(DISTINCT normalized_address) FROM picked GROUP BY 1").fetchall()
             )
+            if tgos_manifest is not None:
+                unlisted = db.execute(
+                    "SELECT count(*) FROM tgos_uncarried u WHERE NOT EXISTS "
+                    "(SELECT 1 FROM occurrence o WHERE o.normalized_address = u.address)"
+                ).fetchone()[0]
     writer.close()
     cross_writer.close()
     stage.store.add(stage.id, "exception_addresses.csv", csv_path, format_name="csv", row_count=writer.row_count)
@@ -436,6 +470,8 @@ def build_review(
         "prior_review": str(prior_review) if prior_review is not None else None,
         "address_source_commit": descriptor["commit"],
         "address_suspension": suspension,
+        "tgos_uncarried_query_count": len(uncarried),
+        "tgos_uncarried_queries_unlisted": unlisted,
         "run_id": stage.id,
         "reason_counts": reason_rows,
         "reason_distinct_addresses": {code: distinct.get(code, 0) for code in EXCEPTION_REASON_CODES},

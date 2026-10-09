@@ -118,7 +118,7 @@ raw_record_id 追溯來源觀測。上游序號或相同地址不足以證明同
 | 缺字或身分尚未確定 | 保留待覆核，不直接送查 |
 | 縣市在暫停定位清單內（R05-9） | 不論座標是否一致都不定位，座標保留在證據，交易列入待查核表 `address_source_suspended` |
 
-已知限制（R05-9，擁有者 2026-10-09 決定）：固定地址來源中澎湖縣、金門縣的經度偏東約 2 度。`config/pipeline.example.toml` 的 `suspended_counties` 列出這兩縣與原因，這兩縣的地址鍵一律不定位，TGOS 已定位的也一樣，所以點位檔沒有這兩縣的交易。本專案不換算、不修正座標，等地址資料專案修正來源後再改清單重建。連江縣不在清單內。清單納入離線狀態的綁定；離線狀態以狀態 `conflict`、依據 `address_source_suspended` 記錄這些鍵，報告的 `address_suspension_counts` 列出每縣鍵數與受影響的 TGOS 鍵數。
+已知限制（R05-9，擁有者 2026-10-09 決定）：固定地址來源中澎湖縣、金門縣的經度偏東約 2 度。`config/pipeline.example.toml` 的 `suspended_counties` 列出這兩縣與原因，這兩縣的地址鍵一律不定位，TGOS 已定位的也一樣，所以點位檔沒有這兩縣的交易。本專案不換算、不修正座標，等地址資料專案修正來源後再改清單重建。連江縣不在清單內。清單納入離線狀態的綁定；離線狀態以狀態 `conflict`、依據 `address_source_suspended` 記錄這些鍵，報告的 `address_suspension_counts` 列出每縣鍵數與受影響的 TGOS 鍵數。`prepare-tgos` 不把清單內縣市的鍵列為送查候選，報告 `tgos_suspended_candidates_excluded` 依縣市列出排除數（R09-0，擁有者 2026-10-09 選 A）。
 
 地址池中的狀態要能回接所有來源觀測的地址成員。一筆多門牌觀測可能完全定位、部分定位或全未定位，三者不能混為一談。全部選定批次及關聯核對完成後，才進入輸出階段。
 
@@ -438,6 +438,8 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
      --ledger <舊 TGOS 狀態快照路徑> \
      --work-dir <T>
    ```
+
+   帶入的送查紀錄以目前規則重算地址鍵。算不出鍵的紀錄不放進新狀態的查詢表，改記在狀態報告 `tgos_uncarried_queries`，其地址文字不會再送出；匯入該批回傳時，這些列只核對、不採用，報告 `tgos_uncarried_response_rows` 記列數。以此狀態產生的待查核表用原因代碼 `tgos_query_unkeyed` 列出對應的交易地址（R09-0）。
 
    第一輪沒有舊狀態時省略 `--ledger`。每個交換檔最多 10,000 筆，這是 `--limit` 的預設值，也是上限。輸出在 `data/tgos/YYYYMMDD-<8 碼>/`，識別碼是批次 ID 去掉 `tgos-` 後的前 8 碼，例如批次 `tgos-2160fe59f6b1` 在日期 `2026-10-08` 時為 `data/tgos/20261008-2160fe59/`，內含 `addresses.csv` 與 `manifest.json`。同日前 8 碼相同而內容不同時，程式報錯而不覆寫。2026-10-07 以前建立的 `data/tgos/20261007-0358ee6e90df/` 沿用 12 碼舊名。命令同時產生新的 `tgos-state` 快照，用 `$LVR verify-tgos-state --input <新快照>` 檢查。
 3. 人工上傳 `addresses.csv` 到 TGOS，使用 addrCompare（WGS84／EPSG:4326、單雙號比對、不限誤差、一筆結果）。不要修改檔案。後三欄保持空白，檔案編碼是 UTF-8 BOM。只上傳狀態為 `prepared` 的批次，**不要上傳已取消批次的資料夾**。

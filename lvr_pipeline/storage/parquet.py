@@ -121,7 +121,24 @@ def duckdb_config(spill=None) -> dict:
     return config
 
 
-def verify_relations(groups: dict[str, list[Path]], *, source_scope: dict | None = None, cutoff: int | None = None) -> dict:
+def _uncarried_table(values) -> pa.Table:
+    """R09-0: TGOS queries kept out of tgos-query (no key under current rules), from the state report."""
+    if not isinstance(values, list):
+        raise ValueError("Invalid uncarried TGOS queries")
+    for row in values:
+        if (
+            not isinstance(row, dict)
+            or not all(isinstance(row.get(key), str) and row[key] for key in ["batch_id", "address", "query_fingerprint"])
+            or isinstance(row.get("ordinal"), bool)
+            or not isinstance(row.get("ordinal"), int)
+        ):
+            raise ValueError("Invalid uncarried TGOS queries")
+    return pa.table({"batch_id": pa.array([row["batch_id"] for row in values], pa.string()),
+                     "address": pa.array([row["address"] for row in values], pa.string())})
+
+
+def verify_relations(groups: dict[str, list[Path]], *, source_scope: dict | None = None, cutoff: int | None = None,
+                     uncarried_queries: list | None = None) -> dict:
     """Validate across all partitions without collecting IDs or rows in Python."""
     counts = {}
     with tempfile.TemporaryDirectory(prefix="lvr-relations-") as spill:
@@ -197,8 +214,13 @@ def verify_relations(groups: dict[str, list[Path]], *, source_scope: dict | None
                 if "tgos-batch" not in groups:
                     raise ValueError("TGOS queries require batches")
                 reject("SELECT count(*) FROM tgos_query q ANTI JOIN tgos_batch b USING(batch_id)", "TGOS query lacks batch")
-                reject("SELECT count(*) FROM (SELECT batch_id,address FROM tgos_query GROUP BY 1,2 HAVING count(*)>1)", "TGOS batch Address is ambiguous")
-                reject("SELECT count(*) FROM (SELECT batch_id,count(*) n FROM tgos_query GROUP BY 1) q JOIN tgos_batch b USING(batch_id) WHERE q.n<>b.address_count", "TGOS batch count differs from queries")
+                # R09-0: queries set aside in the report count toward their batch like carried ones.
+                db.register("tgos_uncarried", _uncarried_table(uncarried_queries or []))
+                reject("SELECT count(*) FROM tgos_uncarried u ANTI JOIN tgos_batch b USING(batch_id)", "TGOS query lacks batch")
+                reject("SELECT count(*) FROM (SELECT batch_id,address FROM (SELECT batch_id,address FROM tgos_query UNION ALL SELECT batch_id,address FROM tgos_uncarried) GROUP BY 1,2 HAVING count(*)>1)", "TGOS batch Address is ambiguous")
+                reject("SELECT count(*) FROM (SELECT batch_id,count(*) n FROM (SELECT batch_id FROM tgos_query UNION ALL SELECT batch_id FROM tgos_uncarried) GROUP BY 1) q JOIN tgos_batch b USING(batch_id) WHERE q.n<>b.address_count", "TGOS batch count differs from queries")
+            elif uncarried_queries:
+                raise ValueError("Uncarried TGOS queries require queries")
             if "tgos-result" in groups:
                 if "tgos-query" not in groups:
                     raise ValueError("TGOS results require queries")
