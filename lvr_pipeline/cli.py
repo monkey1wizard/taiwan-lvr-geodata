@@ -56,7 +56,7 @@ def _add_offline_and_output_commands(sub):
     p.add_argument(
         "--config",
         type=Path,
-        help="Pipeline TOML with coordinate_tolerance_m (default config/pipeline.example.toml)",
+        help="Pipeline TOML with coordinate_tolerance_m and suspended_counties (default config/pipeline.example.toml)",
     )
     p.add_argument("--work-dir", type=Path, default=Path("data/work"))
     p.add_argument("--run-id")

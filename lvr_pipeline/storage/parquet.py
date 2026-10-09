@@ -176,7 +176,9 @@ def verify_relations(groups: dict[str, list[Path]], *, source_scope: dict | None
                 reject("SELECT count(*) FROM (SELECT building_key,count(*) coordinate_count,sum(n) evidence_count FROM (SELECT building_key,lng,lat,count(*) n FROM offline_row WHERE validity='valid' GROUP BY 1,2,3) GROUP BY 1) e FULL JOIN address_result a USING(building_key) WHERE coalesce(e.coordinate_count,0)<>coalesce(a.coordinate_count,0) OR coalesce(e.evidence_count,0)<>coalesce(a.evidence_count,0)", "Resolution counts differ from evidence")
             if "address-result" in groups and "coordinate-resolution" in groups:
                 # R05-4: every key with several coordinates has exactly one adoption row that agrees with the result.
-                reject("SELECT count(*) FROM address_result a ANTI JOIN coordinate_resolution r USING(key_version,building_key) WHERE a.coordinate_count>1", "Multi-coordinate result lacks coordinate resolution")
+                # R05-9: a single coordinate that is not located (suspended county) also needs one.
+                reject("SELECT count(*) FROM address_result a ANTI JOIN coordinate_resolution r USING(key_version,building_key) WHERE a.coordinate_count>1 OR (a.coordinate_count=1 AND a.status<>'located')", "Multi-coordinate result lacks coordinate resolution")
+                reject("SELECT count(*) FROM coordinate_resolution r JOIN address_result a USING(key_version,building_key) WHERE a.coordinate_count=1 AND r.resolution_basis<>'address_source_suspended'", "Single-coordinate resolution must be a suspension")
                 reject("SELECT count(*) FROM coordinate_resolution r LEFT JOIN address_result a USING(key_version,building_key) WHERE a.building_key IS NULL OR a.status<>r.status OR a.coordinate_count<>r.coordinate_count OR a.evidence_count<>r.evidence_count OR a.lng IS DISTINCT FROM r.lng OR a.lat IS DISTINCT FROM r.lat OR a.evidence_id IS DISTINCT FROM r.evidence_id", "Coordinate resolution differs from address result")
                 if "offline-row" in groups:
                     reject("""SELECT count(*) FROM (
@@ -188,6 +190,7 @@ def verify_relations(groups: dict[str, list[Path]], *, source_scope: dict | None
             elif "address-result" in groups:
                 # States built before R05-4 have no adoption rows; there several coordinates are always a conflict.
                 reject("SELECT count(*) FROM address_result WHERE status='located' AND coordinate_count>1", "Located result needs coordinate resolution")
+                reject("SELECT count(*) FROM address_result WHERE status<>'located' AND coordinate_count=1", "Single-coordinate result must be located")
             if "unmatched-address" in groups and "address-result" in groups:
                 reject("SELECT count(*) FROM ((SELECT * FROM address_result WHERE status<>'located' EXCEPT SELECT * FROM unmatched_address) UNION ALL (SELECT * FROM unmatched_address EXCEPT SELECT * FROM address_result WHERE status<>'located'))", "Unmatched selection differs from state")
             if "tgos-query" in groups:

@@ -50,6 +50,15 @@ source county from the ZIP member letter and every candidate door:
 - ``door_cross_check`` is also written to the manual cross-check list when the
   candidates of a ``district_ambiguous`` or ``road_only_not_unique`` row are in
   several towns and have different coordinates.
+
+R05-9 code (``R05_9_CODES``):
+
+- ``address_source_suspended``: the key's county is in the suspension list of the
+  address status source (``address_suspension`` in the TGOS or offline state
+  report) and the key is not located. One row per transaction address member, with
+  county and town; ``related_json`` gives the county name, the suspension reason,
+  the key's status and every coordinate of the evidence. These keys are not also
+  listed as ``offline_unmatched``, ``coordinate_conflict`` or ``door_cross_check``.
 """
 
 from __future__ import annotations
@@ -95,6 +104,7 @@ R04_12_CODES = (
 )
 CROSS_CHECK_CODES = ("door_cross_check",)
 R05_7_CODES = ("district_missing", "district_ambiguous", "road_only_not_unique")
+R05_9_CODES = ("address_source_suspended",)
 # A street that ends with a text lane name (豐年街豐二巷): group 1 is the street without it.
 NAMED_LANE_SQL = "^(.+[路街道段巷弄])([^0-9路街道段巷弄]*[^0-9一二三四五六七八九十百路街道段巷弄][^0-9路街道段巷弄]*巷)$"
 _LANE_NUMERAL = re.compile("([一二三四五六七八九十百]+)(?=[巷弄])")
@@ -184,6 +194,9 @@ district_detail AS (
   FROM district WHERE reason IN ('district_missing', 'district_ambiguous', 'road_only_not_unique')),
 cross_keys AS (
   SELECT building_key, coordinates_json FROM resolution WHERE resolution_basis = '{cross_check}'),
+suspended_keys AS (
+  SELECT s.building_key, s.status, s.coordinate_count, x.name, x.reason
+  FROM result s JOIN suspended x ON s.county_code = x.code WHERE s.status <> 'located'),
 conflict_points AS (
   SELECT DISTINCT e.building_key, e.lng, e.lat FROM evidence e JOIN result s USING (building_key)
   WHERE e.validity = 'valid' AND s.status = 'conflict'),
@@ -217,14 +230,21 @@ chosen AS (
   SELECT 'door_cross_check', b.*, '', d.related FROM base b JOIN district_detail d USING (component_id)
   WHERE d.town_count > 1 AND d.coordinate_count > 1
   UNION ALL
+  SELECT 'address_source_suspended', b.*, '',
+         json_object('county_name', k.name, 'suspension_reason', k.reason, 'status', k.status,
+                     'coordinate_count', k.coordinate_count, 'coordinates', c.points)::VARCHAR
+  FROM base b JOIN suspended_keys k USING (building_key) LEFT JOIN coordinates c USING (building_key)
+  UNION ALL
   SELECT 'offline_unmatched', b.*, '', NULL
   FROM base b JOIN result s USING (building_key) WHERE s.status = 'unmatched'
+    AND building_key NOT IN (SELECT building_key FROM suspended_keys)
   UNION ALL
   SELECT 'coordinate_conflict', b.*, '',
          json_object('coordinates', c.points, 'max_distance_m', d.max_distance_m)::VARCHAR
   FROM base b JOIN result s USING (building_key) LEFT JOIN coordinates c USING (building_key)
   LEFT JOIN spans d USING (building_key)
   WHERE s.status = 'conflict' AND building_key NOT IN (SELECT building_key FROM cross_keys)
+    AND building_key NOT IN (SELECT building_key FROM suspended_keys)
   {tgos}
 )
 SELECT p.reason_code, p.component_id, p.disc, p.raw_record_id, o.src_batch, o.category, o.raw_address,
@@ -265,6 +285,7 @@ def build_review(
         raise ValueError("Address source pin differs from offline state")
     hashes = [converted_hash, sha256_file(state / "manifest.json")]
     tgos_manifest = None
+    status_report = state_report
     if tgos_state is not None:
         tgos_state = Path(tgos_state)
         tgos_manifest, tgos_report = load_p2(tgos_state, "tgos-state")
@@ -274,6 +295,10 @@ def build_review(
         ):
             raise ValueError("TGOS state comes from other inputs")
         hashes.append(sha256_file(tgos_state / "manifest.json"))
+        status_report = tgos_report
+    # R05-9: the suspension list of the address status source; states before R05-9 have none.
+    suspension = status_report.get("address_suspension")
+    suspended = suspension["counties"] if suspension is not None else []
     prior_paths = []
     if prior_review is not None:
         prior_review = Path(prior_review)
@@ -285,7 +310,7 @@ def build_review(
         "review",
         {"reason_codes": list(EXCEPTION_REASON_CODES), "produced_codes": list(PRODUCED_CODES),
          "r04_12_codes": list(R04_12_CODES), "cross_check_codes": list(CROSS_CHECK_CODES),
-         "r05_7_codes": list(R05_7_CODES),
+         "r05_7_codes": list(R05_7_CODES), "r05_9_codes": list(R05_9_CODES),
          "tgos_rejection_codes": TGOS_REJECTION_CODES, "prior_review": prior_review is not None,
          "final_status_from_tgos": tgos_state is not None},
         hashes,
@@ -327,6 +352,10 @@ def build_review(
                 db.execute("CREATE TEMP TABLE district (component_id VARCHAR, reason VARCHAR, search_scope VARCHAR, "
                            "search_county_code VARCHAR, source_county_code VARCHAR, town_count BIGINT, "
                            "coordinate_count BIGINT, candidates_json VARCHAR)")
+            db.execute("CREATE TEMP TABLE suspended (code VARCHAR, name VARCHAR, reason VARCHAR)")
+            if suspended:
+                db.executemany("INSERT INTO suspended VALUES (?, ?, ?)",
+                               [(item["code"], item["name"], item["reason"]) for item in suspended])
             db.execute("CREATE TEMP TABLE lane_signatures (building_key VARCHAR, signature VARCHAR)")
             signatures = []
             for key, road in db.execute(
@@ -406,6 +435,7 @@ def build_review(
         "tgos_state_manifest_sha256": hashes[2] if tgos_manifest is not None else None,
         "prior_review": str(prior_review) if prior_review is not None else None,
         "address_source_commit": descriptor["commit"],
+        "address_suspension": suspension,
         "run_id": stage.id,
         "reason_counts": reason_rows,
         "reason_distinct_addresses": {code: distinct.get(code, 0) for code in EXCEPTION_REASON_CODES},

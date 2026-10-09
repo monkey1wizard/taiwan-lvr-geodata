@@ -16,8 +16,11 @@ from .results.reconcile import (
     DOOR_CROSS_CHECK,
     EXCEEDS_TOLERANCE,
     WITHIN_TOLERANCE,
+    check_suspended_counties,
     load_p2,
+    new_suspension_counts,
     resolution_row,
+    suspended_row,
 )
 from .addresses.identity import building_key_v2, door_parts, same_door
 from .transactions.normalize import normalize_address
@@ -562,6 +565,8 @@ def _rebuild_resolution(
     source_commit: str,
     tolerance_m: float | None = None,
     door_rule: str | None = None,
+    suspension: dict | None = None,
+    suspension_counts: dict | None = None,
 ):
     """Rebuild address status with the offline adoption rule (R05-4).
 
@@ -574,7 +579,18 @@ def _rebuild_resolution(
     text, and coordinates from several doors are not adopted. TGOS results name
     the queried key and add no door. States built before R04-12 have none and
     keep the earlier behaviour.
+
+    ``suspension`` is the state's ``address_suspension`` (R05-9). A key of a
+    listed county with any coordinate, TGOS results included, is not located
+    (basis ``address_source_suspended``). ``suspension_counts``, when given, is
+    filled per county code. States built before R05-9 have none.
     """
+    suspended_codes = (
+        {item["code"] for item in check_suspended_counties(suspension["counties"])}
+        if suspension is not None
+        else set()
+    )
+    tgos_keys = set()
     coordinates = {}
     doors = {}
     door_cache = {}
@@ -584,6 +600,8 @@ def _rebuild_resolution(
             coordinates.setdefault(row["building_key"], {}).setdefault(
                 point, []
             ).append(row["evidence_id"])
+            if row["source_kind"] == "tgos_result":
+                tgos_keys.add(row["building_key"])
             if door_rule is not None:
                 found = doors.setdefault(row["building_key"], {}).setdefault(point, set())
                 if row["source_kind"] != "tgos_result":
@@ -600,7 +618,36 @@ def _rebuild_resolution(
         points = coordinates.get(row["building_key"], {})
         count = len(points)
         point, evidence_id = (None, None), None
-        if count == 1:
+        suspended = row["county_code"] in suspended_codes
+        if suspended and suspension_counts is not None:
+            counted = suspension_counts[row["county_code"]]
+            counted["keys"] += 1
+            counted["with_coordinates" if count else "without_coordinates"] += 1
+            counted["tgos_evidence_keys"] += row["building_key"] in tgos_keys
+        if count >= 1 and suspended and tolerance_m is not None:
+            # R05-9: never located, TGOS results included; coordinates stay in the evidence.
+            detail, would_be = suspended_row(
+                row["key_version"],
+                row["building_key"],
+                {
+                    key: {
+                        "evidence_count": len(ids),
+                        "evidence_id": min(ids),
+                        **(
+                            {"doors": sorted(doors[row["building_key"]][key], key=str)}
+                            if door_rule is not None
+                            else {}
+                        ),
+                    }
+                    for key, ids in points.items()
+                },
+                tolerance_m,
+            )
+            resolutions.append(detail)
+            status = "conflict"
+            if suspension_counts is not None:
+                suspension_counts[row["county_code"]]["would_be_located"] += would_be == "located"
+        elif count == 1:
             # The only distinct coordinate, not a first-row pick.
             ((point, ids),) = points.items()
             status, evidence_id = "located", min(ids)
@@ -762,12 +809,18 @@ def import_tgos(
     batch["status"] = "completed"
     batch["response_sha256"] = response_hash
     pool = _table(paths["address-pool"])
+    suspension = report.get("address_suspension")
+    suspension_counts = (
+        new_suspension_counts(suspension["counties"]) if suspension is not None else None
+    )
     address_rows, unmatched, statuses, resolutions = _rebuild_resolution(
         pool,
         evidence,
         report["address_source_commit"],
         report.get("coordinate_tolerance_m"),
         report.get("door_rule"),
+        suspension,
+        suspension_counts,
     )
     before = report["status_counts"]
     return _write_state(
@@ -788,6 +841,11 @@ def import_tgos(
             "last_tgos_response_sha256": response_hash,
             "status_counts_before_import": before,
             "status_counts": statuses,
+            **(
+                {"address_suspension_counts": suspension_counts}
+                if suspension_counts is not None
+                else {}
+            ),
             **(
                 {
                     "coordinate_resolution_basis_counts": {

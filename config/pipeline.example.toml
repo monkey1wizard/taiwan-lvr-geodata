@@ -14,3 +14,18 @@ disk_headroom_fraction = 0.20
 # above it is a conflict. Bound into the offline-state stage; changing it rebuilds.
 coordinate_tolerance_m = 30.0
 # Resource limits are proposed settings. P1/P5 must measure before real runs.
+# R05-9 (owner decision 2026-10-09, option B): counties whose address source
+# coordinates are not used. Keys of these counties are never located, whatever
+# their candidate coordinates are; the coordinates stay in the evidence and the
+# transactions go to the review table as address_source_suspended. Bound into the
+# offline-state stage; changing the list or a reason rebuilds. No coordinate is
+# converted or corrected here.
+[[suspended_counties]]
+code = "10016"
+name = "澎湖縣"
+reason = "固定地址來源的經度偏東約 2 度（中位數 121.58，實際約 119.6），等地址資料專案修正來源"
+
+[[suspended_counties]]
+code = "09020"
+name = "金門縣"
+reason = "固定地址來源的經度偏東約 2 度（中位數 120.33，實際約 118.3），等地址資料專案修正來源"

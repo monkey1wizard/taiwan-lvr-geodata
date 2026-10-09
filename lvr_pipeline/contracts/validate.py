@@ -101,13 +101,15 @@ def validate_relations(observations: list[dict], components: list[dict], exclusi
 
 def _validate_coordinate_resolution(row):
     """Recompute the R05-4 adoption rule from the listed coordinates."""
-    from ..results.reconcile import (DOOR_CROSS_CHECK, EXCEEDS_TOLERANCE, WITHIN_TOLERANCE,
-                                     adopt_coordinates)
+    from ..results.reconcile import (DOOR_CROSS_CHECK, EXCEEDS_TOLERANCE, SUSPENDED,
+                                     WITHIN_TOLERANCE, adopt_coordinates)
 
-    basis = {"located": {WITHIN_TOLERANCE}, "conflict": {EXCEEDS_TOLERANCE, DOOR_CROSS_CHECK}}
+    basis = {"located": {WITHIN_TOLERANCE}, "conflict": {EXCEEDS_TOLERANCE, DOOR_CROSS_CHECK, SUSPENDED}}
     if row["resolution_basis"] not in basis.get(row["status"], set()):
         raise ValueError("Invalid coordinate resolution status or basis")
-    if row["coordinate_count"] < 2 or row["evidence_count"] < row["coordinate_count"]:
+    # R05-9: a key of a suspended county is listed even with a single coordinate.
+    smallest = 1 if row["resolution_basis"] == SUSPENDED else 2
+    if row["coordinate_count"] < smallest or row["evidence_count"] < row["coordinate_count"]:
         raise ValueError("Invalid coordinate resolution counts")
     try:
         listed = json.loads(row["coordinates_json"])
@@ -118,6 +120,12 @@ def _validate_coordinate_resolution(row):
         raise ValueError("Coordinate resolution list differs from counts")
     if sum(item["evidence_count"] for item in listed) != row["evidence_count"]:
         raise ValueError("Coordinate resolution list differs from counts")
+    if row["resolution_basis"] == SUSPENDED:
+        # R05-9: never located; the largest distance is recomputed with the same rule.
+        largest = 0.0 if len(points) == 1 else adopt_coordinates(points, row["tolerance_m"])["max_distance_m"]
+        if (row["lng"], row["lat"], row["evidence_id"]) != (None, None, None) or largest != row["max_distance_m"]:
+            raise ValueError("Coordinate resolution differs from adoption rule")
+        return
     adoption = adopt_coordinates(points, row["tolerance_m"])
     # R04-12: coordinates from several doors (village, neighbourhood) are never adopted.
     if any("doors" in item for item in listed):
@@ -175,11 +183,11 @@ def validate_dataset_rows(values, dataset):
         if dataset == "address-result":
             # R05-4: several distinct coordinates are located when all lie within the
             # tolerance; the coordinate-resolution dataset carries that evidence.
+            # R05-9: one coordinate is a conflict only for a suspended county, which the
+            # coordinate-resolution dataset and the state report check.
             expected = (
-                {"located"}
-                if row["coordinate_count"] == 1
-                else {"located", "conflict"}
-                if row["coordinate_count"] > 1
+                {"located", "conflict"}
+                if row["coordinate_count"] >= 1
                 else {"unmatched", "outside_scope"}
             )
             if (

@@ -256,6 +256,8 @@ PRIMARY["unmatched-address"] = PRIMARY["address-result"]
 # Coordinate adoption detail (R05-4): one row per address key with two or more
 # distinct valid coordinates. coordinates_json lists every distinct coordinate
 # with its source row count, smallest evidence_id and distance sum (metres).
+# R05-9: a key of a suspended county with one or more coordinates also has a row
+# (basis address_source_suspended, never located).
 OFFLINE_SCHEMAS["coordinate-resolution"] = _schema(
     "coordinate-resolution",
     [
@@ -327,6 +329,8 @@ EXCEPTION_REASON_CODES = (
     "lane_numeral_variant_pair",
     "bracket_note",
     "door_cross_check",
+    # R05-9
+    "address_source_suspended",
 )
 OFFLINE_SCHEMAS["exception-address"] = _schema(
     "exception-address",
