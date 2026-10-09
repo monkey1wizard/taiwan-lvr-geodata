@@ -408,6 +408,8 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline verify-converted --input
      --work-dir <W> --run-id <run-id>-pool
    ```
 
+   `--index` 也是缺區補區（R05-7）的依據；不帶時不補區，缺區與只有路名的地址維持 `invalid_admin`。
+
 6. 離線定位與驗證：
 
    ```bash
@@ -738,6 +740,19 @@ X 為經度，Y 為緯度，不能猜測或自行交換座標軸。內部 Parque
 4. 候選有多個相異座標且屬於多個門牌：不定位，狀態 `conflict`、`coordinate_resolutions.parquet` 的 `resolution_basis` 為 `door_cross_check`，`coordinates_json` 每個座標附 `doors`。30 m 規則不在不同門牌之間套用。
 5. 離線狀態的 `address_observations.parquet` 是「地址池鍵 × 候選列」的投影：`building_key` 為地址池鍵，`evidence_id` 為原 `evidence_id`、U+001F 與地址池鍵串接後的 SHA-256，原列可由 `input_sha256`、`source_ref`、`source_row_number` 回推。狀態報告記 `door_rule = village_neighborhood_subid_v1` 與 `door_cross_check_keys`。
 6. `build-review` 把 `door_cross_check` 的交易寫入另一份人工交叉比對清單 `cross_check_addresses.parquet` 與 `.csv`（欄位同待查核表），不列為 `coordinate_conflict`。新增的待查核原因代碼：`annex_variant_pair`、`named_lane_variant_pair`、`lane_numeral_variant_pair`、`bracket_note`。
+
+#### 缺區地址的離線補區（R05-7）
+
+依擁有者 2026-10-07、2026-10-09 決定。在 `build-address-pool` 帶 `--index` 時進行，`building_key_v2` 與 `NORMALIZATION_VERSION`（`v2.5`）不變；地址池綁定記 `district_fill_rule = road_unique_v1`、`repeated_county_rule = exact_repeat_v1`。
+
+1. 重複縣市名：`canonicalize` 與 `building_key_v2` 共用 `identity.drop_repeated_county`，只去掉完全相同的縣市名（`新竹市新竹市東區…` → `新竹市東區…`）。
+2. 有縣市、找不到區：以「街路（含段）或地名＋巷弄＋號」及交易有寫的村里、鄰，查離線索引中該縣市的有效列。
+3. 只有路名、沒有縣市與區：同樣查詢，範圍是 ZIP 成員檔名首字母的來源縣市（`config/reference/lvr_county_letters.csv`）；來源縣市未知時才查全台。
+4. 候選只屬一個區：補上區，地址池成員記補區後的地址與鍵，原因 `road_unique_in_county`（有縣市）或 `road_only_unique`（只有路名）。交易原文不改。定位仍由 `resolve-offline` 依上一節門牌規則決定，所以補區後的鍵也可能是 30 m 衝突或人工交叉比對。
+5. 候選分屬兩個以上的區：不補，原因 `district_ambiguous`（有縣市）或 `road_only_not_unique`（只有路名）；候選座標不只一個時，另列人工交叉比對清單（`door_cross_check`）。候選分屬多區但座標相同時也不補，因為選哪一區都是猜測。
+6. 沒有候選：原因 `district_missing`（留給 R09-6 送 TGOS）或 `road_only_not_unique`；縣市後文字開頭像行政區名（`市東區…`、`v新興區…`、舊縣名 `桃園縣…`）時維持 `invalid_admin`。
+7. 每次查詢寫入 `district_candidates.parquet`（dataset `district-candidate`）：查詢範圍、來源縣市、候選區數、相異座標數與候選門牌清單。離線狀態沿用此檔，`build-review` 由此產生 `district_missing`、`district_ambiguous`、`road_only_not_unique` 列。
+8. 地址池鍵的代表地址優先取非補區成員，補區成員不改變既有鍵的代表地址；既有鍵的定位結果不變。
 
 | 情況 | 判定 |
 | --- | --- |
