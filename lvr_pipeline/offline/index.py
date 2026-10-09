@@ -15,7 +15,7 @@ from ..addresses import identity
 from ..addresses.identity import building_key_v2
 from ..transactions.normalize import normalize_address
 from ..storage.parquet import BatchWriter
-from ..contracts.validate import valid_coordinate
+from ..contracts.validate import TAIWAN_BOUNDS, TAIWAN_BOUNDS_RULE, within_taiwan_bounds
 from ..storage.runs import Stage, bindings, digest
 from ..storage.runs import sha256_file
 from .match import COUNTY_NAMES, AdministrativeNames
@@ -141,7 +141,7 @@ def _assess(names: AdministrativeNames, address, county, town, x, y):
         validity = "invalid_address"
     try:
         lng, lat = float(x), float(y)
-        if not valid_coordinate(lng, lat):
+        if not within_taiwan_bounds(lng, lat):
             raise ValueError("coordinate bounds")
     except (TypeError, ValueError):
         lng = lat = None
@@ -175,6 +175,9 @@ def build_index(
         "counties": sorted(counties or COUNTY_NAMES),
         "official": official_metadata,
         "normalization_version": identity.NORMALIZATION_VERSION,
+        # R05-10: coordinates outside these bounds are invalid_coordinate.
+        "coordinate_bounds_rule": TAIWAN_BOUNDS_RULE,
+        "coordinate_bounds": list(TAIWAN_BOUNDS),
     }
     input_hashes = [digest(descriptor)]
     if official:

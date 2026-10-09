@@ -28,10 +28,9 @@ from .storage.parquet import BatchWriter, rows
 from .storage.runs import Stage, bindings, canonical_json, digest
 from .storage.runs import SnapshotStore
 from .storage.runs import sha256_file
-from .contracts.validate import valid_coordinate
+from .contracts.validate import TAIWAN_BOUNDS, within_taiwan_bounds  # noqa: F401  TAIWAN_BOUNDS kept as tgos.TAIWAN_BOUNDS
 
 DAILY_LIMIT = 10_000
-TAIWAN_BOUNDS = (118.0, 123.5, 21.5, 26.5)
 DYNAMIC_SCHEMAS = {"tgos-batch", "tgos-query", "tgos-result", "alias-event"}
 TGOS_CSV_FIELDS = ["id", "Address", "Response_Address", "Response_X", "Response_Y"]
 
@@ -553,8 +552,7 @@ def _tgos_coordinate(x: str, y: str):
     if not x.strip() or not y.strip():
         raise ValueError("Partial TGOS coordinate pair")
     lng, lat = float(x), float(y)
-    west, east, south, north = TAIWAN_BOUNDS
-    if not valid_coordinate(lng, lat) or not (west <= lng <= east and south <= lat <= north):
+    if not within_taiwan_bounds(lng, lat):
         raise ValueError("TGOS coordinate is outside declared WGS84 Taiwan bounds")
     return lng, lat
 

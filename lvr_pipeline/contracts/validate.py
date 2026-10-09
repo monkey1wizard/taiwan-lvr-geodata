@@ -285,3 +285,14 @@ def valid_coordinate(lng, lat):
         and -180 <= lng <= 180
         and -90 <= lat <= 90
     )
+
+
+# R05-10: WGS84 Taiwan bounds (west, east, south, north), inclusive. Shared by the
+# offline index and TGOS result parsing; the rule name is bound into the offline index.
+TAIWAN_BOUNDS = (118.0, 123.5, 21.5, 26.5)
+TAIWAN_BOUNDS_RULE = "taiwan_bounds_v1"
+
+
+def within_taiwan_bounds(lng, lat):
+    west, east, south, north = TAIWAN_BOUNDS
+    return valid_coordinate(lng, lat) and west <= lng <= east and south <= lat <= north
