@@ -107,16 +107,18 @@ def _by_reason(values, code):
 
 def test_each_produced_reason_code_has_rows(built):
     found = {row["reason_code"] for row in built["rows"]}
-    assert found == set(PRODUCED_CODES)
+    # R05-7: NO_ADMIN (road only, 測試路5號) is now looked up in its source county (member
+    # letter a, 臺北市); no door 5 exists, so it is road_only_not_unique, not invalid_admin.
+    assert found == (set(PRODUCED_CODES) - {"invalid_admin"}) | {"road_only_not_unique"}
     assert set(PRODUCED_CODES) <= set(EXCEPTION_REASON_CODES)
-    assert {"district_missing", "district_ambiguous", "road_only_not_unique"}.isdisjoint(found)
+    assert {"district_missing", "district_ambiguous"}.isdisjoint(found)
     report = json.loads((built["review"] / "quality.json").read_text(encoding="utf-8"))
     assert report["address_status_source"] == "tgos-state"
     report = json.loads((built["review"] / "quality.json").read_text(encoding="utf-8"))
     assert report["reason_counts"]["district_missing"] == 0
     assert sum(report["reason_counts"].values()) == len(built["rows"])
     # Each synthetic address appears once per category (sales, presale, rent).
-    invalid = _by_reason(built["rows"], "invalid_admin")
+    invalid = _by_reason(built["rows"], "road_only_not_unique")
     assert {row["raw_address"] for row in invalid} == {NO_ADMIN} and len(invalid) == 3
     assert all(row["county_code"] is None and row["town_code"] is None and row["source_district"] == "中正區"
                for row in invalid)

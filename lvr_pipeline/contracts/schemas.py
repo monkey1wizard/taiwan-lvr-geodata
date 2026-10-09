@@ -275,6 +275,35 @@ OFFLINE_SCHEMAS["coordinate-resolution"] = _schema(
 )
 PRIMARY["coordinate-resolution"] = ["key_version", "building_key"]
 
+# District fill (R05-7): one row per address component whose district is missing (county
+# written, or road only) and that was looked up in the offline index. ``reason`` is the
+# component's address-pool reason; candidates_json lists every candidate door with its
+# county, town, village, neighbourhood, coordinate and source row count.
+DISTRICT_FILL_REASONS = (
+    "road_unique_in_county",
+    "road_only_unique",
+    "district_ambiguous",
+    "district_missing",
+    "road_only_not_unique",
+    "invalid_admin",
+)
+DISTRICT_SEARCH_SCOPES = ("county", "source_county", "nationwide")
+OFFLINE_SCHEMAS["district-candidate"] = _schema(
+    "district-candidate",
+    [
+        ("component_id", S, False),
+        ("raw_record_id", S, False),
+        ("reason", S, False),
+        ("search_scope", S, False),
+        ("search_county_code", S, True),
+        ("source_county_code", S, True),
+        ("town_count", I, False),
+        ("coordinate_count", I, False),
+        ("candidates_json", S, False),
+    ],
+)
+PRIMARY["district-candidate"] = ["component_id"]
+
 # Review table (R05-8): every address that has no key, no location or needs a person's review.
 # All reason codes are defined here; a stage that starts producing a new kind of review row
 # appends its code to this tuple. Rows never remove or replace the source observation.

@@ -6,6 +6,7 @@ import csv
 from pathlib import Path
 import re
 
+from ..addresses.identity import drop_repeated_county
 from ..addresses.parse import _COUNTY_CODE, _CITY_RE, norm
 from ..transactions.normalize import normalize_address
 from ..storage.runs import sha256_file
@@ -58,7 +59,8 @@ class AdministrativeNames:
             node[""] = code
 
     def canonicalize(self, address):
-        address = normalize_address(address)
+        # R05-7: the same repeated-county rule as building_key_v2 (新竹市新竹市東區… → 新竹市東區…).
+        address = drop_repeated_county(normalize_address(address))
         node = self.tree
         found = None
         for index, character in enumerate(address):

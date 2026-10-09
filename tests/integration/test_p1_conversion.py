@@ -28,7 +28,7 @@ CODE="1"*40
 ADDRESS="臺北市中正區測試路10號之1"
 
 
-def make_source(tmp_path, records=None, *, count=None, batch="115q1", categories=("sales", "presale", "rent"), english=True, extra_header=None):
+def make_source(tmp_path, records=None, *, count=None, batch="115q1", categories=("sales", "presale", "rent"), english=True, extra_header=None, county_letter="a"):
     raw=tmp_path/"raw"
     raw.mkdir(exist_ok=True)
     path=raw/f"{batch}_lvr_landcsv.zip"
@@ -43,7 +43,9 @@ def make_source(tmp_path, records=None, *, count=None, batch="115q1", categories
             if extra_header:
                 header+=extra_header
             # Write directly to the ZIP to keep the scaling fixture itself bounded.
-            with archive.open(f"a_lvr_land_{suffix}.csv","w") as binary:
+            # county_letter: one member letter, or a letter per category (R05-7 source county).
+            letter=county_letter if isinstance(county_letter,str) else county_letter[category]
+            with archive.open(f"{letter}_lvr_land_{suffix}.csv","w") as binary:
                 text=io.TextIOWrapper(binary,encoding="utf-8-sig",newline="")
                 writer=csv.writer(text)
                 writer.writerow(header)

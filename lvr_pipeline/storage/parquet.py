@@ -165,6 +165,9 @@ def verify_relations(groups: dict[str, list[Path]], *, source_scope: dict | None
                 reject("SELECT count(*) FROM (SELECT raw_record_id, ordinal FROM address_component GROUP BY 1,2 HAVING count(*)>1)", "Duplicate component ordinal")
             if "address-occurrence" in groups and "address-pool" in groups:
                 reject("SELECT count(*) FROM address_occurrence a ANTI JOIN address_pool p USING(key_version,building_key) WHERE a.building_key IS NOT NULL", "Occurrence absent from address pool")
+            if "district-candidate" in groups and "address-occurrence" in groups:
+                # R05-7: every district lookup belongs to an occurrence with the same reason.
+                reject("SELECT count(*) FROM district_candidate d LEFT JOIN address_occurrence a USING(component_id) WHERE a.component_id IS NULL OR a.reason<>d.reason OR a.raw_record_id<>d.raw_record_id", "District candidate differs from occurrence")
             if "address-result" in groups and "address-pool" in groups:
                 reject("SELECT count(*) FROM address_result a ANTI JOIN address_pool p USING(key_version,building_key)", "Result absent from address pool")
                 reject("SELECT count(*) FROM address_pool p ANTI JOIN address_result a USING(key_version,building_key)", "Address pool missing result")

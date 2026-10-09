@@ -245,6 +245,21 @@ def validate_dataset_rows(values, dataset):
                 raise ValueError("Unsupported address patch source")
         if dataset == "address-patch-quarantine" and not row["reason"]:
             raise ValueError("Address patch quarantine reason required")
+        if dataset == "district-candidate":
+            from .schemas import DISTRICT_FILL_REASONS, DISTRICT_SEARCH_SCOPES
+            if row["reason"] not in DISTRICT_FILL_REASONS:
+                raise ValueError("Unknown district fill reason")
+            if row["search_scope"] not in DISTRICT_SEARCH_SCOPES:
+                raise ValueError("Unknown district search scope")
+            if (row["search_scope"] == "nationwide") != (row["search_county_code"] is None):
+                raise ValueError("District search scope and county disagree")
+            candidates = json.loads(row["candidates_json"])
+            if not isinstance(candidates, list) or row["town_count"] != len(
+                {item["town_code"] for item in candidates}
+            ) or row["coordinate_count"] != len({(item["lng"], item["lat"]) for item in candidates}):
+                raise ValueError("District candidate counts differ from candidates")
+            if row["reason"] in {"road_unique_in_county", "road_only_unique"} and row["town_count"] != 1:
+                raise ValueError("District fill needs exactly one candidate town")
         if dataset == "exception-address":
             from .schemas import EXCEPTION_REASON_CODES
             if row["reason_code"] not in EXCEPTION_REASON_CODES:

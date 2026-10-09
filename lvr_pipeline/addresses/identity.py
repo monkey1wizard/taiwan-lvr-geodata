@@ -62,6 +62,15 @@ def cjk_number(text: str) -> int | None:
     return total + current
 
 
+def drop_repeated_county(text: str) -> str:
+    """Drop an exactly repeated county name at the start (owner decision R04-6).
+
+    Shared by building_key_v2 and AdministrativeNames.canonicalize (R05-7), so both read
+    新竹市新竹市東區… as 新竹市東區…. Only an identical repeat is dropped (台北市臺北市 is kept).
+    """
+    return _REPEATED_COUNTY.sub(lambda m: m.group(1), text, count=1)
+
+
 def _split_village(rest: str):
     """(valid, village, neighbourhood, remainder) for the address text after the town."""
     match = _NEIGHBORHOOD.match(rest)
@@ -104,7 +113,7 @@ def building_key_v2(address: str) -> str | None:
     if any(c in text for c in "-~～、") or re.search(r"\s", text) or _RANGE_WORD.search(text):
         return None
     # Owner decision (R04-6): an exactly repeated county name is dropped; any other odd start is rejected.
-    text = _REPEATED_COUNTY.sub(lambda m: m.group(1), text, count=1)
+    text = drop_repeated_county(text)
     region = _REGION_RE.match(text)
     if not region or region.group(2) in _COUNTY_CODE:
         return None

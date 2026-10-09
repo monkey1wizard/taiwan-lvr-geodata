@@ -5,9 +5,9 @@ review view only: no other dataset is changed and no observation is removed.
 Reason codes are defined in ``contracts.schemas.EXCEPTION_REASON_CODES``; this
 stage produces the codes that existing snapshot data can decide:
 
-- ``invalid_admin``: address-pool occurrence status ``invalid_admin``. The pool
-  does not separate a missing district from other unparsable starts, so
-  ``district_missing`` is not produced here (R05-7).
+- ``invalid_admin``: address-pool occurrence status ``invalid_admin``. Since R05-7
+  a missing district is looked up first; ``invalid_admin`` is left for text whose
+  county and town cannot be read and that has no candidate door.
 - ``garbled_pending``: occurrence status ``candidate_review``. The candidate road
   list is recomputed with the existing resolver candidate search.
 - ``subdoor_variant_pair``: two pool keys with the same county, town and
@@ -38,6 +38,18 @@ neighbourhood; they are never merged and each side points at the other:
   neighbourhood differ) with different coordinates. These rows go to the manual
   cross-check list ``cross_check_addresses.parquet`` / ``.csv``, separate from the
   general review table, and are not listed as ``coordinate_conflict``.
+
+R05-7 codes (``R05_7_CODES``), from the district lookup of the address pool
+(``district_candidates.parquet``); ``related_json`` gives the search scope, the
+source county from the ZIP member letter and every candidate door:
+
+- ``district_missing``: county written, town missing, no candidate door in the county.
+- ``district_ambiguous``: candidate doors in two or more towns of the county.
+- ``road_only_not_unique``: road only; no candidate door, or doors in two or more
+  towns, in the source county (the whole country when it is unknown).
+- ``door_cross_check`` is also written to the manual cross-check list when the
+  candidates of a ``district_ambiguous`` or ``road_only_not_unique`` row are in
+  several towns and have different coordinates.
 """
 
 from __future__ import annotations
@@ -82,6 +94,7 @@ R04_12_CODES = (
     "bracket_note",
 )
 CROSS_CHECK_CODES = ("door_cross_check",)
+R05_7_CODES = ("district_missing", "district_ambiguous", "road_only_not_unique")
 # A street that ends with a text lane name (豐年街豐二巷): group 1 is the street without it.
 NAMED_LANE_SQL = "^(.+[路街道段巷弄])([^0-9路街道段巷弄]*[^0-9一二三四五六七八九十百路街道段巷弄][^0-9路街道段巷弄]*巷)$"
 _LANE_NUMERAL = re.compile("([一二三四五六七八九十百]+)(?=[巷弄])")
@@ -163,6 +176,12 @@ coordinates AS (
          to_json(list(struct_pack(lng := lng, lat := lat, evidence_count := n) ORDER BY lng, lat)) points
   FROM (SELECT building_key, lng, lat, count(*) n FROM evidence WHERE validity = 'valid' GROUP BY ALL)
   GROUP BY building_key),
+district_detail AS (
+  SELECT component_id, reason, town_count, coordinate_count,
+         json_object('search_scope', search_scope, 'search_county_code', search_county_code,
+                     'source_county_code', source_county_code, 'town_count', town_count,
+                     'coordinate_count', coordinate_count, 'candidates', candidates_json::JSON)::VARCHAR related
+  FROM district WHERE reason IN ('district_missing', 'district_ambiguous', 'road_only_not_unique')),
 cross_keys AS (
   SELECT building_key, coordinates_json FROM resolution WHERE resolution_basis = '{cross_check}'),
 conflict_points AS (
@@ -192,6 +211,11 @@ chosen AS (
   SELECT 'door_cross_check', b.*, '', json_object('coordinates', k.coordinates_json::JSON)::VARCHAR
   FROM base b JOIN result s USING (building_key) JOIN cross_keys k USING (building_key)
   WHERE s.status = 'conflict'
+  UNION ALL
+  SELECT d.reason, b.*, '', d.related FROM base b JOIN district_detail d USING (component_id)
+  UNION ALL
+  SELECT 'door_cross_check', b.*, '', d.related FROM base b JOIN district_detail d USING (component_id)
+  WHERE d.town_count > 1 AND d.coordinate_count > 1
   UNION ALL
   SELECT 'offline_unmatched', b.*, '', NULL
   FROM base b JOIN result s USING (building_key) WHERE s.status = 'unmatched'
@@ -261,6 +285,7 @@ def build_review(
         "review",
         {"reason_codes": list(EXCEPTION_REASON_CODES), "produced_codes": list(PRODUCED_CODES),
          "r04_12_codes": list(R04_12_CODES), "cross_check_codes": list(CROSS_CHECK_CODES),
+         "r05_7_codes": list(R05_7_CODES),
          "tgos_rejection_codes": TGOS_REJECTION_CODES, "prior_review": prior_review is not None,
          "final_status_from_tgos": tgos_state is not None},
         hashes,
@@ -295,6 +320,13 @@ def build_review(
             else:
                 db.execute("CREATE TEMP TABLE resolution (building_key VARCHAR, resolution_basis VARCHAR, "
                            "coordinates_json VARCHAR)")
+            district_paths = _paths(state, state_manifest, "district-candidate")
+            if district_paths:
+                db.read_parquet(district_paths).create_view("district")
+            else:
+                db.execute("CREATE TEMP TABLE district (component_id VARCHAR, reason VARCHAR, search_scope VARCHAR, "
+                           "search_county_code VARCHAR, source_county_code VARCHAR, town_count BIGINT, "
+                           "coordinate_count BIGINT, candidates_json VARCHAR)")
             db.execute("CREATE TEMP TABLE lane_signatures (building_key VARCHAR, signature VARCHAR)")
             signatures = []
             for key, road in db.execute(

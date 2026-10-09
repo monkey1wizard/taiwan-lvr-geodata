@@ -397,6 +397,10 @@ def resolve_offline(
             "address-occurrence": pool_report["occurrence_rows"],
         },
     }
+    # R05-7: the district lookups of the pool travel with the state for the review stage.
+    district = [item for item in pool_manifest["artifacts"] if item["schema"] == "district-candidate"]
+    if district:
+        report["dataset_counts"]["district-candidate"] = sum(item["row_count"] for item in district)
     artifacts = [
         ("address_index.parquet", result.path, "address-result", result.row_count),
         (
@@ -431,5 +435,9 @@ def resolve_offline(
             "address-occurrence",
             pool_report["occurrence_rows"],
         ),
+        *[
+            (item["path"], Path(pool_path) / item["path"], "district-candidate", item["row_count"])
+            for item in district
+        ],
     ]
     return stage.finish(artifacts, report)
