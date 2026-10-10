@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -34,6 +35,7 @@ from .transactions.normalize import normalize
 from .storage.runs import (
     ROOT,
     RunStore,
+    DEFAULT_RUNS_ROOT,
     SnapshotStore,
     _json_write,
     bindings as stage_bindings,
@@ -397,6 +399,32 @@ def coverage_failures(manifest: dict, report: dict) -> list[dict]:
     return failures
 
 
+# Required free share of the disk. Kept here, not in config/pipeline.example.toml: that file is hashed into run bindings.
+DISK_HEADROOM_RATIO = 0.20
+
+
+class DiskHeadroomError(RuntimeError):
+    """Free disk space is below the required share; the stage was not started."""
+
+
+def disk_headroom(path) -> dict:
+    """Free space on the disk holding ``path`` (nearest existing ancestor) against DISK_HEADROOM_RATIO."""
+    probe = Path(path).absolute()
+    while not probe.exists() and probe.parent != probe:
+        probe = probe.parent
+    usage = shutil.disk_usage(probe)
+    ratio = usage.free / usage.total if usage.total else 0.0
+    return {"path": str(probe), "free_bytes": usage.free, "total_bytes": usage.total, "free_ratio": ratio,
+            "required_ratio": DISK_HEADROOM_RATIO, "ok": ratio >= DISK_HEADROOM_RATIO}
+
+
+def _tree_bytes(path) -> int:
+    root = Path(path)
+    if root.is_file():
+        return root.stat().st_size
+    return sum(item.stat().st_size for item in root.rglob("*") if item.is_file())
+
+
 def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | None = None,
              raw_dir: Path = Path("data/raw"), manifest_path: Path = Path("config/sources/raw_manifest.json"),
              address_source: Path = Path("config/sources/address_source.json"),
@@ -411,6 +439,13 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
     config = Path(config) if config is not None else DEFAULT_CONFIG
     clock = time.perf_counter()
     bindings_ = run_bindings(manifest_path, address_source, rules_path, config, cutoff)
+    headroom_start = disk_headroom(DEFAULT_RUNS_ROOT if runs_root is None else runs_root)
+    if not headroom_start["ok"]:  # stop before anything is written: no run directory, lock or attempts file
+        return {"run_id": run_id, "completed": False, "started_at": datetime.now(timezone.utc).isoformat(),
+                "bindings": bindings_, "quarantined": [], "steps": [], "disk_headroom": headroom_start,
+                "failures": [{"step": "disk-headroom", "code": "disk_headroom",
+                              "detail": f"free {headroom_start['free_ratio']:.4f} of disk, "
+                                        f"required {DISK_HEADROOM_RATIO:.2f}"}]}
     run = RunStore.open(runs_root, run_id, bindings_)
     result = {"run_id": run_id, "run_dir": str(run.root), "completed": False,
               "started_at": datetime.now(timezone.utc).isoformat(), "bindings": bindings_,
@@ -424,11 +459,26 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
         if reused:
             path = run.stage(name).root / "snapshots" / run.checkpoints()[name]["snapshot_id"]
         else:
+            headroom = disk_headroom(run.root)
+            if not headroom["ok"]:
+                raise DiskHeadroomError(f"free {headroom['free_ratio']:.4f} of disk before {name}, "
+                                        f"required {DISK_HEADROOM_RATIO:.2f}")
             path = Path(build())
             run.commit(name, path.name)
         result["steps"].append({"step": name, "snapshot_id": path.name, "reused_checkpoint": reused,
-                                "elapsed_seconds": round(time.perf_counter() - start, 3)})
+                                "elapsed_seconds": round(time.perf_counter() - start, 3),
+                                # Process peak so far (ru_maxrss is monotonic), not a per-stage peak.
+                                "process_peak_rss_bytes": peak_rss_bytes(),
+                                "snapshot_bytes": _tree_bytes(path),
+                                "disk_free_bytes": shutil.disk_usage(run.root).free})
         return path
+
+    def resources():
+        return {"disk_headroom_start": headroom_start, "disk_headroom_end": disk_headroom(run.root),
+                "run_dir_bytes": _tree_bytes(run.root),
+                "duckdb_memory_limit": os.environ.get("LVR_DUCKDB_MEMORY_LIMIT"),
+                "steps": [{k: step[k] for k in ["step", "elapsed_seconds", "process_peak_rss_bytes", "snapshot_bytes"]}
+                          for step in result["steps"] if "snapshot_bytes" in step]}
 
     def write_report(report, stage_hashes):
         store = SnapshotStore(run.root / "run-report")
@@ -503,6 +553,7 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
                 "address_status_counts": state_report["status_counts"],
                 "review_reason_counts": review_report["reason_counts"],
                 "quarantined": result["quarantined"],
+                "resources": resources(),
             }
             hashes = [sha256_file(run.stage(name).root / "snapshots" / entry["snapshot_id"] / "manifest.json")
                       for name, entry in stages.items()]
@@ -515,6 +566,7 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
     finally:
         result["elapsed_seconds"] = round(time.perf_counter() - clock, 3)
         result["process_peak_rss_bytes"] = peak_rss_bytes()
+        result["resources"] = resources()
         attempts = run.root / "attempts"
         attempts.mkdir(exist_ok=True)
         _json_write(attempts / f"{_utc_stamp()}.json", result)
