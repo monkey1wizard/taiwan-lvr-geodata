@@ -10,7 +10,8 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
-from lvr_pipeline.export import county_letters, read_wkb, spread_coordinate, spread_ranks
+from lvr_pipeline.output.monthly import county_letters, read_wkb
+from lvr_pipeline.output.yearly import spread_coordinate, spread_ranks
 from lvr_pipeline.source_ref import make_source_ref
 
 COUNTY_BY_LETTER = county_letters()

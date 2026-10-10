@@ -11,7 +11,7 @@ from lvr_pipeline.distribution import (
     GitHubRelease,
     commit_pointer,
 )
-from lvr_pipeline.packaging import package_output
+from lvr_pipeline.output.package import package_output
 from lvr_pipeline.storage.runs import sha256_file
 from test_p2_offline import run
 

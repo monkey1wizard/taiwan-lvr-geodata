@@ -2,28 +2,31 @@
 
 from __future__ import annotations
 
+import base64
 import csv
 import datetime
 import json
-import base64
 import math
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
+import shutil
 import struct
+import zipfile
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from .storage.parquet import SCHEMAS
-from .source_ref import make_source_ref
-from .storage.runs import canonical_json
+from ..storage.parquet import SCHEMAS
+from ..storage.runs import canonical_json, sha256_file
 
 
 COUNTY_LETTERS = (
-    Path(__file__).resolve().parent.parent / "config" / "reference" / "lvr_county_letters.csv"
+    Path(__file__).resolve().parent.parent.parent / "config" / "reference" / "lvr_county_letters.csv"
 )
+
+
 # Top-level GIS attribute contract (plan 6.4). location_status is already a base field.
 ATTRIBUTE_FIELDS = [
     ("trade_date", pa.string()),
@@ -38,13 +41,8 @@ ATTRIBUTE_FIELDS = [
     ("latitude", pa.float64()),
 ]
 ATTRIBUTE_NAMES = [name for name, _ in ATTRIBUTE_FIELDS]
-_POINT_LEADING = [
-    "trade_date", "county", "district", "address", "building_type", "total_price",
-    "unit_price_sqm", "building_area_sqm", "location_status", "longitude", "latitude",
-]
-POINT_COLUMNS_V10 = _POINT_LEADING + ["raw_record_id"]  # contract 1.0, still verified
-POINT_COLUMNS = _POINT_LEADING + ["source_ref"]  # contracts 1.1 and 1.2
-POINT_SOURCE_COLUMNS = _POINT_LEADING + ["src_batch", "member_path", "source_row_number"]
+
+
 _NUMBER = re.compile(r"\d+(\.\d+)?")
 
 
@@ -135,112 +133,6 @@ def attributes(row, shape):
         "longitude": point[0],
         "latitude": point[1],
     }
-
-
-def is_legacy_month(path):
-    """True for monthly GeoParquet written before the GIS attribute contract."""
-    return "trade_date" not in pq.ParquetFile(path).schema_arrow.names
-
-
-def point_values(row, legacy=False):
-    """CSV cells of one fully located single-Point observation, else None."""
-    if row["location_status"] != "complete" or row["longitude"] is None:
-        return None
-    cells = ["" if row[k] is None else str(row[k]) for k in _POINT_LEADING]
-    if legacy:
-        return cells + [row["raw_record_id"]]
-    return cells + [make_source_ref(row["src_batch"], row["member_path"], row["source_row_number"])]
-
-
-def iter_points(path, legacy=False):
-    """Yield point_values for every fully located single-Point row of one monthly file."""
-    for values, _ in iter_points_with_id(path, legacy):
-        yield values
-
-
-def iter_points_with_id(path, legacy=False):
-    """Yield (point_values, raw_record_id) for every fully located single-Point row."""
-    parquet = pq.ParquetFile(path)
-    columns = _POINT_LEADING + ["raw_record_id", "src_batch", "member_path", "source_row_number"]
-    for batch in parquet.iter_batches(batch_size=4096, columns=columns):
-        for row in batch.to_pylist():
-            values = point_values(row, legacy)
-            if values is not None:
-                yield values, row["raw_record_id"]
-
-
-# Contract 1.2: display spread of yearly points that share one building coordinate.
-EARTH_RADIUS_M = 6371008.8  # the radius haversine_m uses
-SPREAD_RADIUS_M = 0.9  # outer radius of the spiral; the 1 m limit keeps 0.1 m of margin
-SPREAD_LIMIT_M = 1.0
-SPREAD_DECIMALS = 8  # 1e-8 degree is about 1.1 mm, far finer than the 1 m spread
-GOLDEN_ANGLE = math.pi * (3.0 - math.sqrt(5.0))
-_LONGITUDE, _LATITUDE = _POINT_LEADING.index("longitude"), _POINT_LEADING.index("latitude")
-
-
-def haversine_m(lon1, lat1, lon2, lat2):
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
-    return 2 * EARTH_RADIUS_M * math.asin(math.sqrt(min(1.0, a)))
-
-
-def spread_rank(rank, count):
-    """Cell texts (longitude offset, latitude offset in metres) of the rank-th of count points.
-
-    Fermat (sunflower) spiral: radius = SPREAD_RADIUS_M * sqrt((rank + 0.5) / count), angle = rank * golden
-    angle. Each point owns an equal area, so spacing shrinks as count grows and the radius never exceeds
-    SPREAD_RADIUS_M. Even the first point is moved off the building coordinate.
-    """
-    radius = SPREAD_RADIUS_M * math.sqrt((rank + 0.5) / count)
-    angle = rank * GOLDEN_ANGLE
-    return radius * math.cos(angle), radius * math.sin(angle)
-
-
-def spread_coordinate(lon, lat, rank, count):
-    """(longitude, latitude) cell texts of one spread point; count == 1 returns the original unchanged."""
-    if count <= 1:
-        return repr(lon), repr(lat)
-    east, north = spread_rank(rank, count)
-    new_lat = lat + math.degrees(north / EARTH_RADIUS_M)
-    new_lon = lon + math.degrees(east / (EARTH_RADIUS_M * math.cos(math.radians(lat))))
-    return f"{new_lon:.{SPREAD_DECIMALS}f}", f"{new_lat:.{SPREAD_DECIMALS}f}"
-
-
-def spread_ranks(entries):
-    """{source_ref: (rank, count)} for groups of more than one point.
-
-    entries: iterable of (group_key, trade_date, source_ref). Within a group the order is (trade_date,
-    source_ref) with a missing trade_date first; no randomness, so reruns give the same ranks.
-    """
-    groups = {}
-    for key, trade_date, ref in entries:
-        groups.setdefault(key, []).append((trade_date or "", ref))
-    ranks = {}
-    for items in groups.values():
-        if len(items) > 1:
-            items.sort()
-            for rank, (_, ref) in enumerate(items):
-                ranks[ref] = (rank, len(items))
-    return ranks
-
-
-def iter_spread_points(paths):
-    """Yield (point_values, raw_record_id, (lon, lat)) of one yearly category with contract 1.2 coordinates.
-
-    point_values carry the spread coordinates; (lon, lat) are the original monthly coordinates. Two passes
-    over the monthly files: the first keeps only (coordinate, trade_date, source_ref) per row, the second
-    streams the rows, so a year of one category (about 220,000 rows) never sits in memory as full rows.
-    """
-    paths = list(paths)
-    ranks = spread_ranks(
-        ((v[_LONGITUDE], v[_LATITUDE]), v[0], v[-1]) for path in paths for v, _ in iter_points_with_id(path)
-    )
-    for path in paths:
-        for values, raw_id in iter_points_with_id(path):
-            lon, lat = float(values[_LONGITUDE]), float(values[_LATITUDE])
-            rank, count = ranks.get(values[-1], (0, 1))
-            values[_LONGITUDE], values[_LATITUDE] = spread_coordinate(lon, lat, rank, count)
-            yield values, raw_id, (lon, lat)
 
 
 def geometry(points, category):
@@ -487,82 +379,50 @@ def export_month(db, month, category, directory):
     return writer.paths, writer.stats
 
 
-def verify_month(paths):
-    parquet = pq.ParquetFile(paths["geoparquet"])
-    declared_types = json.loads(parquet.schema_arrow.metadata[b"geo"])["columns"][
-        "geometry"
-    ]["geometry_types"]
-    legacy = "trade_date" not in parquet.schema_arrow.names
-    if not parquet.schema_arrow.equals(
-        output_schema(declared_types, legacy), check_metadata=True
+FORMATS = ("geoparquet", "geojson", "ndjson")
+CATEGORIES = ("sales", "presale", "rent")
+MAX_ASSET_BYTES = 2**31 - 1
+
+
+def safe_path(value):
+    path = PurePosixPath(value)
+    if (
+        not value
+        or path.is_absolute()
+        or ".." in path.parts
+        or "\\" in value
+        or ":" in value
     ):
-        raise ValueError("GeoParquet schema/CRS metadata mismatch")
-    observed_types = set()
-    stats = {
-        "rows": 0,
-        "null_geometry": 0,
-        "partial_geometry": 0,
-        "approximation": 0,
-        "amount_minor_sum": 0,
+        raise ValueError("Unsafe artifact path")
+    return path
+
+
+def write_json(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(canonical_json(value) + "\n", encoding="utf-8")
+
+
+def artifact(root, path, **extra):
+    return {
+        "path": path.relative_to(root).as_posix(),
+        "asset_name": path.name,
+        "bytes": path.stat().st_size,
+        "sha256": sha256_file(path),
+        **extra,
     }
-    with (
-        Path(paths["ndjson"]).open(encoding="utf-8") as nd,
-        Path(paths["geojson"]).open(encoding="utf-8") as geo,
-    ):
-        if geo.readline() != '{"type":"FeatureCollection","features":[\n':
-            raise ValueError("GeoJSON header mismatch")
-        for group in range(parquet.num_row_groups):
-            for batch in parquet.iter_batches(batch_size=1024, row_groups=[group]):
-                for row in batch.to_pylist():
-                    expected = feature(row)
-                    if (
-                        json.loads(nd.readline()) != expected
-                        or json.loads(geo.readline().rstrip("\n,")) != expected
-                    ):
-                        raise ValueError("Output format parity mismatch")
-                    shape = expected["geometry"]
-                    if not legacy:
-                        derived = attributes(row, shape)
-                        if any(row[k] != derived[k] for k in ATTRIBUTE_NAMES):
-                            raise ValueError("GIS attribute fields differ from source")
-                    if shape:
-                        observed_types.add(shape["type"])
-                    n = row["address_component_count"]
-                    located = row["located_component_count"]
-                    if not 0 <= located <= n or n < 1:
-                        raise ValueError("Output component counts invalid")
-                    status = (
-                        "none"
-                        if not located
-                        else "complete"
-                        if located == n
-                        else "partial"
-                    )
-                    if row["location_status"] != status or (shape is None) != (
-                        located == 0
-                    ):
-                        raise ValueError("Output location status invalid")
-                    if shape and shape["type"] == "Polygon":
-                        ring = shape["coordinates"][0]
-                        if (
-                            row["category"] == "rent"
-                            or not row["is_approximation"]
-                            or ring[0] != ring[-1]
-                            or ring[0][0] >= ring[1][0]
-                            or ring[1][1] >= ring[2][1]
-                        ):
-                            raise ValueError("Invalid approximate bbox")
-                    elif row["is_approximation"]:
-                        raise ValueError("Only Polygon may be approximate")
-                    stats["rows"] += 1
-                    stats["null_geometry"] += shape is None
-                    stats["partial_geometry"] += status == "partial"
-                    stats["approximation"] += row["is_approximation"]
-                    stats["amount_minor_sum"] += row["amount_minor"] or 0
-        if nd.read().strip():
-            raise ValueError("NDJSON has extra records")
-        if geo.read() != ("\n]}\n" if not stats["rows"] else "]}\n"):
-            raise ValueError("GeoJSON footer/row count mismatch")
-    if sorted(observed_types) != declared_types:
-        raise ValueError("GeoParquet geometry type metadata differs from actual rows")
-    return stats
+
+
+def zip_files(path, files):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(
+        path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6
+    ) as archive:
+        for name, source in files:
+            safe_path(name)
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            with (
+                archive.open(info, "w", force_zip64=True) as target,
+                Path(source).open("rb") as stream,
+            ):
+                shutil.copyfileobj(stream, target, length=2**20)

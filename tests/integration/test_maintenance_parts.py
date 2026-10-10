@@ -7,12 +7,9 @@ import zipfile
 import pytest
 
 from lvr_pipeline.distribution import fetch_output
-from lvr_pipeline.packaging import (
-    extract_handoff,
-    package_output,
-    verify_output,
-    write_maintenance,
-)
+from lvr_pipeline.output.package import package_output
+from lvr_pipeline.output.publish import extract_handoff, write_maintenance
+from lvr_pipeline.output.verify import verify_output
 from lvr_pipeline.storage.runs import sha256_file
 from test_p2_distribution import local_transport
 from test_p2_offline import run

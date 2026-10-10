@@ -500,7 +500,7 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
    | 維護包 | 分成 2 片加索引：`part001.zip` 2,031,701,063；`part002.zip` 1,451,434,106；`_maintenance_index.json` 195,898 bytes（合計 3,483,331,067） |
    | 全部資產合計 | 25,953,761,652 bytes（約 24.2 GiB，記為約 26 GB）。實體磁碟約 25 GB |
 
-   單一附件上限為 `MAX_ASSET_BYTES` = 2,147,483,647 位元組（`lvr_pipeline/packaging.py`）。`part001.zip` 低於上限 115,782,584 bytes（5.4%）。維護包超過上限時才分片（見「全量循環 9」規則 6）。
+   單一附件上限為 `MAX_ASSET_BYTES` = 2,147,483,647 位元組（`lvr_pipeline/output/monthly.py`）。`part001.zip` 低於上限 115,782,584 bytes（5.4%）。維護包超過上限時才分片（見「全量循環 9」規則 6）。
 4. 任一單檔超過上限、`verify-output` 失敗，或磁碟剩餘低於 20% 時停止，不進入發布。
 5. 本節不含發布。`publish-output` 與 `commit-release-pointer` 需擁有者另行指示，見[CONTRIBUTING](../CONTRIBUTING.md#發布與復原)。
 
