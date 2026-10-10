@@ -2,7 +2,7 @@
 name = "taiwan-lvr-geodata"
 version = "0.1.0"
 description = "Versioned Taiwan LVR data processing foundations"
-requires-python = ">=3.13,<3.15"
+requires-python = ">=3.14,<3.15"
 dependencies = [
     "duckdb>=1.5.6",
     "jsonschema==4.26.0",

@@ -193,7 +193,7 @@ raw_record_id 追溯來源觀測。上游序號或相同地址不足以證明同
 
 ### 安裝與命令入口
 
-在專案根目錄執行。環境由 `uv.lock` 固定，目前使用 Python 3.13.16 與 uv 0.12.23。Linux 已安裝 uv 後執行：
+在專案根目錄執行。環境由 `uv.lock` 固定，目前使用 Python 3.14.8 與 uv 0.12.23。Linux 已安裝 uv 後執行：
 
 ```bash
 bash scripts/setup.sh
@@ -202,15 +202,15 @@ bash scripts/setup.sh
 Windows 執行：
 
 ```powershell
-uv sync --locked --group dev --python 3.13.16
-uv run --locked --python 3.13.16 python scripts/build_fixtures.py
-uv run --locked --python 3.13.16 python -m pytest -q
+uv sync --locked --group dev --python 3.14.8
+uv run --locked --python 3.14.8 python scripts/build_fixtures.py
+uv run --locked --python 3.14.8 python -m pytest -q
 ```
 
 安裝與測試只使用合成資料，不下載真實資料，也不需要 TGOS 憑證。檢視既有命令：
 
 ```bash
-uv run --locked --python 3.13.16 python -m lvr_pipeline --help
+uv run --locked --python 3.14.8 python -m lvr_pipeline --help
 ```
 
 ### 準備來源
@@ -233,8 +233,8 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline --help
 以下是單批語法範例，用於診斷。請換成未使用的 run ID 與本次固定的截止月份：
 
 ```bash
-uv run --locked --python 3.13.16 python -m lvr_pipeline export-converted --batch 115q1 --cutoff 202610 --run-id example-115q1
-uv run --locked --python 3.13.16 python -m lvr_pipeline verify-converted --input data/work/converted/snapshots/example-115q1
+uv run --locked --python 3.14.8 python -m lvr_pipeline export-converted --batch 115q1 --cutoff 202610 --run-id example-115q1
+uv run --locked --python 3.14.8 python -m lvr_pipeline verify-converted --input data/work/converted/snapshots/example-115q1
 ```
 
 `--batch` 可重複指定。增加批次參數不等於新版全歷史流程已驗收。來源觀測、排除與失敗筆數都須核對，詳見[資料規格](#資料規格)。
@@ -271,7 +271,7 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline verify-converted --input
 - 所有命令都在專案根目錄執行。為縮短命令，先設定：
 
   ```bash
-  LVR="uv run --locked --python 3.13.16 python -m lvr_pipeline"
+  LVR="uv run --locked --python 3.14.8 python -m lvr_pipeline"
   ```
 
 - `<run-id>` 是本輪識別，例如 `fast2`。同一個階段的快照 ID 不可用於不同的輸入。
@@ -301,14 +301,14 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline verify-converted --input
 
 ### 全量循環 1 環境
 
-1. 準備 Linux 主機，安裝 `git` 與 `uv`（專案目前使用 uv 0.12.23）。`uv` 依 `.python-version` 使用 Python 3.13.16。
+1. 準備 Linux 主機，安裝 `git` 與 `uv`（專案目前使用 uv 0.12.23）。`uv` 依 `.python-version` 使用 Python 3.14.8。
 2. 取得本專案，切到要執行的提交，執行：
 
    ```bash
    bash scripts/setup.sh
    ```
 
-   腳本會執行 `uv sync --locked --group dev --python 3.13.16`、產生合成測試資料並跑 `pytest`。測試只用合成資料，不下載真實資料。GitHub Actions 在 Ubuntu 上執行同一個腳本約 1 分 54 秒。
+   腳本會執行 `uv sync --locked --group dev --python 3.14.8`、產生合成測試資料並跑 `pytest`。測試只用合成資料，不下載真實資料。GitHub Actions 在 Ubuntu 上執行同一個腳本約 1 分 54 秒。
 3. 設定 DuckDB 環境變數。未設定時，程式預設為 2 執行緒、記憶體上限 256MB、暫存上限 1GiB，全量資料會因超過上限而失敗，因此必須放寬：
 
    ```bash
@@ -368,7 +368,7 @@ uv run --locked --python 3.13.16 python -m lvr_pipeline verify-converted --input
 1. 讀取全部 58 批。`--batch` 必須明確列出，沒有「全部」選項：
 
    ```bash
-   BATCHES=$(uv run --locked --python 3.13.16 python -c "import json;print(' '.join('--batch '+e['batch'] for e in json.load(open('config/sources/raw_manifest.json'))['inputs']))")
+   BATCHES=$(uv run --locked --python 3.14.8 python -c "import json;print(' '.join('--batch '+e['batch'] for e in json.load(open('config/sources/raw_manifest.json'))['inputs']))")
    $LVR ingest $BATCHES --work-dir <W> --run-id <run-id>-ingest
    ```
 
@@ -838,8 +838,8 @@ id,Address,Response_Address,Response_X,Response_Y
 可用下列命令檢查已存在的狀態。大寫參數需替換為本機實際路徑。
 
 ```bash
-uv run --locked --python 3.13.16 python -m lvr_pipeline verify-tgos-state --input STATE_PATH
-uv run --locked --python 3.13.16 python -m lvr_pipeline verify-address-patch --input PATCH_PATH
+uv run --locked --python 3.14.8 python -m lvr_pipeline verify-tgos-state --input STATE_PATH
+uv run --locked --python 3.14.8 python -m lvr_pipeline verify-address-patch --input PATCH_PATH
 ```
 
 舊批次命令及當時設定保存在[封存 TGOS 操作紀錄](archive/tgos-runbook.md)。它們不是新版安全操作順序。修復完成後再補入完整送出、匯入及回補命令。

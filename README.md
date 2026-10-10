@@ -41,7 +41,7 @@ TGOS 問題的案例與量測限制見[問題報告](docs/records/TGOS地址錯�
 先從固定版本指標取得 manifest URL 與 SHA-256。以下大寫參數為占位文字，執行前必須替換。目的目錄應尚未存在。
 
 ```bash
-uv run --locked --python 3.13.16 python -m lvr_pipeline fetch-output --manifest-url MANIFEST_URL --manifest-sha256 MANIFEST_SHA256 --target data/downloads/my-month --month 202601 --category sales --format geoparquet
+uv run --locked --python 3.14.8 python -m lvr_pipeline fetch-output --manifest-url MANIFEST_URL --manifest-sha256 MANIFEST_SHA256 --target data/downloads/my-month --month 202601 --category sales --format geoparquet
 ```
 
 省略 `--format` 可下載該選擇範圍的三種格式。月份必須在該版 manifest 中。下載後依 manifest 核對檔案大小與雜湊，不把下載成功當成涵蓋完整。
