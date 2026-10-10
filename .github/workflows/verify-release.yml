@@ -1,4 +1,4 @@
-name: Verify public offline handoff
+name: Verify release
 on:
   workflow_dispatch:
     inputs:

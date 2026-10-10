@@ -275,6 +275,36 @@ def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict], int, list[dict]
     return batches, carried, rekeyed, uncarried
 
 
+def select_unmatched_candidates(
+    address_rows,
+    *,
+    retry_fingerprints: set[str] = frozenset(),
+    prior: set[str] = frozenset(),
+    sent_text: set[str] = frozenset(),
+    suspended_codes: set[str] = frozenset(),
+    suspended_excluded: dict[str, int] | None = None,
+) -> list[dict]:
+    """Pure TGOS candidate selection: unmatched or outside-scope rows not yet sent.
+
+    Before ledger carry-over and quota; suspended counties are counted into
+    `suspended_excluded` (when given) and left out.
+    """
+    candidates = []
+    for row in address_rows:
+        if row["status"] not in {"unmatched", "outside_scope"}:
+            continue
+        fingerprint = digest([row["building_key"], row["canonical_address"]])
+        if fingerprint in retry_fingerprints or (
+            fingerprint not in prior and row["canonical_address"] not in sent_text
+        ):
+            if row["county_code"] in suspended_codes:
+                if suspended_excluded is not None:
+                    suspended_excluded[row["county_code"]] += 1
+                continue
+            candidates.append({**row, "query_fingerprint": fingerprint})
+    return candidates
+
+
 def prepare_tgos(
     source: Path,
     work_dir: Path,
@@ -334,18 +364,14 @@ def prepare_tgos(
     sent_text = {
         row["address"] for row in [*queries, *uncarried] if row["status"] not in retryable
     }
-    candidates = []
-    for row in rows(paths["address-result"]):
-        if row["status"] not in {"unmatched", "outside_scope"}:
-            continue
-        fingerprint = digest([row["building_key"], row["canonical_address"]])
-        if fingerprint in retry_fingerprints or (
-            fingerprint not in prior and row["canonical_address"] not in sent_text
-        ):
-            if row["county_code"] in suspended_codes:
-                suspended_excluded[row["county_code"]] += 1
-                continue
-            candidates.append({**row, "query_fingerprint": fingerprint})
+    candidates = select_unmatched_candidates(
+        rows(paths["address-result"]),
+        retry_fingerprints=retry_fingerprints,
+        prior=prior,
+        sent_text=sent_text,
+        suspended_codes=suspended_codes,
+        suspended_excluded=suspended_excluded,
+    )
     retry_candidates = [
         row for row in candidates if row["query_fingerprint"] in retry_fingerprints
     ]

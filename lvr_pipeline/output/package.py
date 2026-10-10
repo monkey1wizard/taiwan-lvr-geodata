@@ -10,9 +10,10 @@ import time
 
 import duckdb
 
-from ..results.reconcile import load_p2
-from ..storage.parquet import duckdb_config
+from ..results.reconcile import check_suspended_counties, load_p2
+from ..storage.parquet import duckdb_config, rows
 from ..storage.runs import PRODUCER_CONFIGS, bindings, digest, load_snapshot, peak_rss_bytes, sha256_file
+from ..tgos.batches import _artifact_paths, load_state, select_unmatched_candidates
 from . import yearly
 from .monthly import CATEGORIES, FORMATS, MAX_ASSET_BYTES, artifact, export_month, safe_path, write_json, zip_files
 from .publish import fetch_output, write_maintenance
@@ -294,6 +295,39 @@ def package_output(
     return root
 
 
+def verify_unmatched_candidates(state: Path) -> int:
+    """Recompute the full-history TGOS candidate set from a public state snapshot.
+
+    Uses the prepare_tgos selection rule (select_unmatched_candidates) without ledger,
+    query history, quota or any written file. Rule: candidates plus rows excluded for
+    suspended counties must equal status_counts unmatched + outside_scope; otherwise
+    the unmatched table and the quality report disagree and ValueError is raised.
+    Returns the candidate count (0 is valid when the release has no eligible unmatched).
+    """
+    manifest, report, _ = load_state(state)
+    suspension = report.get("address_suspension")
+    suspended = (
+        {item["code"] for item in check_suspended_counties(suspension["counties"])}
+        if suspension is not None
+        else set()
+    )
+    excluded = {code: 0 for code in sorted(suspended)}
+    candidates = select_unmatched_candidates(
+        rows(_artifact_paths(state, manifest)["address-result"]),
+        suspended_codes=suspended,
+        suspended_excluded=excluded,
+    )
+    counts = report["status_counts"]
+    expected = counts.get("unmatched", 0) + counts.get("outside_scope", 0)
+    if len(candidates) + sum(excluded.values()) != expected:
+        raise ValueError(
+            "Unmatched candidate selection differs from state status_counts: "
+            f"{len(candidates)} candidates + {sum(excluded.values())} suspended "
+            f"!= {expected} unmatched/outside_scope"
+        )
+    return len(candidates)
+
+
 def verify_public_snapshot(manifest_url: str, manifest_sha256: str, work_dir: Path) -> dict:
     """Linux public handoff acceptance: fetch state and reproduce all month bytes without raw."""
     work_dir = Path(work_dir)
@@ -334,6 +368,7 @@ def verify_public_snapshot(manifest_url: str, manifest_sha256: str, work_dir: Pa
         month=sample,
         category="sales",
     )
+    unmatched_candidates = verify_unmatched_candidates(handoff_root / handoff["state"])
     result = {
         "snapshot_id": manifest["snapshot_id"],
         "manifest_sha256": manifest_sha256,
@@ -341,6 +376,7 @@ def verify_public_snapshot(manifest_url: str, manifest_sha256: str, work_dir: Pa
         "month_file_count": len(expected),
         "retained_rows": manifest["retained_rows"],
         "all_month_hashes_match": True,
+        "unmatched_candidates": unmatched_candidates,
         "unmatched_selection_verified": True,
         "tgos_started": False,
         "result": "pass",
