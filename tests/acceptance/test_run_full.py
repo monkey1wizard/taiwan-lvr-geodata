@@ -31,7 +31,10 @@ def setup_inputs(tmp_path):
     address_dir, descriptor = source(tmp_path)
     descriptor_path = tmp_path / "address_source.json"
     descriptor_path.write_text(json.dumps(descriptor, ensure_ascii=False), encoding="utf-8")
-    return {"raw_dir": raw, "manifest_path": manifest, "address_dir": address_dir,
+    notices = tmp_path / "notices.json"
+    notices.write_text(json.dumps({"publication_authorized": True, "record_grain": "source_observation",
+                                   "sources": [{"provider": "synthetic", "title": "synthetic source"}]}), encoding="utf-8")
+    return {"notices_path": notices, "raw_dir": raw, "manifest_path": manifest, "address_dir": address_dir,
             "address_source": descriptor_path, "rules_path": rules(tmp_path),
             "runs_root": tmp_path / "runs", "cutoff": 202610, "batch_rows": 2}
 
@@ -50,7 +53,8 @@ def test_full_run_cross_batch_three_categories_known_empty_and_duplicate_serials
     code = main(["run-full", "--run-id", "full1", "--cutoff", "202610", "--address-dir", str(inputs["address_dir"]),
                  "--runs-root", str(inputs["runs_root"]), "--raw-dir", str(inputs["raw_dir"]),
                  "--manifest", str(inputs["manifest_path"]), "--address-source", str(inputs["address_source"]),
-                 "--garbled-rules", str(inputs["rules_path"]), "--batch-rows", "2"])
+                 "--garbled-rules", str(inputs["rules_path"]), "--batch-rows", "2",
+                 "--notices", str(inputs["notices_path"])])
     result = json.loads(capsys.readouterr().out)
     assert code == 0 and result["completed"] is True and result["failures"] == []
     run_dir = inputs["runs_root"] / "full1"
@@ -99,7 +103,8 @@ def test_missing_zip_is_incomplete_and_runs_no_stage(tmp_path, missing, capsys):
     code = main(["run-full", "--run-id", "miss", "--cutoff", "202610", "--address-dir", str(inputs["address_dir"]),
                  "--runs-root", str(inputs["runs_root"]), "--raw-dir", str(inputs["raw_dir"]),
                  "--manifest", str(inputs["manifest_path"]), "--address-source", str(inputs["address_source"]),
-                 "--garbled-rules", str(inputs["rules_path"])])
+                 "--garbled-rules", str(inputs["rules_path"]),
+                 "--notices", str(inputs["notices_path"])])
     result = json.loads(capsys.readouterr().out)
     assert code == 1 and result["completed"] is False
     # A missing file is never an empty batch, even for the known-empty 101q1.
@@ -124,7 +129,7 @@ def test_failed_stage_leaves_no_completion_and_residue_is_quarantined_on_resume(
     assert first["completed"] is False
     assert first["failures"] == [{"step": "review", "code": "RuntimeError", "detail": "interrupted review"}]
     run_dir = inputs["runs_root"] / "resume"
-    assert set(checkpoints(run_dir)) == set(RUN_FULL_STAGES) - {"review", "run-report"}
+    assert set(checkpoints(run_dir)) == set(RUN_FULL_STAGES) - {"review", "output", "run-report"}
     assert not (run_dir / "run-report").exists()
     review = run_dir / "review"
     [staged] = list((review / "staging").iterdir())
@@ -148,7 +153,7 @@ def test_failed_stage_leaves_no_completion_and_residue_is_quarantined_on_resume(
     # Earlier stages are reused; the review is rebuilt under the same id, not from the residue.
     assert {name: checkpoints(run_dir)[name] for name in RUN_FULL_STAGES[:6]} == earlier
     reused = {step["step"]: step["reused_checkpoint"] for step in second["steps"] if step["step"] in RUN_FULL_STAGES}
-    assert reused == {**{name: True for name in RUN_FULL_STAGES[:6]}, "review": False, "run-report": False}
+    assert reused == {**{name: True for name in RUN_FULL_STAGES[:6]}, "review": False, "output": False, "run-report": False}
     assert checkpoints(run_dir)["review"]["snapshot_id"] == staged.name
     report = json.loads(Path(second["report"]).read_text(encoding="utf-8"))
     assert report["quarantined"] == moved
@@ -184,7 +189,8 @@ def test_coverage_gate_failure_blocks_completion(tmp_path, monkeypatch, capsys):
     argv = ["run-full", "--run-id", "gate", "--cutoff", "202610", "--address-dir", str(inputs["address_dir"]),
             "--runs-root", str(inputs["runs_root"]), "--raw-dir", str(inputs["raw_dir"]),
             "--manifest", str(inputs["manifest_path"]), "--address-source", str(inputs["address_source"]),
-            "--garbled-rules", str(inputs["rules_path"]), "--batch-rows", "2"]
+            "--garbled-rules", str(inputs["rules_path"]), "--batch-rows", "2",
+            "--notices", str(inputs["notices_path"])]
     monkeypatch.setattr("lvr_pipeline.pipeline.coverage_failures",
                         lambda manifest, report: [{"code": "member_accounting", "detail": "synthetic"}])
     code = main(argv)

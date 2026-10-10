@@ -19,6 +19,7 @@ from .backfill import backfill_output
 from .address_patch import export_address_patch, verify_address_patch
 from .distribution import fetch_output, publish_release, commit_pointer
 from .output.monthly import write_json
+from .output.monthly import MAX_ASSET_BYTES
 from .output.package import package_output
 from .output.verify import verify_output
 from .tgos import (
@@ -332,7 +333,7 @@ def _run_offline_and_output(args):
 
 # R06-4: one full offline run over every batch of the raw manifest.
 RUN_FULL_STAGES = ["offline-index", "ingested", "normalized", "converted", "address-pool",
-                   "offline-state", "review", "run-report"]
+                   "offline-state", "review", "output", "run-report"]
 RUN_FULL_SCOPE = "all-manifest-batches"
 
 
@@ -427,7 +428,7 @@ def _tree_bytes(path) -> int:
     return sum(item.stat().st_size for item in root.rglob("*") if item.is_file())
 
 
-def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | None = None,
+def run_full(*, run_id: str, cutoff: int, address_dir: Path, notices_path: Path, runs_root: Path | None = None,
              raw_dir: Path = Path("data/raw"), manifest_path: Path = Path("config/sources/raw_manifest.json"),
              address_source: Path = Path("config/sources/address_source.json"),
              rules_path: Path = Path("config/rules/character-fixes.csv"), config: Path | None = None,
@@ -481,6 +482,74 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
                 "duckdb_memory_limit": os.environ.get("LVR_DUCKDB_MEMORY_LIMIT"),
                 "steps": [{k: step[k] for k in ["step", "elapsed_seconds", "process_peak_rss_bytes", "snapshot_bytes"]}
                           for step in result["steps"] if "snapshot_bytes" in step]}
+
+    def output_stage(converted, state):
+        """R07-3b: package_output + verify_output, committed as one snapshot holding release.json.
+
+        Reused only when its checkpoint verifies, the snapshot id equals the id derived from the
+        inputs, and the recorded release manifest still has the recorded sha256. A release
+        directory is never deleted or overwritten.
+        """
+        current["step"] = "output"
+        start = time.perf_counter()
+        notices_file = Path(notices_path)
+        input_hashes = [sha256_file(Path(converted) / "manifest.json"), sha256_file(Path(state) / "manifest.json"),
+                        sha256_file(notices_file)]
+        output_id = "output-" + digest({"converted": input_hashes[0], "state": input_hashes[1],
+                                        "notices": input_hashes[2], "max_asset_bytes": MAX_ASSET_BYTES})[:24]
+        store = run.stage("output")
+        final = store.root / "snapshots" / output_id
+        entry = run.checkpoints().get("output")
+        reused = False
+        if entry is not None and entry["snapshot_id"] == output_id and run.reusable("output", bindings_):
+            recorded = _read(final / "release.json")
+            release_dir = run.root / recorded["release_dir"]
+            manifest_path = release_dir / "manifest.json"
+            if not manifest_path.is_file() or sha256_file(manifest_path) != recorded["release_manifest_sha256"]:
+                raise RuntimeError(f"release manifest of {release_dir} no longer matches the recorded sha256; "
+                                   "the release directory is kept untouched, inspect it before retry")
+            reused = True
+        else:
+            headroom = disk_headroom(run.root)
+            if not headroom["ok"]:
+                raise DiskHeadroomError(f"free {headroom['free_ratio']:.4f} of disk before output, "
+                                        f"required {DISK_HEADROOM_RATIO:.2f}")
+            release_root = run.root / "output-release"
+            expected_dir = release_root / output_id
+            try:
+                release_dir = package_output(converted, state, release_root, notices=_read(notices_file),
+                                             run_id=output_id, max_asset_bytes=MAX_ASSET_BYTES)
+            except Exception as exc:
+                if expected_dir.exists():
+                    raise RuntimeError(f"release directory {expected_dir} already exists and cannot be adopted "
+                                       f"({type(exc).__name__}: {exc}); it was not changed") from exc
+                raise
+            manifest = verify_output(release_dir)
+            size_path = Path(release_dir) / "size_report.json"
+            size_report = _read(size_path) if size_path.is_file() else None
+            sizes = [item["bytes"] for item in manifest["assets"]]
+            record = {"release_dir": Path(release_dir).relative_to(run.root).as_posix(),
+                      "release_manifest_sha256": sha256_file(Path(release_dir) / "manifest.json"),
+                      "verify": {"snapshot_id": manifest["snapshot_id"], "retained_rows": manifest["retained_rows"],
+                                 "asset_count": len(sizes), "largest_asset_bytes": max(sizes, default=0),
+                                 "release_asset_bytes": sum(sizes)},
+                      "size_report": size_report}
+            binding = stage_bindings("output", {"run_bindings": bindings_, "output_id": output_id}, input_hashes)
+            current_pointer = store.current()
+            parent = current_pointer["snapshot_id"] if current_pointer else None
+            store.begin(output_id, expected_parent=parent, bindings=binding)
+            build = store.root / "build" / output_id
+            build.mkdir(parents=True)
+            _json_write(build / "release.json", record)
+            store.add(output_id, "release.json", build / "release.json", format_name="binary", row_count=None)
+            store.publish(output_id, expected_parent=parent)
+            run.commit("output", output_id)
+        result["steps"].append({"step": "output", "snapshot_id": output_id, "reused_checkpoint": reused,
+                                "elapsed_seconds": round(time.perf_counter() - start, 3),
+                                "process_peak_rss_bytes": peak_rss_bytes(),
+                                "snapshot_bytes": _tree_bytes(final),
+                                "disk_free_bytes": shutil.disk_usage(run.root).free})
+        return final
 
     def write_report(report, stage_hashes):
         store = SnapshotStore(run.root / "run-report")
@@ -540,6 +609,8 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
                 pool, index, work, coordinate_tolerance_m=load_coordinate_tolerance(config),
                 suspended_counties=load_suspended_counties(config)))
             review = stage("review", lambda: build_review(converted, state, work, descriptor=descriptor))
+            output = output_stage(converted, state)
+            released = _read(output / "release.json")
             current["step"] = "run-report"
             _, state_report = load_p2(state, "offline-state")
             _, review_report = load_p2(review, "review")
@@ -554,6 +625,11 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
                 "member_count": len(converted_report["member_dispositions"]),
                 "address_status_counts": state_report["status_counts"],
                 "review_reason_counts": review_report["reason_counts"],
+                "output": {"release_dir": released["release_dir"],
+                           "release_manifest_sha256": released["release_manifest_sha256"],
+                           "asset_count": released["verify"]["asset_count"],
+                           "largest_asset_bytes": released["verify"]["largest_asset_bytes"],
+                           "release_asset_bytes": released["verify"]["release_asset_bytes"]},
                 "quarantined": result["quarantined"],
                 "resources": resources(),
             }
@@ -576,7 +652,7 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
 
 
 def _run_full_command(args) -> int:
-    result = run_full(run_id=args.run_id, cutoff=args.cutoff, address_dir=args.address_dir, runs_root=args.runs_root,
+    result = run_full(run_id=args.run_id, cutoff=args.cutoff, address_dir=args.address_dir, notices_path=args.notices, runs_root=args.runs_root,
                       raw_dir=args.raw_dir, manifest_path=args.manifest, address_source=args.address_source,
                       rules_path=args.garbled_rules, config=args.config, batch_rows=args.batch_rows)
     print(json.dumps(result, ensure_ascii=False, indent=2))

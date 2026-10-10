@@ -40,6 +40,7 @@ def _add_offline_and_output_commands(sub):
         help="Pipeline TOML with coordinate_tolerance_m and suspended_counties (default config/pipeline.example.toml)",
     )
     p.add_argument("--batch-rows", type=int, default=1024)
+    p.add_argument("--notices", type=Path, required=True, help="Public source notices JSON for the output release")
     p = sub.add_parser("build-offline-index")
     p.add_argument("--address-dir", type=Path, required=True)
     p.add_argument(
