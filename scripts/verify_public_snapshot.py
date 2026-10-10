@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from lvr_pipeline.distribution import fetch_output
+from lvr_pipeline.output.publish import fetch_output
 from lvr_pipeline.output.monthly import write_json
 from lvr_pipeline.output.package import package_output
 from lvr_pipeline.output.verify import verify_output

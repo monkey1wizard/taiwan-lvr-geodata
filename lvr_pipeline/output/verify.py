@@ -7,6 +7,7 @@ import csv
 import hashlib
 import json
 import math
+import shutil
 from itertools import zip_longest
 from pathlib import Path
 import tempfile
@@ -14,11 +15,11 @@ import zipfile
 
 import pyarrow.parquet as pq
 
+from ..results.reconcile import load_p2
 from ..source_ref import resolve_source_ref
-from ..storage.runs import digest, sha256_file
+from ..storage.runs import digest, load_snapshot, sha256_file
 from . import monthly
 from .monthly import ATTRIBUTE_NAMES, FORMATS, MAX_ASSET_BYTES, feature, output_schema, safe_path
-from .publish import extract_handoff
 from .yearly import (
     EARTH_RADIUS_M,
     POINT_COLUMNS,
@@ -302,3 +303,122 @@ def verify_points(root, manifest, expected_points, gis):
                 count += 1
         if count != item["rows"]:
             raise ValueError("Yearly points row count differs from monthly files")
+
+
+def extract_zip(archive_path, target, budget=8 * 2**30):
+    """Extract a handoff ZIP safely; returns the extracted entry names."""
+    target = Path(target)
+    with zipfile.ZipFile(archive_path) as archive:
+        names = archive.namelist()
+        if len(set(names)) != len(names):
+            raise ValueError("Duplicate handoff ZIP entry")
+        if sum(i.file_size for i in archive.infolist()) > budget:
+            raise ValueError("Handoff exceeds 8GiB extraction budget")
+        for info in archive.infolist():
+            safe_path(info.filename)
+            if info.external_attr >> 16 & 0o170000 == 0o120000:
+                raise ValueError("Handoff symlink forbidden")
+            destination = target / info.filename
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.exists():
+                raise FileExistsError(destination)
+            with archive.open(info) as source, destination.open("xb") as stream:
+                shutil.copyfileobj(source, stream, 2**20)
+    return names
+
+
+def extract_indexed_handoff(index_path, target):
+    index_path, target = Path(index_path), Path(target)
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    if index.get("schema_version") != "1.0" or index.get("kind") != "maintenance-index":
+        raise ValueError("Unsupported maintenance index")
+    parts = index["parts"]
+    members = index["members"]
+    if (
+        len({p["name"] for p in parts}) != len(parts)
+        or len({m["path"] for m in members}) != len(members)
+        or index["part_count"] != len(parts)
+        or index["member_count"] != len(members)
+        or index["member_bytes"] != sum(m["bytes"] for m in members)
+    ):
+        raise ValueError("Maintenance index totals mismatch")
+    if index["member_bytes"] > 8 * 2**30:
+        raise ValueError("Handoff exceeds 8GiB extraction budget")
+    for part in parts:
+        safe_path(part["name"])
+        if "/" in part["name"]:
+            raise ValueError("Unsafe artifact path")
+        path = index_path.parent / part["name"]
+        if not path.is_file():
+            raise ValueError("Maintenance part missing")
+        if path.stat().st_size != part["bytes"] or sha256_file(path) != part["sha256"]:
+            raise ValueError("Maintenance part hash/size mismatch")
+    for member in members:
+        safe_path(member["path"])
+    part_names = {p["name"] for p in parts}
+    if any(m["part"] not in part_names for m in members):
+        raise ValueError("Maintenance member refers to unknown part")
+    for part in parts:
+        names = extract_zip(index_path.parent / part["name"], target)
+        if sorted(names) != sorted(
+            m["path"] for m in members if m["part"] == part["name"]
+        ):
+            raise ValueError("Maintenance part member list differs from index")
+    extracted = {
+        p.relative_to(target).as_posix() for p in target.rglob("*") if p.is_file()
+    }
+    if extracted != {m["path"] for m in members}:
+        raise ValueError("Extracted maintenance files differ from index")
+    for member in members:
+        path = target / member["path"]
+        if (
+            path.stat().st_size != member["bytes"]
+            or sha256_file(path) != member["sha256"]
+        ):
+            raise ValueError("Maintenance member hash/size mismatch")
+
+
+def extract_handoff(archive_path: Path, target: Path):
+    """Extract a legacy single maintenance ZIP, or an indexed set of parts (.json)."""
+    target = Path(target)
+    if Path(archive_path).suffix == ".json":
+        extract_indexed_handoff(archive_path, target)
+    else:
+        extract_zip(archive_path, target)
+    handoff = json.loads((target / "handoff.json").read_text(encoding="utf-8"))
+    if (
+        handoff["schema_version"] != "1.0"
+        or handoff["key_version"] != "v2"
+        or not isinstance(handoff["tgos_started"], bool)
+    ):
+        raise ValueError(
+            "Incomplete or incompatible handoff; rebuild required when source fields are unavailable"
+        )
+    for key in ["converted", "state"]:
+        safe_path(handoff[key])
+        if (
+            sha256_file(target / handoff[key] / "manifest.json")
+            != handoff[key + "_manifest_sha256"]
+        ):
+            raise ValueError("Handoff manifest differs")
+    cm, _ = load_snapshot(target / handoff["converted"], "converted")
+    state_stage = handoff.get("state_stage", "offline-state")
+    if state_stage not in {"offline-state", "tgos-state"}:
+        raise ValueError("Unsupported handoff state stage")
+    _, sr = load_p2(target / handoff["state"], state_stage)
+    required = {
+        "address-result",
+        "address-pool",
+        "address-occurrence",
+        "offline-row",
+        "unmatched-address",
+        "verified-alias",
+        "tgos-ledger",
+    }
+    if not required.issubset(sr["dataset_counts"]):
+        raise ValueError(
+            "Missing maintenance state; compatible snapshot or raw rebuild required"
+        )
+    if sr["converted_snapshot_sha256"] != handoff["converted_manifest_sha256"]:
+        raise ValueError("Handoff source/state mismatch")
+    return handoff

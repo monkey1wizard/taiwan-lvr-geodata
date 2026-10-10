@@ -17,7 +17,7 @@ from .results.reconcile import DEFAULT_CONFIG, load_coordinate_tolerance, load_s
 from .results.review import build_review
 from .backfill import backfill_output
 from .address_patch import export_address_patch, verify_address_patch
-from .distribution import fetch_output, publish_release, commit_pointer
+from .output.publish import fetch_output, publish_release, commit_pointer
 from .output.monthly import write_json
 from .output.monthly import MAX_ASSET_BYTES
 from .output.package import package_output

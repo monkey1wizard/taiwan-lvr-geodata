@@ -5,7 +5,7 @@ from urllib.parse import unquote
 
 import pytest
 
-from lvr_pipeline.distribution import (
+from lvr_pipeline.output.publish import (
     fetch_output,
     publish_release,
     GitHubRelease,
