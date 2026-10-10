@@ -465,7 +465,7 @@ def test_same_address_text_already_sent_is_not_selected_again(tmp_path, monkeypa
     from lvr_pipeline.addresses.identity import building_key_v2 as real
 
     monkeypatch.setattr(
-        "lvr_pipeline.tgos.building_key_v2",
+        "lvr_pipeline.tgos.batches.building_key_v2",
         lambda address: real(address).replace('"door":"', '"door":"9'),
     )
     seeded, _ = prepare_tgos(state, tmp_path / "new", tmp_path / "exchange", ledger=submitted)
