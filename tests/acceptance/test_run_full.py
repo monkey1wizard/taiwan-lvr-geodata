@@ -177,3 +177,53 @@ def test_coverage_failures_report_missing_batches_and_unbalanced_members():
     good = {"batches": ["101q1", "115q1", "115q2"], "known_empty_batches": ["101q1"],
             "member_dispositions": [{"batch": b, "path": "a_lvr_land_a.csv", "equation": "holds"} for b in ["115q1", "115q2"]]}
     assert coverage_failures(manifest, good) == []
+
+
+def test_coverage_gate_failure_blocks_completion(tmp_path, monkeypatch, capsys):
+    inputs = setup_inputs(tmp_path)
+    argv = ["run-full", "--run-id", "gate", "--cutoff", "202610", "--address-dir", str(inputs["address_dir"]),
+            "--runs-root", str(inputs["runs_root"]), "--raw-dir", str(inputs["raw_dir"]),
+            "--manifest", str(inputs["manifest_path"]), "--address-source", str(inputs["address_source"]),
+            "--garbled-rules", str(inputs["rules_path"]), "--batch-rows", "2"]
+    monkeypatch.setattr("lvr_pipeline.pipeline.coverage_failures",
+                        lambda manifest, report: [{"code": "member_accounting", "detail": "synthetic"}])
+    code = main(argv)
+    result = json.loads(capsys.readouterr().out)
+    assert code == 1 and result["completed"] is False
+    assert result["failures"] == [{"step": "coverage", "code": "member_accounting", "detail": "synthetic"}]
+    run_dir = inputs["runs_root"] / "gate"
+    assert set(checkpoints(run_dir)) == {"offline-index", "ingested", "normalized", "converted"}
+    # The gate stops the run before any later stage: no report, pool, state or review exists.
+    assert not any((run_dir / name).exists() for name in ["run-report", "address-pool", "offline-state", "review"])
+    assert "report" not in result or not result["report"]
+    [attempt] = (run_dir / "attempts").glob("*.json")
+    assert json.loads(attempt.read_text(encoding="utf-8"))["completed"] is False
+    assert not (run_dir / ".run-full-lock").exists()
+
+    monkeypatch.undo()
+    code = main(argv)
+    again = json.loads(capsys.readouterr().out)
+    assert code == 0 and again["completed"] is True and again["failures"] == []
+    reused = {step["step"]: step["reused_checkpoint"] for step in again["steps"] if step["step"] in RUN_FULL_STAGES}
+    assert all(reused[name] for name in ["offline-index", "ingested", "normalized", "converted"])
+    assert not any(reused[name] for name in ["address-pool", "offline-state", "review", "run-report"])
+    assert set(checkpoints(run_dir)) == set(RUN_FULL_STAGES)
+    assert (run_dir / "run-report").exists() and Path(again["report"]).exists()
+
+
+def test_same_serial_in_two_batches_stays_two_observations(tmp_path):
+    # setup_inputs already puts source serial "same" in both 115q1 and 115q2 (and twice in 115q1).
+    inputs = setup_inputs(tmp_path)
+    result = run_full(run_id="serials", **inputs)
+    assert result["completed"] is True, result["failures"]
+    run_dir = inputs["runs_root"] / "serials"
+    converted = run_dir / "converted" / "snapshots" / checkpoints(run_dir)["converted"]["snapshot_id"]
+    sales = [row for row in dataset(converted, "observation") if row["category"] == "sales"]
+    assert {row["source_serial"] for row in sales} == {"same"}
+    by_batch = {batch: [row for row in sales if row["src_batch"] == batch] for batch in ["115q1", "115q2"]}
+    assert len(by_batch["115q1"]) == 2 and len(by_batch["115q2"]) == 1
+    # One serial across both batches: three distinct source observations, none merged or keyed.
+    assert len({row["raw_record_id"] for row in sales}) == 3
+    cross = [by_batch["115q1"][0], by_batch["115q2"][0]]
+    assert cross[0]["raw_record_id"] != cross[1]["raw_record_id"]
+    assert all(row["transaction_key"] is None for row in sales)
