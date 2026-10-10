@@ -86,7 +86,7 @@
 
 維護交接包含 `handoff.json`、converted 資料、state 及狀態階段。先核對清單中的相對路徑、檔案大小與雜湊，再判定狀態是 offline-state 或 tgos-state，不能自行重設帳本。
 
-既有 `scripts/verify_public_snapshot.py` 用於指定 manifest URL 與雜湊的公開快照重產驗證。正式驗收必須在無 raw 的乾淨 Linux 環境執行。舊單季驗證通過不代表新版全歷史通過。
+既有 `verify-public-snapshot` 子命令（`python -m lvr_pipeline verify-public-snapshot`）用於指定 manifest URL 與雜湊的公開快照重產驗證。正式驗收必須在無 raw 的乾淨 Linux 環境執行。舊單季驗證通過不代表新版全歷史通過。
 
 ### 失敗復原
 

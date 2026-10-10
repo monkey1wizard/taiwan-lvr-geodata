@@ -25,7 +25,7 @@ jobs:
         env:
           MANIFEST_URL: ${{ inputs.manifest_url }}
           MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
-        run: uv run --locked --python 3.14.8 python -m scripts.verify_public_snapshot --manifest-url "$MANIFEST_URL" --manifest-sha256 "$MANIFEST_SHA256"
+        run: uv run --locked --python 3.14.8 python -m lvr_pipeline verify-public-snapshot --manifest-url "$MANIFEST_URL" --manifest-sha256 "$MANIFEST_SHA256"
       - uses: actions/upload-artifact@v4
         with:
           name: public-verification

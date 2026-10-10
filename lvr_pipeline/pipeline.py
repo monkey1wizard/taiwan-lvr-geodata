@@ -20,7 +20,7 @@ from .address_patch import export_address_patch, verify_address_patch
 from .output.publish import fetch_output, publish_release, commit_pointer
 from .output.monthly import write_json
 from .output.monthly import MAX_ASSET_BYTES
-from .output.package import package_output
+from .output.package import package_output, verify_public_snapshot
 from .output.verify import verify_output
 from .tgos import (
     import_tgos,
@@ -324,6 +324,12 @@ def _run_offline_and_output(args):
     elif command == "commit-release-pointer":
         commit = commit_pointer(read(args.receipt), args.checkout)
         print(json.dumps({"commit": commit, "pushed": True}))
+        return 0
+    elif command == "verify-public-snapshot":
+        result = verify_public_snapshot(
+            args.manifest_url, args.manifest_sha256, args.work_dir
+        )
+        print(json.dumps(result))
         return 0
     else:
         raise ValueError("Unknown P2 command")

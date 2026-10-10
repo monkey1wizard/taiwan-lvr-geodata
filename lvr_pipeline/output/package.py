@@ -15,7 +15,7 @@ from ..storage.parquet import duckdb_config
 from ..storage.runs import PRODUCER_CONFIGS, bindings, digest, load_snapshot, peak_rss_bytes, sha256_file
 from . import yearly
 from .monthly import CATEGORIES, FORMATS, MAX_ASSET_BYTES, artifact, export_month, safe_path, write_json, zip_files
-from .publish import write_maintenance
+from .publish import fetch_output, write_maintenance
 from .verify import verify_month, verify_output
 
 
@@ -292,3 +292,58 @@ def package_output(
     root.parent.mkdir(parents=True, exist_ok=True)
     os.replace(staging, root)
     return root
+
+
+def verify_public_snapshot(manifest_url: str, manifest_sha256: str, work_dir: Path) -> dict:
+    """Linux public handoff acceptance: fetch state and reproduce all month bytes without raw."""
+    work_dir = Path(work_dir)
+    fetched = fetch_output(
+        manifest_url,
+        manifest_sha256,
+        work_dir / "handoff",
+        maintenance=True,
+    )
+    manifest = json.loads((fetched / "manifest.json").read_text(encoding="utf-8"))
+    handoff_root = fetched / "maintenance"
+    handoff = json.loads((handoff_root / "handoff.json").read_text(encoding="utf-8"))
+    rebuilt = package_output(
+        handoff_root / handoff["converted"],
+        handoff_root / handoff["state"],
+        work_dir / "rebuilt",
+        notices=json.loads((handoff_root / "NOTICE.json").read_text(encoding="utf-8")),
+        run_id="cloud-rebuilt",
+    )
+    rebuilt_manifest = verify_output(rebuilt)
+    expected = {
+        a["path"]: a["sha256"] for a in manifest["assets"] if a["kind"] == "monthly"
+    }
+    actual = {
+        a["path"]: a["sha256"]
+        for a in rebuilt_manifest["assets"]
+        if a["kind"] == "monthly"
+    }
+    if expected != actual:
+        raise ValueError("Cloud rebuilt monthly bytes differ from public snapshot")
+    sample = next(
+        m["tx_yyyymm"] for m in manifest["months"] if m["categories"]["sales"]["rows"]
+    )
+    fetch_output(
+        manifest_url,
+        manifest_sha256,
+        work_dir / "month",
+        month=sample,
+        category="sales",
+    )
+    result = {
+        "snapshot_id": manifest["snapshot_id"],
+        "manifest_sha256": manifest_sha256,
+        "raw_provided": False,
+        "month_file_count": len(expected),
+        "retained_rows": manifest["retained_rows"],
+        "all_month_hashes_match": True,
+        "unmatched_selection_verified": True,
+        "tgos_started": False,
+        "result": "pass",
+    }
+    write_json(work_dir / "public-verification.json", result)
+    return result

@@ -177,6 +177,13 @@ def _add_offline_and_output_commands(sub):
     p = sub.add_parser("commit-release-pointer")
     p.add_argument("--receipt", type=Path, required=True)
     p.add_argument("--checkout", type=Path, default=Path("."))
+    # R08-1 第二提交：併入舊的公開快照驗證腳本。
+    p = sub.add_parser("verify-public-snapshot")
+    p.add_argument("--manifest-url", required=True)
+    p.add_argument("--manifest-sha256", required=True)
+    p.add_argument(
+        "--work-dir", type=Path, default=Path("data/downloads/public-verification")
+    )
 
 
 def build_parser():
