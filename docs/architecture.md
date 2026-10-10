@@ -520,7 +520,7 @@ TGOS 的上傳與下載要人工操作，程式不連線 TGOS。每個步驟產�
 1. 快照不可變。階段完成時才建立 `<工作目錄>/<階段>/snapshots/<快照 ID>/`，`current.json` 指向最新快照。進行中的內容在 `staging/<快照 ID>/` 與 `build/<快照 ID>/`。
 2. 以相同快照 ID 與相同輸入重跑：程式發現快照已存在且綁定相符，直接重用並回傳既有路徑，不重算。
 3. 以相同快照 ID 但輸入、規則或程式不同重跑：程式拒絕，錯誤為 `Existing snapshot has different bindings`。換新的 `--run-id`，不覆寫舊快照。
-4. 命令中途被中斷或失敗：前一版快照不受影響，但 `staging/<快照 ID>/`（可能還有 `build/<快照 ID>/`）會殘留，**程式不會自動刪除**。之後以相同快照 ID 重跑會失敗（`FileExistsError`）。省略 `--run-id` 時，快照 ID 由輸入綁定算出，同樣會撞到殘留目錄。處理規則（改名隔離，或驗證後續用）待擁有者在 R06-4 決定，見[重建任務卡](plans/重建任務卡.md)。暫行作法：換新的 `--run-id` 重跑，不要刪除殘留目錄。`package-output` 失敗時，輸出目錄下的 `.staging/<run-id>/`（約 25 GB）同樣殘留。
+4. 命令中途被中斷或失敗：前一版快照不受影響，但 `staging/<快照 ID>/`（可能還有 `build/<快照 ID>/`）會殘留，**程式不會自動刪除**。之後以相同快照 ID 重跑會失敗（`FileExistsError`）。省略 `--run-id` 時，快照 ID 由輸入綁定算出，同樣會撞到殘留目錄。`run-full` 依 R06-4 的擁有者決定，續跑前把殘留目錄改名移到 `<stage>/quarantine/<id>-<UTC>/`，見[重建企劃](plans/重建企劃.md)的 R06-4。單獨執行各階段命令時的暫行作法：換新的 `--run-id` 重跑，不要刪除殘留目錄。`package-output` 失敗時，輸出目錄下的 `.staging/<run-id>/`（約 25 GB）同樣殘留。
 5. 出現錯誤 `Snapshot writer busy or stale lock; inspect before retry`，表示 `<工作目錄>/<階段>/.publish-lock/` 存在。程式不會自動刪除它。處理順序：
    1. 先確認沒有行程在執行：`pgrep -af lvr_pipeline`，並確認沒有 `tmux` 或 `nohup` 工作仍在跑。
    2. 仍有行程時，等它結束，不要刪鎖。
