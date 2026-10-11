@@ -20,14 +20,14 @@ TGOS 問題的案例與量測限制見[問題報告](docs/records/TGOS地址錯�
 
 | 格式 | 位置 | 用途 |
 | --- | --- | --- |
-| GeoParquet | GitHub release 的 `taiwanlvr_transactions.parquet`、`taiwanlvr_doors.parquet`，各含全部資料 | 程式、資料庫 |
-| GeoPackage | `data/output/gpkg/taiwanlvr_YYYY.gpkg`，每年一檔，三類各有交易與門牌兩個圖層 | QGIS、ArcGIS |
-| CSV | `data/output/csv/YYYY/`，門牌圖層的整年檔與單月檔 | 試算表、BI、Kepler.gl、AI |
-| GeoJSON | `data/output/geojson/YYYY/`，交易與門牌圖層的單月檔 | 網頁地圖 |
+| GeoParquet | GitHub release 的 `taiwanlvr.parquet`，含全部資料 | 程式、資料庫 |
+| GeoPackage | `data/output/gpkg/taiwanlvr_YYYY.gpkg`，每年一檔，三類各一個圖層 | QGIS、ArcGIS |
+| CSV | `data/output/csv/YYYY/`，整年檔與單月檔 | 試算表、BI、Kepler.gl、AI |
+| GeoJSON | `data/output/geojson/YYYY/`，單月檔 | 網頁地圖 |
 
 `data/output/catalog.json` 列出每個檔案的格式、年、月、類別、筆數與雜湊。完整規格見[重建企劃 6.5](docs/plans/重建企劃.md)。
 
-輸出照實呈現交易。一筆交易登記多個門牌而只有一個總價時，不分攤也不推算。交易圖層一筆交易一個圖徵，含該交易所有門牌的點，在 GIS 點選時一起亮起，總價只出現一次。門牌圖層一個門牌一列，加總金額時只計 `price_counted` 為 1 的列，否則同一筆交易的金額會重複計入。欄位說明見[輸出欄位](docs/輸出欄位.md)。
+輸出一個門牌一列。一筆交易登記多個門牌而只有一個總價時，不分攤也不推算，每一列都帶整筆交易的總價。多門牌交易的各列 `multi_door` 為 true，`transaction_addresses` 是地址欄原文，以 `transaction_id` 可篩出同一筆交易的所有點。加總金額時只計 `price_counted` 為 1 的列，否則同一筆交易的金額會重複計入。欄位說明見[輸出欄位](docs/輸出欄位.md)。
 
 資料來源、顯名與限制以 `data/output/NOTICE.json` 為準。程式碼授權不代表第三方資料採用相同授權。
 

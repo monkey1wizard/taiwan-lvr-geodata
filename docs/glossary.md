@@ -76,31 +76,31 @@
 
 | 名詞 | 定義 |
 | --- | --- |
-| 輸出 | 公開給使用者的成品，只收錄有座標的門牌。分為交易圖層與門牌圖層 |
-| 交易圖層 | 一筆交易一個圖徵，幾何為 MultiPoint，含該交易所有有座標的門牌。在 GIS 點選時，該交易的所有門牌一起亮起。總價只出現一次 |
-| 門牌圖層 | 一個門牌一個圖徵，幾何為 Point。同一筆交易的各門牌共用 `transaction_id`，交易欄位在各列重複 |
-| 整年檔 | 一年一類別一個檔，例如 `taiwanlvr_2025_sales_doors.csv` |
-| 單月檔 | 一個月一類別一個檔，例如 `taiwanlvr_202501_sales_doors.csv` |
-| `price_counted` | 門牌圖層專用。加總金額時只計值為 1 的列。一筆交易有多個門牌時，總價在各列重複出現，只有其中一列為 1 |
+| 輸出 | 公開給使用者的成品，只收錄有座標的門牌。一個門牌一列，幾何為 Point。同一筆交易的各門牌共用 `transaction_id`，交易欄位在各列重複。不提供交易圖層 |
+| 多門牌交易 | 地址欄拆出兩個以上門牌的交易。輸出以 `multi_door`、`door_index`、`door_count` 標示，`transaction_addresses` 保留地址欄原文 |
+| 標準地址 | 輸出欄位 `address`，一個門牌一個，採 TGOS 的寫法，不含樓層。TGOS 或人工查核的結果直接覆蓋 |
+| 整年檔 | 一年一類別一個檔，例如 `taiwanlvr_2025_sales.csv` |
+| 單月檔 | 一個月一類別一個檔，例如 `taiwanlvr_202501_sales.csv` |
+| `price_counted` | 加總金額時只計值為 1 的列。一筆交易有多個門牌時，總價在各列重複出現，只有其中一列為 1 |
 | `catalog.json` | 輸出全部檔案的目錄，記錄格式、年、月、類別、筆數、大小與雜湊 |
 | `NOTICE.json` | 資料來源、授權與限制聲明 |
 
 ## 七、程式名稱對照
 
-程式與舊文件中的名稱如下。輸出欄位是否改用新名稱，待擁有者決定。
+程式與舊文件中的名稱如下。輸出欄位見[輸出欄位](輸出欄位.md)。
 
-| 本文件用詞 | 程式中的名稱 | 建議的輸出欄位名稱 |
+| 本文件用詞 | 程式中的名稱 | 輸出欄位名稱 |
 | --- | --- | --- |
 | 交易 | 來源觀測 `source_observation`，識別碼 `raw_record_id` | `transaction_id` |
-| 地址欄 | `raw_address` | `raw_address` |
+| 地址欄 | `raw_address` | `transaction_addresses` |
 | 門牌 | 地址成員 `address_component`，識別碼 `component_id` | `door_id` |
-| 門牌的文字 | 交易層的 `address` 為整個地址欄 | `door_address` |
+| 門牌的標準地址 | 交易層的 `address` 為整個地址欄 | `address` |
 | 交易的門牌數 | `address_component_count` | `door_count` |
 | 交易已有座標的門牌數 | `located_component_count` | `door_count_located` |
 | 門牌在交易中的序號 | 無 | `door_index` |
-| 門牌鍵 | `building_key`、`building_key_v2` | `door_key` |
+| 門牌鍵 | `building_key`、`building_key_v2` | 不輸出 |
 | 已定位、未命中、衝突 | `located`、`unmatched`、`conflict` | 不輸出，輸出只有已定位 |
-| 座標來源 | 無 | `location_source`，值為 `offline` 或 `tgos` |
+| 地址與座標的來源 | 無 | `location_source`，值為 `offline`、`tgos` 或 `manual` |
 
 ## 八、執行
 
