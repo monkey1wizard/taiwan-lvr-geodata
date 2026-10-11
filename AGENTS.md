@@ -6,6 +6,6 @@ Run bash scripts/setup.sh in Linux with uv installed. Tests use synthetic inputs
 
 Put check, verification, diagnostic and review outputs, and artifacts kept from failed runs, under data/tmp/<purpose>/; keep data/raw, data/cache, data/tgos and data/output for target-layout data only.
 
-Do not infer transaction identity, revision order, sub-door equivalence, coordinate axes or source permissions. Preserve source observations when identity is unproven. Keep secrets, raw ZIPs, generated snapshots and third-party address rows out of Git. Do not publish or update the related address repo as part of P0.
+Do not infer transaction identity, revision order, sub-door equivalence, coordinate axes or source permissions. Preserve source observations when identity is unproven. Keep secrets, raw ZIPs, run and stage snapshots under data/runs/ and data/tmp/, and raw third-party address source rows out of Git. The published output under data/output/ is tracked in Git and is the public download location; its layout is defined in docs/plans/重建企劃.md. Do not publish or update the related address repo as part of P0.
 
 For local development, use C:/Code/taiwan-lvr-geodata as the authoritative checkout. Work on main, test and commit locally, then push directly to origin/main. Do not create scratch development copies, phase branches or pull requests unless the owner explicitly asks. GitHub Actions provides Linux verification.
