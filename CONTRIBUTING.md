@@ -56,7 +56,7 @@
 
 ### 現有位置與打包
 
-目前發布候選在 `data/output/`，小型版本描述與指標在根目錄 `releases/`。
+目前沒有公開版本。輸出位置與發布方式已於 2026-10-11 改為企劃 6.5 的規格：`data/output/` 納入 Git，GeoParquet 以 GitHub release 發布。下列命令仍是舊規格，待重新實作。
 
 `package-output` 以 converted 輸入、定位 state、來源 notices 及 run ID 建立成品。`verify-output` 檢查產物。實際參數以各命令 `--help` 為準，避免把封存範例中的舊 run ID 當成新版本。
 
