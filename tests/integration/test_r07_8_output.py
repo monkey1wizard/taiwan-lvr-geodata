@@ -311,3 +311,18 @@ def test_transaction_id_validation():
         with pytest.raises(ValueError):
             make_transaction_id(*args)
     assert rows_module.parse_int("1234.56") is None and rows_module.parse_int("1234") == 1234
+
+
+def test_county_letter_table_matches_address_codes():
+    """Restored from the deleted test_gis_attributes.py against the new row builder."""
+    import csv
+    from lvr_pipeline.addresses.parse import _COUNTY_CODE
+    from lvr_pipeline.output.rows import county_letters, county_of
+
+    letters = county_letters()
+    assert len(letters) == 22 and letters["a"] == "臺北市" and letters["z"] == "連江縣"
+    with Path("config/reference/lvr_county_letters.csv").open(encoding="utf-8", newline="") as stream:
+        table = list(csv.DictReader(stream))
+    assert [r["letter"] for r in table] == sorted(letters)
+    assert all(_COUNTY_CODE[r["county"]] == r["county_code"] for r in table)
+    assert county_of("a_lvr_land_a.csv") == "臺北市"

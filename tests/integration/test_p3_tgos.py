@@ -1,14 +1,11 @@
-"""P3 TGOS quota, exchange, strict import, and backfill acceptance."""
+"""P3 TGOS quota, exchange and strict import acceptance."""
 
 import csv
 import json
 
 import pytest
 
-from lvr_pipeline.results.backfill import backfill_output
 from lvr_pipeline.tgos import tgos_log_date as _tgos_log_date
-from lvr_pipeline.output.package import package_output
-from lvr_pipeline.output.verify import verify_output
 from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.tgos import (
     _round_robin,
@@ -21,13 +18,6 @@ from lvr_pipeline.tgos import (
 )
 from test_p1_conversion import ADDRESS
 from test_p2_offline import run
-
-
-NOTICE = {
-    "publication_authorized": True,
-    "legacy_coordinates_authorized": True,
-    "sources": ["synthetic"],
-}
 
 
 def test_tgos_date_file_is_log_only(tmp_path):
@@ -349,39 +339,6 @@ def test_verified_alias_can_be_revoked(tmp_path):
     assert list(rows(revoked / "verified_aliases.parquet")) == []
     actions = [row["action"] for row in rows(revoked / "alias_events.parquet")]
     assert actions == ["verified", "revoked"]
-
-
-def test_backfill_changes_only_affected_month_and_keeps_previous_readable(tmp_path):
-    converted, state, address = fixture_state(tmp_path)
-    previous = package_output(
-        converted, state, tmp_path / "output", notices=NOTICE, run_id="before-tgos"
-    )
-    prepared, _ = prepare_tgos(
-        state,
-        tmp_path / "work",
-        tmp_path / "exchange",
-        limit=1,
-    )
-    batch_id = list(rows(prepared / "tgos_batches.parquet"))[0]["batch_id"]
-    submitted = transition_batch(prepared, tmp_path / "work", batch_id, "submitted")
-    result = tmp_path / "result.csv"
-    response(
-        result,
-        [{"Address": address, "Response_Address": address, "Response_X": "121.51", "Response_Y": "25.01"}],
-    )
-    imported = import_tgos(submitted, tmp_path / "work", batch_id, result)
-    output, report = backfill_output(
-        converted,
-        imported,
-        previous,
-        tmp_path / "output",
-        notices=NOTICE,
-        run_id="after-tgos",
-    )
-    assert report["changed_months"] == [202601]
-    assert report["unchanged_month_artifacts"] == 9
-    assert verify_output(previous)["snapshot_id"] == "before-tgos"
-    assert verify_output(output)["tgos_started"] is True
 
 
 def test_exchange_folder_uses_eight_character_id():

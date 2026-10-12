@@ -27,8 +27,8 @@
 | `addresses/pool.py`、`offline/` | 地址成員池、離線索引、候選比對與定位解析 |
 | `results/` | 例外、待查核、交叉比對與座標 reconcile 結果 |
 | `tgos/` | 批次狀態、交換檔及回傳驗證；TGOS 目前由個別命令執行 |
-| `output/` | 現行舊契約的月檔、年度檔、組裝、驗證及發布函式。新版公開契約尚未實作 |
-| `results/backfill.py`、`results/address_patch.py` | 現行歷史回補與地址補充候選入口；僅完成模組位置整理，新版完整契約尚待實作 |
+| `output/` | 新版 22 欄逐門牌輸出：`rows.py` 建立資料列，`parquet.py`、`gpkg.py`、`csv.py`、`geojson.py` 寫出四種格式，`build.py` 串接。舊契約模組已於 R07-8b 刪除 |
+| `results/address_patch.py` | 地址補充候選入口；新版完整契約尚待實作。`results/backfill.py` 已於 R07-8b 刪除，回補由 R10-1 重新實作 |
 | `converted.py`、`source_ref.py`、`tx_date.py` | 轉換快照、來源參照及相容日期入口 |
 | `0_parse_raw.py`、`1_normalize.py` | 現行程式保留的舊入口 |
 
@@ -36,20 +36,19 @@
 
 ## 相依方向
 
-高層模組依賴底層模組，底層契約不依賴 CLI 或流程編排。交易讀取和契約模組提供結構化來源資料。地址處理模組被地址池及定位結果使用。`pipeline.py` 編排來源核對、交易轉換、地址處理、review 與舊契約輸出階段。`cli.py` 負責命令分派，不承載資料規則。
+高層模組依賴底層模組，底層契約不依賴 CLI 或流程編排。交易讀取和契約模組提供結構化來源資料。地址處理模組被地址池及定位結果使用。`pipeline.py` 編排來源核對、交易轉換、地址處理、review 與新版輸出階段。`cli.py` 負責命令分派，不承載資料規則。
 
 下表箭頭一律表示左側模組匯入或使用右側模組，不表示實際執行順序。`run-full` 不編排 TGOS 命令。
 
 | 上層模組 | 依賴的下層模組 | 邊界 |
 | --- | --- | --- |
 | `cli.py` | `pipeline.py` 及各獨立命令的實作模組 | 分派命令；TGOS 是獨立命令 |
-| `pipeline.py` | `transactions/`、`contracts/`、`storage/`、地址／離線／review 模組及現有 `output/` | `run-full` 不呼叫 TGOS 狀態流程 |
+| `pipeline.py` | `transactions/`、`contracts/`、`storage/`、地址／離線／review 模組及 `output/build.py` | `run-full` 不呼叫 TGOS 狀態流程 |
 | `addresses/pool.py`、`offline/` | `addresses/`、`contracts/`、`storage/` | 地址鍵及定位使用共用地址規則 |
 | `tgos/batches.py` | `tgos/exchange.py` 及狀態儲存能力 | 建立批次與交換檔 |
 | `tgos/validate.py` | `tgos/batches.py`、`tgos/exchange.py` | 驗證回傳並更新 TGOS 結果 |
-| `output/yearly.py` | `output/monthly.py` | 使用月檔共用邏輯 |
-| `output/verify.py` | 月檔、年度輸出及維護包讀取能力 | 檢查舊契約產物 |
-| `output/publish.py`、`output/package.py` | `output/verify.py` 與較低層輸出模組 | 組裝及發布舊契約成品 |
+| `output/build.py` | `output/rows.py`、`parquet.py`、`gpkg.py`、`csv.py`、`geojson.py` | 一次走訪資料列寫出四種格式 |
+| `output/rows.py` | `storage/`、`results/reconcile.py` | 讀取 converted 與定位狀態快照 |
 
 新版目標模組拆分與刪除項目見[重建企劃](plans/重建企劃.md)。規劃中的目錄尚未全部落地，表中現行模組不代表目標模組已建立。
 
@@ -61,7 +60,7 @@
 - TGOS 使用獨立 CLI 命令及 `--work-dir`，尚未由 `run-full` 管理 TGOS 狀態或回補。
 - `transactions/read.py` 讀入交易主檔與 `_build.csv`、`_land.csv`、`_park.csv` 明細；`transactions/normalize.py` 依明細關聯契約把明細連回主檔，計數寫入 `detail_link`。
 - `tgos/validate.py` 的 `import_tgos` 已檢查查詢與回傳集合一對一，並以相同批次和回傳雜湊支援冪等重匯。`addresses/identity.py` 的 `same_door` 允許回傳補上送出地址未寫的村里或鄰。R09-2 尚須檢查候選是否跨多個村里或鄰，未完成完整同址驗收。
-- 現有 `output/` 實作舊格式及舊欄位契約。新 22 欄門牌輸出、CSV 23 欄由 `output/rows.py`、`parquet.py`、`gpkg.py`、`csv.py`、`geojson.py`、`build.py` 產生，尚未接入 `run-full`；`catalog.json` 尚未實作。權威規格在[輸出欄位](輸出欄位.md)。
+- `output/` 產生新 22 欄門牌輸出與 CSV 23 欄，`run-full` 的輸出階段已改用它。`catalog.json`、格式間驗證與發布尚未實作（R07-9、R08）。權威規格在[輸出欄位](輸出欄位.md)。
 - `config/sources/notice.json` 與本機 `data/output/` 目前不存在。gitignore 仍忽略整個 `data/`，部分 CLI 預設仍使用 `data/work/`。這些是尚待程式或設定工作處理的差距。
 - R07-4 的 58 批舊契約 run report 曾標示完成，但其 `output-release` 已移除。該歷史結果及相關衍生資料不作目前接受的候選、定位依據或新版驗收基準。
 

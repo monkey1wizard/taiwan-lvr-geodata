@@ -231,10 +231,7 @@ def test_run_full_report_has_detail_link_and_detail_rows(tmp_path):
     address_dir, descriptor = source(tmp_path)
     descriptor_path = tmp_path / "address_source.json"
     descriptor_path.write_text(json.dumps(verified_source(descriptor), ensure_ascii=False), encoding="utf-8")
-    notices = tmp_path / "notices.json"
-    notices.write_text(json.dumps({"publication_authorized": True, "record_grain": "source_observation",
-                                   "sources": [{"provider": "synthetic", "title": "synthetic source"}]}), encoding="utf-8")
-    result = run_full(run_id="detail1", cutoff=202610, address_dir=address_dir, notices_path=notices, runs_root=tmp_path / "runs",
+    result = run_full(run_id="detail1", cutoff=202610, address_dir=address_dir, runs_root=tmp_path / "runs",
                       raw_dir=raw, manifest_path=manifest, address_source=descriptor_path, rules_path=rules(tmp_path),
                       batch_rows=2)
     assert result["completed"] is True, result["failures"]

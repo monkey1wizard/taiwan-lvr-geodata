@@ -15,13 +15,8 @@ from .addresses.identity import NORMALIZATION_VERSION
 from .contracts import SCHEMA_VERSION
 from .results.reconcile import DEFAULT_CONFIG, load_coordinate_tolerance, load_suspended_counties, resolve_offline, load_p2
 from .results.review import build_review
-from .results.backfill import backfill_output
+from .output.build import write_output
 from .results.address_patch import export_address_patch, verify_address_patch
-from .output.publish import fetch_output, publish_release, commit_pointer
-from .output.monthly import write_json
-from .output.monthly import MAX_ASSET_BYTES
-from .output.package import package_output, verify_public_snapshot
-from .output.verify import verify_output
 from .tgos import (
     import_tgos,
     load_state,
@@ -235,14 +230,6 @@ def _run_offline_and_output(args):
             raise ValueError("Expected TGOS state")
         print(json.dumps({"verified": True, "status_counts": report["status_counts"], "tgos_batch_count": report["tgos_batch_count"]}))
         return 0
-    elif command == "package-output":
-        path = package_output(
-            args.input,
-            args.state,
-            args.output_dir,
-            notices=read(args.notices),
-            run_id=args.run_id,
-        )
     elif command == "build-review":
         start = time.perf_counter()
         path = build_review(
@@ -270,68 +257,11 @@ def _run_offline_and_output(args):
             )
         )
         return 0
-    elif command == "verify-output":
-        manifest = verify_output(args.input)
-        print(
-            json.dumps(
-                {
-                    "verified": True,
-                    "snapshot_id": manifest["snapshot_id"],
-                    "retained_rows": manifest["retained_rows"],
-                }
-            )
-        )
-        return 0
-    elif command == "backfill-output":
-        path, report = backfill_output(
-            args.input,
-            args.state,
-            args.previous,
-            args.output_dir,
-            notices=read(args.notices),
-            run_id=args.run_id,
-        )
-        write_json(args.report, report)
-        print(json.dumps({"path": str(path), "report": str(args.report), "completed": True}, ensure_ascii=False))
-        return 0
     elif command == "export-address-patch":
         path = export_address_patch(args.state, args.area_file, args.work_dir, run_id=args.run_id)
     elif command == "verify-address-patch":
         report = verify_address_patch(args.input)
         print(json.dumps({"verified": True, "snapshot_id": report["snapshot_id"], "patch_rows": report["patch_rows"], "quarantine_rows": report["quarantine_rows"]}, ensure_ascii=False))
-        return 0
-    elif command == "fetch-output":
-        path = fetch_output(
-            args.manifest_url,
-            args.manifest_sha256,
-            args.target,
-            month=args.month,
-            category=args.category,
-            format=args.format,
-            maintenance=args.maintenance,
-        )
-    elif command == "publish-output":
-        receipt = publish_release(args.input, args.expected_parent, args.checkout)
-        write_json(args.receipt, receipt)
-        print(
-            json.dumps(
-                {
-                    "receipt": str(args.receipt),
-                    "release_tag": receipt["release_tag"],
-                    "pointer_committed": False,
-                }
-            )
-        )
-        return 0
-    elif command == "commit-release-pointer":
-        commit = commit_pointer(read(args.receipt), args.checkout)
-        print(json.dumps({"commit": commit, "pushed": True}))
-        return 0
-    elif command == "verify-public-snapshot":
-        result = verify_public_snapshot(
-            args.manifest_url, args.manifest_sha256, args.work_dir
-        )
-        print(json.dumps(result))
         return 0
     else:
         raise ValueError("Unknown P2 command")
@@ -436,7 +366,7 @@ def _tree_bytes(path) -> int:
     return sum(item.stat().st_size for item in root.rglob("*") if item.is_file())
 
 
-def run_full(*, run_id: str, cutoff: int, address_dir: Path, notices_path: Path, runs_root: Path | None = None,
+def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | None = None,
              raw_dir: Path = Path("data/raw"), manifest_path: Path = Path("config/sources/raw_manifest.json"),
              address_source: Path = Path("config/sources/address_source.json"),
              rules_path: Path = Path("config/rules/character-fixes.csv"), config: Path | None = None,
@@ -500,64 +430,52 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, notices_path: Path,
                           for step in result["steps"] if "snapshot_bytes" in step]}
 
     def output_stage(converted, state):
-        """R07-3b: package_output + verify_output, committed as one snapshot holding release.json.
+        """R07-8b: write_output into <run>/output/<output_id>/{public,release}, committed as one snapshot.
 
-        Reused only when its checkpoint verifies, the snapshot id equals the id derived from the
-        inputs, and the recorded release manifest still has the recorded sha256. A release
-        directory is never deleted or overwritten.
+        Reused only when the checkpoint verifies, the snapshot id equals the id derived from the
+        inputs, and every recorded file still has its recorded sha256. An existing output
+        directory is never deleted, adopted or overwritten.
         """
         current["step"] = "output"
         start = time.perf_counter()
-        notices_file = Path(notices_path)
-        input_hashes = [sha256_file(Path(converted) / "manifest.json"), sha256_file(Path(state) / "manifest.json"),
-                        sha256_file(notices_file)]
+        input_hashes = [sha256_file(Path(converted) / "manifest.json"), sha256_file(Path(state) / "manifest.json")]
         output_id = "output-" + digest({"converted": input_hashes[0], "state": input_hashes[1],
-                                        "notices": input_hashes[2], "max_asset_bytes": MAX_ASSET_BYTES})[:24]
+                                        "contract": "22-column"})[:24]
         store = run.stage("output")
         final = store.root / "snapshots" / output_id
+        output_root = store.root / output_id
         entry = run.checkpoints().get("output")
         reused = False
         if entry is not None and entry["snapshot_id"] == output_id and run.reusable("output", bindings_):
-            recorded = _read(final / "release.json")
-            release_dir = run.root / recorded["release_dir"]
-            manifest_path = release_dir / "manifest.json"
-            if not manifest_path.is_file() or sha256_file(manifest_path) != recorded["release_manifest_sha256"]:
-                raise RuntimeError(f"release manifest of {release_dir} no longer matches the recorded sha256; "
-                                   "the release directory is kept untouched, inspect it before retry")
+            record = _read(final / "output.json")
+            for relative, expected in sorted(record["files_sha256"].items()):
+                file = run.root / relative
+                if not file.is_file() or sha256_file(file) != expected:
+                    raise RuntimeError(f"output file {file} no longer matches the recorded sha256; "
+                                       "the output directory is kept untouched, inspect it before retry")
             reused = True
         else:
             headroom = disk_headroom(run.root)
             if not headroom["ok"]:
                 raise DiskHeadroomError(f"free {headroom['free_ratio']:.4f} of disk before output, "
                                         f"required {DISK_HEADROOM_RATIO:.2f}")
-            release_root = run.root / "output-release"
-            expected_dir = release_root / output_id
-            try:
-                release_dir = package_output(converted, state, release_root, notices=_read(notices_file),
-                                             run_id=output_id, max_asset_bytes=MAX_ASSET_BYTES)
-            except Exception as exc:
-                if expected_dir.exists():
-                    raise RuntimeError(f"release directory {expected_dir} already exists and cannot be adopted "
-                                       f"({type(exc).__name__}: {exc}); it was not changed") from exc
-                raise
-            manifest = verify_output(release_dir)
-            size_path = Path(release_dir) / "size_report.json"
-            size_report = _read(size_path) if size_path.is_file() else None
-            sizes = [item["bytes"] for item in manifest["assets"]]
-            record = {"release_dir": Path(release_dir).relative_to(run.root).as_posix(),
-                      "release_manifest_sha256": sha256_file(Path(release_dir) / "manifest.json"),
-                      "verify": {"snapshot_id": manifest["snapshot_id"], "retained_rows": manifest["retained_rows"],
-                                 "asset_count": len(sizes), "largest_asset_bytes": max(sizes, default=0),
-                                 "release_asset_bytes": sum(sizes)},
-                      "size_report": size_report}
+            if output_root.exists():
+                raise RuntimeError(f"output directory {output_root} already exists and cannot be adopted; "
+                                   "it was not changed")
+            summary = write_output(converted, state, output_root / "public", output_root / "release")
+            files_sha256 = {item.relative_to(run.root).as_posix(): sha256_file(item)
+                            for item in sorted(output_root.rglob("*")) if item.is_file()}
+            record = {"output_id": output_id, "public_dir": (output_root / "public").relative_to(run.root).as_posix(),
+                      "release_dir": (output_root / "release").relative_to(run.root).as_posix(),
+                      "summary": summary, "files_sha256": files_sha256}
             binding = stage_bindings("output", {"run_bindings": bindings_, "output_id": output_id}, input_hashes)
             current_pointer = store.current()
             parent = current_pointer["snapshot_id"] if current_pointer else None
             store.begin(output_id, expected_parent=parent, bindings=binding)
             build = store.root / "build" / output_id
             build.mkdir(parents=True)
-            _json_write(build / "release.json", record)
-            store.add(output_id, "release.json", build / "release.json", format_name="binary", row_count=None)
+            _json_write(build / "output.json", record)
+            store.add(output_id, "output.json", build / "output.json", format_name="binary", row_count=None)
             store.publish(output_id, expected_parent=parent)
             run.commit("output", output_id)
         result["steps"].append({"step": "output", "snapshot_id": output_id, "reused_checkpoint": reused,
@@ -626,7 +544,7 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, notices_path: Path,
                 suspended_counties=load_suspended_counties(config)))
             review = stage("review", lambda: build_review(converted, state, work, descriptor=descriptor))
             output = output_stage(converted, state)
-            released = _read(output / "release.json")
+            released = _read(output / "output.json")
             current["step"] = "run-report"
             _, state_report = load_p2(state, "offline-state")
             _, review_report = load_p2(review, "review")
@@ -642,11 +560,12 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, notices_path: Path,
                 "member_count": len(converted_report["member_dispositions"]),
                 "address_status_counts": state_report["status_counts"],
                 "review_reason_counts": review_report["reason_counts"],
-                "output": {"release_dir": released["release_dir"],
-                           "release_manifest_sha256": released["release_manifest_sha256"],
-                           "asset_count": released["verify"]["asset_count"],
-                           "largest_asset_bytes": released["verify"]["largest_asset_bytes"],
-                           "release_asset_bytes": released["verify"]["release_asset_bytes"]},
+                "output": {"output_id": released["output_id"], "public_dir": released["public_dir"],
+                           "release_dir": released["release_dir"],
+                           "total_rows": released["summary"]["total_rows"],
+                           "file_count": len(released["summary"]["files"]),
+                           "parquet_rows": sum(item["rows"] for item in released["summary"]["files"].values()
+                                               if item["format"] == "geoparquet")},
                 "quarantined": result["quarantined"],
                 "resources": resources(),
             }
@@ -669,7 +588,7 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, notices_path: Path,
 
 
 def _run_full_command(args) -> int:
-    result = run_full(run_id=args.run_id, cutoff=args.cutoff, address_dir=args.address_dir, notices_path=args.notices, runs_root=args.runs_root,
+    result = run_full(run_id=args.run_id, cutoff=args.cutoff, address_dir=args.address_dir, runs_root=args.runs_root,
                       raw_dir=args.raw_dir, manifest_path=args.manifest, address_source=args.address_source,
                       rules_path=args.garbled_rules, config=args.config, batch_rows=args.batch_rows)
     print(json.dumps(result, ensure_ascii=False, indent=2))

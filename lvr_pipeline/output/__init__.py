@@ -1,1 +1,1 @@
-"""Output package: monthly files, yearly packages, verification, publish handoff and packaging."""
+"""Output: the 22-column door-level writers (parquet, gpkg, csv, geojson)."""

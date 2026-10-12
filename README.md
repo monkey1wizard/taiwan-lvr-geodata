@@ -81,7 +81,7 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline verify-sources \
   --raw-dir data/raw
 ```
 
-`run-full` 必須提供唯一 run ID、截止年月、地址資料目錄及公告 JSON。原始輸入與正式公告完成核對、隔離護欄完成適用驗收之前，以下模板不能作為新重建入口。公告內容待確認，不能自行建立正式公告；不可指定舊 run ID、舊工作目錄或舊快照：
+`run-full` 必須提供唯一 run ID、截止年月與地址資料目錄。原始清冊與地址來源描述經擁有者核驗為 `verified` 之前，以下模板會被拒絕。不可指定舊 run ID、舊工作目錄或舊快照：
 
 ```bash
 uv run --locked --python 3.14.8 python -m lvr_pipeline run-full \
@@ -92,11 +92,10 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline run-full \
   --raw-dir data/raw \
   --address-source config/sources/address_source.json \
   --garbled-rules config/rules/character-fixes.csv \
-  --config config/pipeline.example.toml \
-  --notices <owner-approved-notice.json>
+  --config config/pipeline.example.toml
 ```
 
-截止年月使用西元 `YYYYMM`。此為參數完整的命令模板，不是可直接執行的已驗收發布命令。公告檔目前不存在。`run-full` 有來源核對、階段續跑、離線處理、舊契約輸出及 run report，但未讀 TGOS 狀態，也尚未支援新版公開格式。單批轉換不能視為全歷史完成。流程輸入、每階段產物及失敗去向見[資料處理流程](docs/資料處理流程.md)。
+截止年月使用西元 `YYYYMM`。此為參數完整的命令模板，不是已驗收的發布命令。`run-full` 有來源核對、階段續跑、離線處理、新版 22 欄輸出及 run report，但未讀 TGOS 狀態。輸出寫在 run 目錄的 `output/<output_id>/public/` 與 `release/`，尚未有 `catalog.json`、`NOTICE.json` 或格式間驗證（R07-9），也不是公開發布。舊的 `package-output`、`verify-output`、`backfill-output`、`fetch-output`、`publish-output`、`commit-release-pointer`、`verify-public-snapshot` 命令已於 2026-10-12 移除。單批轉換不能視為全歷史完成。流程輸入、每階段產物及失敗去向見[資料處理流程](docs/資料處理流程.md)。
 
 明細讀入與關聯已於 2026-10-12 實作（R07-7）：`ingest` 讀入三種明細為 `ingest-detail`，`normalize` 依明細關聯契約以 `編號` 連回主檔，產生 `detail` 資料集，並把七項計數寫入 `detail_link`。新版公開輸出的三個 JSON 欄由 R07-8 產生。明細欄位與例外處理詳見[資料契約](docs/資料契約.md)及[輸出欄位](docs/輸出欄位.md)。
 
@@ -113,10 +112,9 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline prepare-tgos --help
 uv run --locked --python 3.14.8 python -m lvr_pipeline set-tgos-status --help
 uv run --locked --python 3.14.8 python -m lvr_pipeline import-tgos --help
 uv run --locked --python 3.14.8 python -m lvr_pipeline build-review --help
-uv run --locked --python 3.14.8 python -m lvr_pipeline backfill-output --help
 ```
 
-`backfill-output` 是舊契約命令，不是新版回補入口。新版回補依 R-10 使用本次全新重建且已驗收的基線，不使用重建前的 `--input`、`--state`、`--previous` 或公開輸出。
+目前沒有回補命令。新版回補由 R-10 依本次全新重建且已驗收的基線重新實作，不使用重建前的狀態或公開輸出。
 
 現行 TGOS 匯入會檢查查詢與回傳集合一對一，並具備相同批次及相同回傳雜湊的冪等重匯處理。`same_door` 允許回傳補上送出地址未寫的村里或鄰。R09-2 尚待補足候選跨村里／鄰歧義核對，完整同址驗收仍未通過。座標軸不明、門牌不符或證據不足時不得採用。
 

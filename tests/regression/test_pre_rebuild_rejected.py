@@ -165,7 +165,7 @@ def test_run_full_refuses_unverified_sources_before_writing(tmp_path):
     address.write_text(json.dumps({"rebuild_epoch": REBUILD_EPOCH, "source_check": dict(SOURCE_CHECK_PENDING)}),
                        encoding="utf-8")
     runs = tmp_path / "runs"
-    result = run_full(run_id="r1", cutoff=202610, address_dir=tmp_path, notices_path=tmp_path / "notice.json",
+    result = run_full(run_id="r1", cutoff=202610, address_dir=tmp_path,
                       runs_root=runs, raw_dir=tmp_path, manifest_path=manifest, address_source=address)
     assert result["completed"] is False
     assert [(f["detail"].split(" ")[0] + " " + f["detail"].split(" ")[1], f["code"]) for f in result["failures"]] == [

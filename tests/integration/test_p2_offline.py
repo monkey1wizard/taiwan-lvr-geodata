@@ -10,10 +10,6 @@ from lvr_pipeline.addresses.pool import build_pool
 from lvr_pipeline.results.reconcile import load_p2, resolve_offline
 from lvr_pipeline.offline.index import build_index
 from lvr_pipeline.offline.match import AdministrativeNames
-from lvr_pipeline.output.monthly import geometry, read_wkb, wkb
-from lvr_pipeline.output.package import package_output
-from lvr_pipeline.output.publish import extract_handoff
-from lvr_pipeline.output.verify import verify_output
 from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.storage.runs import sha256_file
 from test_p1_conversion import pipeline, ADDRESS
@@ -96,7 +92,7 @@ def test_admin_preserves_codes_and_custom_alias_is_not_current_name(tmp_path):
         AdministrativeNames(root, d["administrative_files"])
 
 
-def test_pool_cross_category_relations_duplicate_evidence_and_no_money_duplication(
+def test_pool_cross_category_relations_and_duplicate_evidence(
     tmp_path,
 ):
     converted, root, d, index, pool, state = run(tmp_path)
@@ -112,36 +108,6 @@ def test_pool_cross_category_relations_duplicate_evidence_and_no_money_duplicati
     )
     assert sr["tgos_started"] is False and sr["dataset_counts"]["tgos-ledger"] == 0
     assert not list(rows(state / "unmatched_addresses.parquet"))
-    output = package_output(
-        converted,
-        state,
-        tmp_path / "output",
-        notices={
-            "publication_authorized": True,
-            "legacy_coordinates_authorized": True,
-            "sources": ["synthetic"],
-        },
-    )
-    manifest = verify_output(output)
-    assert manifest["retained_rows"] == 3
-    assert (
-        sum(
-            m["categories"][c]["amount_minor_sum"]
-            for m in manifest["months"]
-            for c in m["categories"]
-        )
-        == 370368
-    )
-    maintenance = next(a for a in manifest["assets"] if a["kind"] == "maintenance")
-    handoff = extract_handoff(output / maintenance["path"], tmp_path / "fresh")
-    assert not (tmp_path / "fresh/raw").exists()
-    assert (
-        load_p2(tmp_path / "fresh" / handoff["state"], "offline-state")[1][
-            "status_counts"
-        ]
-        == sr["status_counts"]
-    )
-    assert manifest["years"][0]["absent_months"] == [202600 + i for i in range(2, 13)]
 
 
 def test_conflicting_points_never_pick_first_and_invalid_admin_retained(tmp_path):
@@ -166,63 +132,6 @@ def test_dirty_or_wrong_address_pin_is_rejected(tmp_path):
     (root / "extra.txt").write_text("changed")
     with pytest.raises(ValueError, match="clean"):
         build_index(root, d, tmp_path / "work")
-
-
-@pytest.mark.parametrize(
-    "points,category,kind,approx",
-    [
-        ([], "sales", None, False),
-        ([(121, 25)], "rent", "Point", False),
-        ([(121, 25), (122, 26)], "sales", "Polygon", True),
-        ([(121, 25), (121, 26)], "sales", "MultiPoint", False),
-        ([(121, 25), (122, 25)], "presale", "MultiPoint", False),
-        ([(121, 25), (122, 26)], "rent", "MultiPoint", False),
-    ],
-)
-def test_geometry_wkb_roundtrip(points, category, kind, approx):
-    shape, approximation = geometry(points, category)
-    assert (shape["type"] if shape else None) == kind and approximation == approx
-    assert read_wkb(wkb(shape)) == shape
-
-
-def test_corrupted_public_month_fails(tmp_path):
-    converted, *_, state = run(tmp_path)
-    output = package_output(
-        converted,
-        state,
-        tmp_path / "output",
-        notices={
-            "publication_authorized": True,
-            "legacy_coordinates_authorized": True,
-            "sources": ["synthetic"],
-        },
-    )
-    file = next(output.rglob("*.ndjson"))
-    file.write_text("changed")
-    with pytest.raises(ValueError, match="hash"):
-        verify_output(output)
-
-
-def test_legacy_base_needs_no_upstream_proof_to_package(tmp_path):
-    converted, *_, state = run(tmp_path)
-    package_output(
-        converted,
-        state,
-        tmp_path / "output",
-        notices={"publication_authorized": True, "sources": ["synthetic"]},
-    )
-    assert next((tmp_path / "output").rglob("NOTICE.json"))
-
-
-def test_package_still_requires_attribution(tmp_path):
-    converted, *_, state = run(tmp_path)
-    with pytest.raises(ValueError, match="attribution"):
-        package_output(
-            converted,
-            state,
-            tmp_path / "output",
-            notices={"publication_authorized": True, "sources": []},
-        )
 
 
 def test_changed_source_removal_cannot_reuse_old_coordinate(tmp_path):
@@ -273,19 +182,6 @@ def test_transaction_months_cross_years_and_categories_share_one_key(tmp_path):
     records = [{"date": "1141102"}, {"date": "1150102"}]
     converted, *_, state = run(tmp_path, records=records)
     assert load_p2(state, "offline-state")[1]["pool_rows"] == 1
-    output = package_output(
-        converted,
-        state,
-        tmp_path / "output",
-        notices={
-            "publication_authorized": True,
-            "legacy_coordinates_authorized": True,
-            "sources": ["synthetic"],
-        },
-    )
-    manifest = verify_output(output)
-    assert [m["tx_yyyymm"] for m in manifest["months"]] == [202511, 202601]
-    assert manifest["retained_rows"] == 6 and len(manifest["years"]) == 2
 
 
 def test_scope_keeps_other_county_unlocated_and_nearby_door_distinct(tmp_path):
@@ -348,81 +244,3 @@ def test_official_profile_rejects_unknown_crs_and_hash(tmp_path):
     official["sha256"] = "0" * 64
     with pytest.raises(ValueError, match="hash"):
         build_index(root, d, tmp_path / "work", official=official)
-
-
-def test_real_format_geometry_partial_null_and_amount_once(tmp_path):
-    records = [
-        {"address": "臺北市中正區測試路10、11號"},
-        {"address": "臺北市中正區測試路10、99號"},
-        {"address": "臺北市中正區測試路88、99號"},
-    ]
-    coords = [
-        ("臺北市中正區測試路10號", "63", "6300100", 121.5, 25),
-        ("臺北市中正區測試路11號", "63", "6300100", 121.6, 25.1),
-    ]
-    converted, *_, state = run(tmp_path, coords, records)
-    output = package_output(
-        converted,
-        state,
-        tmp_path / "output",
-        notices={
-            "publication_authorized": True,
-            "legacy_coordinates_authorized": True,
-            "sources": ["synthetic"],
-        },
-    )
-    manifest = verify_output(output)
-    import pyarrow.parquet as pq
-
-    for category in ["sales", "presale", "rent"]:
-        table = pq.read_table(
-            next(output.rglob(f"202601_{category}.parquet"))
-        ).to_pylist()
-        assert {r["location_status"] for r in table} == {"complete", "partial", "none"}
-        assert sum(r["amount_minor"] for r in table) == 3 * 123456
-        complete = next(r for r in table if r["location_status"] == "complete")
-        assert read_wkb(complete["geometry"])["type"] == (
-            "MultiPoint" if category == "rent" else "Polygon"
-        )
-    assert manifest["retained_rows"] == 9
-
-
-def test_annual_part_budget_preserves_all_original_months(tmp_path):
-    records = [{"date": f"114{month:02d}02"} for month in range(1, 13)]
-    converted, *_, state = run(tmp_path, records=records)
-    output = package_output(
-        converted,
-        state,
-        tmp_path / "output",
-        max_asset_bytes=100000,
-        notices={
-            "publication_authorized": True,
-            "legacy_coordinates_authorized": True,
-            "sources": ["synthetic"],
-        },
-    )
-    manifest = verify_output(output)
-    annual = next(y for y in manifest["years"] if y["year"] == 2025)
-    assert len(annual["formats"]["geoparquet"]) > 1 and not annual["absent_months"]
-    assert annual["year_coverage_status"] == "scope_limited"
-
-
-def test_empty_category_ndjson_has_no_records_and_nonzero_transfer_length(tmp_path):
-    converted, *_, state = run(tmp_path, categories=("sales",))
-    output = package_output(
-        converted,
-        state,
-        tmp_path / "output",
-        notices={
-            "publication_authorized": True,
-            "legacy_coordinates_authorized": True,
-            "sources": ["synthetic"],
-        },
-    )
-    manifest = verify_output(output)
-    for category in ["presale", "rent"]:
-        assert next(output.rglob(f"202601_{category}.ndjson")).read_bytes() == b"\n"
-        assert manifest["months"][0]["categories"][category]["rows"] == 0
-        assert (
-            manifest["months"][0]["categories"][category]["status"] == "empty_in_scope"
-        )

@@ -32,9 +32,7 @@ SUBCOMMANDS = {
     # registered by lvr_pipeline.cli
     "pin-address-source", "build-offline-index", "build-address-pool", "resolve-offline",
     "verify-offline-state", "prepare-tgos", "repair-tgos-exchange", "set-tgos-status", "import-tgos",
-    "revoke-alias", "verify-tgos-state", "package-output", "verify-output", "backfill-output",
-    "export-address-patch", "verify-address-patch", "fetch-output", "publish-output",
-    "commit-release-pointer",
+    "revoke-alias", "verify-tgos-state", "export-address-patch", "verify-address-patch",
     # R05-2 依卡片新增 audit-address-source，規劃者核准。
     "audit-address-source",
     # R05-8 依卡片新增 build-review（例外地址與待查核表），規劃者預先核准。
@@ -43,8 +41,6 @@ SUBCOMMANDS = {
     "verify-sources", "inventory-sources",
     # R06-4 依卡片新增 run-full，卡片預期改動。
     "run-full",
-    # R08-1 依卡片新增 verify-public-snapshot（併入舊腳本），卡片預期改動。
-    "verify-public-snapshot",
 }
 
 
@@ -66,9 +62,10 @@ def test_retained_symbols_exist(module_name):
 # R05-8 依卡片新增 build-review，規劃者預先核准由 24 改為 25。
 # R06-2 依卡片新增 verify-sources、inventory-sources，規劃者核准，由 25 改為 27。
 # R06-4 依卡片新增 run-full，卡片預期改動，由 27 改為 28。
-# R08-1 依卡片新增 verify-public-snapshot，卡片預期改動，由 28 改為 29。
-def test_cli_subcommand_set_is_exactly_29():
-    assert len(SUBCOMMANDS) == 29
+# R07-8b 移除 package-output、verify-output、backfill-output、fetch-output、publish-output、
+# commit-release-pointer、verify-public-snapshot 共 7 個，由 29 改為 22。
+def test_cli_subcommand_set_is_exactly_22():
+    assert len(SUBCOMMANDS) == 22
     result = subprocess.run([sys.executable, "-m", "lvr_pipeline", "--help"], cwd=ROOT, capture_output=True,
                             text=True, encoding="utf-8", check=True)
     match = re.search(r"\{([a-z0-9,\-]+)\}", result.stdout)

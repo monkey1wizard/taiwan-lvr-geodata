@@ -197,7 +197,7 @@ def make_row(o, ordinal, normalized_address, door_count, lng, lat, build, land, 
 
 
 def open_sources(db, converted, state):
-    """Create views observations, components, details, occurrences and results; same checks as package_output."""
+    """Create views observations, components, details, occurrences and results."""
     converted, state = Path(converted), Path(state)
     cm, _ = load_snapshot(converted, "converted")
     stage = json.loads((state / "quality.json").read_text(encoding="utf-8"))["stage"]
