@@ -9,7 +9,7 @@
 | 交易 | `transaction_id` | 一筆來源主檔的一列，不跨批次合併。新版識別輸入為 ZIP SHA-256、ZIP 成員路徑及來源實體行號，序列化與雜湊細節待補實作契約 |
 | 來源觀測 | `source_observation`、`raw_record_id` | 原始交易主檔的一列及其來源識別 |
 | 地址成員 | `address_component`、`component_id` | 從觀測的地址欄拆出的一個門牌成員；成員序號從 0 起算 |
-| 地址鍵／門牌鍵 | 目標介面 `building_key`；現行函式 `building_key_v2` | 目標使用現行 v2 地址規則，規則版本記於 metadata。舊 `building_key` 演算法及 `legacy_building_key` 待依賴盤點後淘汰；不沿用舊鍵結果 |
+| 地址鍵／門牌鍵 | 唯一目標名稱 `building_key` | 使用重新驗證後的現行 v2 地址規則，規則版本記於 metadata。現行程式仍有 `building_key_v2` 及 `legacy_building_key`，尚未遷移；R07-6b 必須移除函式、匯出、呼叫、欄位、讀寫及依賴，不保留相容別名或舊結果 fallback |
 | 定位證據 | `evidence_id` | 地址或座標判定所依據的一筆來源證據 |
 | 快照 | `snapshot` | 經驗證、綁定特定輸入與規則的階段資料 |
 | Run | `run`、`run_id` | 一次固定版本的資料處理執行 |
