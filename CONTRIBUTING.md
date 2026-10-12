@@ -14,9 +14,9 @@
 
 Python 版本、安裝及測試命令見[README 安裝與測試](README.md#安裝與測試)。自動測試使用合成輸入，不下載真實資料，也不需要憑證。GitHub Actions 提供 Linux 驗證。Windows 通過不能代替要求 Linux 執行的驗收。真實資料處理、TGOS 人工交換及公開發布各自記錄，不以合成測試推定完成。
 
-維持既有入口相容性，包括 `0_parse_raw.py`、`1_normalize.py`、`address.py` 等保留介面。新契約使用 `building_key_v2` 與 `validated_roc_to_tx_yyyymm`。修改地址規則或 CLI 前，檢查舊入口、命令、快照與測試呼叫端。
+可以維持 CLI 等使用者入口相容，但不得因此讀取舊衍生結果。2026-10-12 決定新門牌鍵介面統一為 `building_key`，使用現行 v2 規則並在 metadata 記錄規則版本；現行程式函式仍叫 `building_key_v2`。依賴盤點後移除舊 `building_key` 演算法及 `legacy_building_key`。`validated_roc_to_tx_yyyymm` 保留。所有地址規則需以來源規格及獨立合成案例建立預期，不能只沿用既有函式或測試結果作正確性證明。
 
-不要推斷交易身分、修訂順序、子門牌等價、座標軸或來源權限。未證明身分前保留來源觀測。秘密、raw ZIP、執行／階段快照與第三方地址來源列不得進 Git。檢查、驗證、診斷、審查輸出及需保留的失敗產物放在 `data/tmp/<purpose>/`。`data/output/` 是已決定的公開 Git 目標位置，目前 `.gitignore` 仍忽略整個 `data/`，追蹤方式待 R07-9 實作。
+不得把既有 normalized／converted 資料、地址池／index／state、aliases、TGOS 採用結果、review 裁定、衍生 cache、快照、維護包、公開輸出或統計帶入新 run。原始來源與 TGOS 回傳也須重新核對，不能因檔案存在、舊驗收通過或帳本已有紀錄而自動採用。新 run 的來源清冊須獨立重建，快照只在本次 run 內經新規則驗證後使用。舊帳本不得清空或繞過。秘密、raw ZIP、執行／階段快照與第三方地址來源列不得進 Git。檢查、驗證、診斷、審查輸出及需保留的失敗產物放在 `data/tmp/<purpose>/`。`data/output/` 是已決定的公開 Git 目標位置，目前 `.gitignore` 仍忽略整個 `data/`，追蹤方式待 R07-9 實作。
 
 ## 文件位置與同步
 
@@ -49,4 +49,4 @@ Python 版本、安裝及測試命令見[README 安裝與測試](README.md#安�
 - 變更公開欄位、來源、流程或相容性時，更新對應權威文件與 README 的入口說明。
 - 留存檢查輸出時，只存入 `data/tmp/<purpose>/`。避免把真實來源列、憑證或完整原始資料放進 Git。
 
-不要把歷史 records 中的 pass 改成 fail。若驗收契約已改版，新增新版驗收狀態並標明舊結論適用的版本。
+不要把歷史 records 中的 pass 改成 fail。2026-10-12 新重建要求下，舊 pass 僅是歷史字面紀錄，不是目前接受或可沿用資料的依據。每個目前 V 都須依新版範圍重新執行並留獨立證據。
