@@ -1,6 +1,7 @@
 # Local inputs, intermediate files, caches, and generated datasets.
 # data/ holds only local files; small tracked config lives in config/ and releases/.
-/data/
+data/*
+!data/output/
 *.sqlite
 *.sqlite-*
 *.duckdb

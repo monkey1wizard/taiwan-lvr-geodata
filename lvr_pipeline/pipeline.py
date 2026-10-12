@@ -16,6 +16,8 @@ from .contracts import SCHEMA_VERSION
 from .results.reconcile import DEFAULT_CONFIG, load_coordinate_tolerance, load_suspended_counties, resolve_offline, load_p2
 from .results.review import build_review
 from .output.build import write_output
+from .output.catalog import write_catalog
+from .output.verify import OutputVerificationError, verify_output
 from .results.address_patch import export_address_patch, verify_address_patch
 from .tgos import (
     import_tgos,
@@ -463,11 +465,20 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
                 raise RuntimeError(f"output directory {output_root} already exists and cannot be adopted; "
                                    "it was not changed")
             summary = write_output(converted, state, output_root / "public", output_root / "release")
+            _, converted_report = load_snapshot(converted, "converted")
+            write_catalog(output_root / "public", output_root / "release", summary,
+                          converted_report=converted_report, cutoff_yyyymm=bindings_["cutoff_yyyymm"])
+            try:
+                verification = verify_output(output_root / "public", output_root / "release")
+            except OutputVerificationError as exc:
+                _json_write(output_root / "verify_report.json", exc.report)
+                raise
             files_sha256 = {item.relative_to(run.root).as_posix(): sha256_file(item)
                             for item in sorted(output_root.rglob("*")) if item.is_file()}
             record = {"output_id": output_id, "public_dir": (output_root / "public").relative_to(run.root).as_posix(),
                       "release_dir": (output_root / "release").relative_to(run.root).as_posix(),
-                      "summary": summary, "files_sha256": files_sha256}
+                      "summary": summary, "files_sha256": files_sha256,
+                      "catalog_sha256": verification["catalog_sha256"], "verification": verification}
             binding = stage_bindings("output", {"run_bindings": bindings_, "output_id": output_id}, input_hashes)
             current_pointer = store.current()
             parent = current_pointer["snapshot_id"] if current_pointer else None
@@ -565,7 +576,10 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
                            "total_rows": released["summary"]["total_rows"],
                            "file_count": len(released["summary"]["files"]),
                            "parquet_rows": sum(item["rows"] for item in released["summary"]["files"].values()
-                                               if item["format"] == "geoparquet")},
+                                               if item["format"] == "geoparquet"),
+                           "catalog_sha256": released["catalog_sha256"],
+                           "warnings": released["verification"]["warnings"],
+                           "quality": released["verification"]["quality"]},
                 "quarantined": result["quarantined"],
                 "resources": resources(),
             }

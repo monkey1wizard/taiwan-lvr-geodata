@@ -56,7 +56,9 @@ def test_full_run_writes_public_files_release_parquet_and_report_section(tmp_pat
     report = json.loads(Path(result["report"]).read_text(encoding="utf-8"))
     assert report["output"] == {"output_id": record["output_id"], "public_dir": record["public_dir"],
                                 "release_dir": record["release_dir"], "total_rows": total,
-                                "file_count": len(record["summary"]["files"]), "parquet_rows": table.num_rows}
+                                "file_count": len(record["summary"]["files"]), "parquet_rows": table.num_rows,
+                                "catalog_sha256": sha256_file(public / "catalog.json"),
+                                "warnings": [], "quality": record["verification"]["quality"]}
     print(json.dumps(report["output"], indent=2))
 
 

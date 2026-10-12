@@ -23,7 +23,7 @@
 ## 資料與檢查產物
 
 - 檢查、驗證、診斷、審查輸出與需保留的失敗產物放在 `data/tmp/<purpose>/`。
-- `data/raw/`、`data/cache/`、`data/tgos/` 與 `data/output/` 是目標布局資料位置。`data/output/` 已決定作為公開 Git 下載位置，但目前 `.gitignore` 仍忽略整個 `data/`，追蹤行為待實作。
+- `data/raw/`、`data/cache/`、`data/tgos/` 與 `data/output/` 是目標布局資料位置。`data/output/` 是公開 Git 下載位置。`.gitignore` 已於 R07-9 改為忽略 `data/*` 但不忽略 `data/output/`，所以 `data/output/` 下的檔案會被 Git 追蹤；只有經發布流程核准的公開輸出應放進該目錄。
 - 秘密、raw ZIP、run／stage 快照及第三方地址來源列不得加入 Git。
 - 不因缺檔而假設來源是空批次，不覆寫原始證據，也不以實作完成推定驗收通過。
 - 不要在 P0 範圍發布或更新相關地址資料專案。

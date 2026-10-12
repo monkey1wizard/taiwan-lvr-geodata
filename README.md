@@ -21,7 +21,7 @@
 | CSV | `data/output/csv/YYYY/` | 試算表、BI、Kepler.gl 與 AI |
 | GeoJSON | `data/output/geojson/YYYY/` | 網頁地圖 |
 
-`data/output/catalog.json` 預定列出各檔案格式、年、月、類別、期間、筆數、大小、SHA-256 與路徑。完整契約見[輸出欄位](docs/輸出欄位.md)。上述目錄與欄位是已決定的新版規格，實作及驗收尚未完成。
+`data/output/catalog.json` 預定列出各檔案格式、年、月、類別、期間、筆數、大小、SHA-256 與路徑。完整契約見[輸出欄位](docs/輸出欄位.md)。上述目錄與欄位的產生、`catalog.json` 與格式間驗證已實作，全量驗收與發布尚未完成。
 
 多門牌交易的一個總價屬於整筆交易，不分攤或推算。輸出列以 `door_count` 大於 1 表示多門牌，以 `transaction_id` 找出同筆交易的點，加總時依 `transaction_id` 去重。這些新欄位尚未由程式產生。每種格式的使用方式與加總規則將隨新版資料交付。
 
@@ -95,7 +95,7 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline run-full \
   --config config/pipeline.example.toml
 ```
 
-截止年月使用西元 `YYYYMM`。此為參數完整的命令模板，不是已驗收的發布命令。`run-full` 有來源核對、階段續跑、離線處理、新版 22 欄輸出及 run report，但未讀 TGOS 狀態。輸出寫在 run 目錄的 `output/<output_id>/public/` 與 `release/`，尚未有 `catalog.json`、`NOTICE.json` 或格式間驗證（R07-9），也不是公開發布。舊的 `package-output`、`verify-output`、`backfill-output`、`fetch-output`、`publish-output`、`commit-release-pointer`、`verify-public-snapshot` 命令已於 2026-10-12 移除。單批轉換不能視為全歷史完成。流程輸入、每階段產物及失敗去向見[資料處理流程](docs/資料處理流程.md)。
+截止年月使用西元 `YYYYMM`。此為參數完整的命令模板，不是已驗收的發布命令。`run-full` 有來源核對、階段續跑、離線處理、新版 22 欄輸出及 run report，但未讀 TGOS 狀態。輸出寫在 run 目錄的 `output/<output_id>/public/` 與 `release/`，輸出階段會寫入 `catalog.json` 並執行格式間驗證，失敗時留下 `verify_report.json` 且不提交該階段。尚未有 `NOTICE.json`，也不是公開發布。舊的 `package-output`、`verify-output`、`backfill-output`、`fetch-output`、`publish-output`、`commit-release-pointer`、`verify-public-snapshot` 命令已於 2026-10-12 移除。單批轉換不能視為全歷史完成。流程輸入、每階段產物及失敗去向見[資料處理流程](docs/資料處理流程.md)。
 
 明細讀入與關聯已於 2026-10-12 實作（R07-7）：`ingest` 讀入三種明細為 `ingest-detail`，`normalize` 依明細關聯契約以 `編號` 連回主檔，產生 `detail` 資料集，並把七項計數寫入 `detail_link`。新版公開輸出的三個 JSON 欄由 R07-8 產生。明細欄位與例外處理詳見[資料契約](docs/資料契約.md)及[輸出欄位](docs/輸出欄位.md)。
 
@@ -124,7 +124,7 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline build-review --help
 
 只有經新規則核驗、明確允許納入的 TGOS 證據，才能建立本次新定位狀態並回補本次重建的來源觀測。舊定位、審查裁定、快照與輸出不得回補或作為定位依據。新版回補仍待 R-10 實作。地址專案新增或更新候選、真實匯入及新版公開資料發布分別依企劃中的工作與驗收條件處理。
 
-發布前要完成候選驗證、正式公告確認、附件清單與雜湊核對。公開發布後再下載公開檔案，核對雜湊及版本內容。維護包只存本機，不公開。公開輸出 `data/output/` 是已決定的 Git 下載位置；GeoParquet 單檔由 GitHub release 提供。目前 `.gitignore` 仍忽略整個 `data/`，輸出追蹤尚未實作。各步驟尚未完成前，不要更新公開指標。更完整的開發及發布限制見[CONTRIBUTING](CONTRIBUTING.md)。
+發布前要完成候選驗證、正式公告確認、附件清單與雜湊核對。公開發布後再下載公開檔案，核對雜湊及版本內容。維護包只存本機，不公開。公開輸出 `data/output/` 是已決定的 Git 下載位置；GeoParquet 單檔由 GitHub release 提供。`.gitignore` 已於 R07-9 改為忽略 `data/*` 但不忽略 `data/output/`，所以 `data/output/` 下的檔案會被 Git 追蹤；只有經發布流程核准的公開輸出應放進該目錄。各步驟尚未完成前，不要更新公開指標。更完整的開發及發布限制見[CONTRIBUTING](CONTRIBUTING.md)。
 
 ## 常見問題
 

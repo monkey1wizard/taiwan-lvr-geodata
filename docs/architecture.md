@@ -60,15 +60,15 @@
 - TGOS 使用獨立 CLI 命令及 `--work-dir`，尚未由 `run-full` 管理 TGOS 狀態或回補。
 - `transactions/read.py` 讀入交易主檔與 `_build.csv`、`_land.csv`、`_park.csv` 明細；`transactions/normalize.py` 依明細關聯契約把明細連回主檔，計數寫入 `detail_link`。
 - `tgos/validate.py` 的 `import_tgos` 已檢查查詢與回傳集合一對一，並以相同批次和回傳雜湊支援冪等重匯。`addresses/identity.py` 的 `same_door` 允許回傳補上送出地址未寫的村里或鄰。R09-2 尚須檢查候選是否跨多個村里或鄰，未完成完整同址驗收。
-- `output/` 產生新 22 欄門牌輸出與 CSV 23 欄，`run-full` 的輸出階段已改用它。`catalog.json`、格式間驗證與發布尚未實作（R07-9、R08）。權威規格在[輸出欄位](輸出欄位.md)。
-- `config/sources/notice.json` 與本機 `data/output/` 目前不存在。gitignore 仍忽略整個 `data/`，部分 CLI 預設仍使用 `data/work/`。這些是尚待程式或設定工作處理的差距。
+- `output/` 產生新 22 欄門牌輸出與 CSV 23 欄，`run-full` 的輸出階段已改用它。`output/catalog.py` 寫 `catalog.json`，`output/verify.py` 執行格式間驗證，兩者都在輸出階段提交前執行。發布尚未實作（R08）。權威規格在[輸出欄位](輸出欄位.md)。
+- `config/sources/notice.json` 與本機 `data/output/` 目前不存在。`.gitignore` 已不忽略 `data/output/`，部分 CLI 預設仍使用 `data/work/`。這些是尚待程式或設定工作處理的差距。
 - R07-4 的 58 批舊契約 run report 曾標示完成，但其 `output-release` 已移除。該歷史結果及相關衍生資料不作目前接受的候選、定位依據或新版驗收基準。
 
 ## 相依資料與版本
 
 來源清單、來源描述與小型規則放在 `config/`。原始 ZIP、TGOS 交換檔、執行快照、工作區及產物位置依命令與[資料處理流程](資料處理流程.md)管理。所有規則版本、輸入雜湊與程式版本都應能回連到單次 run 及其快照。
 
-目前本機 run/stage 路徑仍有歷史差異。新版公開目錄與檔案契約只以[輸出欄位](輸出欄位.md)為準，其他目標布局依企劃工作實作後才視為現行可用。`data/output/` 是已決定的 Git 公開位置，但目前 `.gitignore` 仍忽略整個 `data/`，尚未成為實際追蹤輸出。檢查輸出及失敗診斷存入 `data/tmp/<purpose>/`。維護包留在本機執行目錄，不公開。
+目前本機 run/stage 路徑仍有歷史差異。新版公開目錄與檔案契約只以[輸出欄位](輸出欄位.md)為準，其他目標布局依企劃工作實作後才視為現行可用。`data/output/` 是 Git 公開位置。`.gitignore` 已於 R07-9 改為忽略 `data/*` 但不忽略 `data/output/`，所以 `data/output/` 下的檔案會被 Git 追蹤；只有經發布流程核准的公開輸出應放進該目錄。檢查輸出及失敗診斷存入 `data/tmp/<purpose>/`。維護包留在本機執行目錄，不公開。
 
 ## 相關文件
 
