@@ -19,7 +19,7 @@ Git 包含路名參考資料、人工補字規則及來源中繼資料。原始�
 ## 已搬入的路名資料
 
 - 檔案：`data/reference/roadnames_35321_20260618.csv`。
-- 來源紀錄：[`roadnames_35321.provenance.txt`](../../data/reference/roadnames_35321.provenance.txt)。
+- 來源紀錄：[`roadnames_35321.provenance.txt`](../../config/reference/roadnames_35321.provenance.txt)。
 - 該紀錄標示資料集 ID 為 `35321`，下載日期為 2026-06-18。
 - 本次保留來源檔案與來源紀錄，沒有重新下載或更新資料。
 
