@@ -29,13 +29,13 @@
 
 ## 安裝與測試
 
-環境使用 Python 3.14.8 與鎖定的 uv 相依套件。Linux 已安裝 uv 後，在專案根目錄執行：
+環境使用 Python 3.14.8 與 uv 0.12.23，並安裝鎖定的相依套件。CI 只驗證 Linux 的 `scripts/setup.sh`；Windows 命令未由 CI 驗證。Linux 已安裝指定版本 uv 後，在專案根目錄執行：
 
 ```bash
 bash scripts/setup.sh
 ```
 
-Windows 在專案根目錄執行：
+Windows PowerShell 可用固定版 uv 執行以下合成 fixture 與測試命令，uv 會依專案要求取得 Python 3.14.8；此 Windows 路徑目前沒有 CI 驗證，也不保證可用：
 
 ```powershell
 uv sync --locked --group dev --python 3.14.8
@@ -102,65 +102,23 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline run-full \
 
 ## TGOS 回補
 
-TGOS 由個別命令處理，未接入 `run-full`。以下是步驟模板，不執行真實資料。執行前置條件是隔離護欄已完成，且所有狀態與 `CONVERTED` 都由本次重新核對輸入的新 run 產生並經適用階段驗證。不得將重建前的 converted、offline state、review、TGOS 採用結果或快照填入範本。既有 TGOS 原始回傳預設不納入；只有新規則核驗送出地址與回傳原文同址，並明確判定採用資格後才能納入。送查帳本及已送出紀錄必須保留以防重送，但只防止重複送查，不繼承定位結果。程式隔離護欄尚未實作，目前命令仍可能讀取舊快照；前置條件未完成前不得執行此範本。先將尖括號值替換為本次新重建產生的狀態及路徑：
+TGOS 由個別命令處理，未接入 `run-full`。預定順序為 `prepare-tgos`、人工交換、`set-tgos-status`、`import-tgos`、`build-review`，之後新版回補由 R-10 定義。`prepare-tgos` 可從本次離線狀態建立初始 TGOS state，後續每個狀態更新都須使用前一命令輸出的新快照路徑。`build-review` 用 `--state` 接收離線狀態。該路徑須來自同一次 run。
+
+目前沒有按新 `building_key` 契約核驗過的安全帳本轉接步驟。現行 `--ledger` 會轉接舊送查記錄，並以 `building_key_v2` 重新生成查詢鍵與指紋；無法重鍵的查詢會保留診斷資料，不能當成新防重送索引。此行為尚未按新契約驗收。轉接會丟棄舊 results、evidence 與 aliases，因此不得用舊定位結果。R07-6a/R09 須保留送查事實、核對歷史送出狀態並建立新的防重送索引，不繼承舊鍵、定位、aliases 或裁定。不得清空帳本、忽略未知送出狀態或重送。舊 TGOS 回傳預設排除，僅在新規則核對回傳原文同址並明確允許後才能納入。程式隔離護欄尚未實作，前置條件未完成前以下只可查詢命令參數：
+
+目前只可查看命令參數，不能依此執行新重建 TGOS 流程。每檔最多 10,000 筆是單檔上限，不是每日程式限制。未知送出狀態必須保留，阻止重送或釋放配額。以下命令僅查詢介面：
 
 ```bash
-TGOS_STATE="<initial-tgos-state-snapshot-from-this-new-run>"
-CONVERTED="<validated-converted-snapshot-from-this-new-run>"
-REVIEW_STATE="<offline-state-snapshot-from-this-new-run>"
-WORK_DIR="data/tmp/<purpose-specific-tgos-work-dir>"
-TGOS_BATCH="<batch-id-returned-by-prepare-tgos>"
-RESPONSE="<downloaded-Address_Finish.csv>"
+uv run --locked --python 3.14.8 python -m lvr_pipeline prepare-tgos --help
+uv run --locked --python 3.14.8 python -m lvr_pipeline set-tgos-status --help
+uv run --locked --python 3.14.8 python -m lvr_pipeline import-tgos --help
+uv run --locked --python 3.14.8 python -m lvr_pipeline build-review --help
+uv run --locked --python 3.14.8 python -m lvr_pipeline backfill-output --help
 ```
 
-先從未定位池建立交換檔。每檔最多 10,000 筆，這是單檔上限，不是每日程式限制：
+`backfill-output` 是舊契約命令，不是新版回補入口。新版回補依 R-10 使用本次全新重建且已驗收的基線，不使用重建前的 `--input`、`--state`、`--previous` 或公開輸出。
 
-```bash
-uv run --locked --python 3.14.8 python -m lvr_pipeline prepare-tgos \
-  --state "$TGOS_STATE" --limit 10000 --work-dir "$WORK_DIR" \
-  --date-file data/tgos/date.json
-```
-
-使用命令輸出的批次識別碼更新 `TGOS_BATCH`，並將該命令輸出的新 TGOS 狀態快照路徑指定給 `TGOS_STATE`。後續每個會更新狀態的命令都產生新快照，必須把 `TGOS_STATE` 更新為其輸出路徑，不能沿用前一版路徑。`REVIEW_STATE` 始終指向該定位狀態所用的離線狀態快照。檢查交換檔後，由人工上傳 TGOS 並下載回傳。`date.json` 的日期只決定交換資料夾名稱。確認已送出時記錄：
-
-```bash
-uv run --locked --python 3.14.8 python -m lvr_pipeline set-tgos-status \
-  --state "$TGOS_STATE" --batch "$TGOS_BATCH" --status submitted \
-  --work-dir "$WORK_DIR"
-```
-
-命令完成後，更新 `TGOS_STATE="<set-tgos-status 輸出的新狀態快照>"`。
-
-若無法確認是否送出，改記 `submission_unknown`，不可自動重送或釋放配額。已取消的未送出批次記為 `cancelled`，並提供 `--reason`。收到回傳後匯入：
-
-```bash
-uv run --locked --python 3.14.8 python -m lvr_pipeline import-tgos \
-  --state "$TGOS_STATE" --batch "$TGOS_BATCH" --response "$RESPONSE" \
-  --work-dir "$WORK_DIR"
-```
-
-匯入完成後，更新 `TGOS_STATE="<import-tgos 輸出的新狀態快照>"`。取消批次時也更新為 `set-tgos-status` 輸出的最新快照。
-
-用更新後的 TGOS 狀態重建待查核表：
-
-```bash
-uv run --locked --python 3.14.8 python -m lvr_pipeline build-review \
-  --input "$CONVERTED" --state "$REVIEW_STATE" \
-  --tgos-state "$TGOS_STATE" --work-dir "$WORK_DIR"
-```
-
-現有 `backfill-output` 是舊契約命令，目前沒有新重建隔離護欄。此命令及以下參數只記錄現行介面，不是新版回補流程。不得將重建前的 `--input`、`--state` 或 `--previous` 產物作為輸入；R-10 新版回補完成前，也不得用此命令為新重建結果建立相容輸出：
-
-```bash
-uv run --locked --python 3.14.8 python -m lvr_pipeline backfill-output \
-  --input "$CONVERTED" --state "$TGOS_STATE" \
-  --previous <previous-old-contract-output> \
-  --notices <owner-approved-notice.json> \
-  --output-dir <new-old-contract-output> \
-  --report <report-path> --run-id <new-run-id>
-```
-
-此舊契約命令不是新版輸出回補，R-10 尚未完成。現行實作未保證拒絕舊輸入，因此不可把文件上的禁止事項當成程式護欄。匯入目前會檢查查詢與回傳集合一對一，也具備相同批次及相同回傳雜湊的冪等重匯處理，並依 `same_door` 比對門牌。`same_door` 允許回傳補上送出地址未寫的村里或鄰。R09-2 尚待補足候選跨村里／鄰歧義核對，完整同址驗收仍未通過。座標軸不明、門牌不符或證據不足時不得採用。
+現行 TGOS 匯入會檢查查詢與回傳集合一對一，並具備相同批次及相同回傳雜湊的冪等重匯處理。`same_door` 允許回傳補上送出地址未寫的村里或鄰。R09-2 尚待補足候選跨村里／鄰歧義核對，完整同址驗收仍未通過。座標軸不明、門牌不符或證據不足時不得採用。
 
 送查、回傳原檔及帳本屬執行資料。依實際命令提供 `--work-dir`，保存在指定 run 或 `data/tmp/` 工作區。不要覆寫原始回傳或重設配額帳本。
 
