@@ -98,7 +98,7 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline run-full \
 
 截止年月使用西元 `YYYYMM`。此為參數完整的命令模板，不是可直接執行的已驗收發布命令。公告檔目前不存在。`run-full` 有來源核對、階段續跑、離線處理、舊契約輸出及 run report，但未讀 TGOS 狀態，也尚未支援新版公開格式。單批轉換不能視為全歷史完成。流程輸入、每階段產物及失敗去向見[資料處理流程](docs/資料處理流程.md)。
 
-目前程式只讀交易主檔，尚未把 `_build.csv`、`_land.csv`、`_park.csv` 明細連回交易。新版輸出要求納入這三種明細，詳見[資料契約](docs/資料契約.md)及[輸出欄位](docs/輸出欄位.md)。
+明細讀入與關聯已於 2026-10-12 實作（R07-7）：`ingest` 讀入三種明細為 `ingest-detail`，`normalize` 依明細關聯契約以 `編號` 連回主檔，產生 `detail` 資料集，並把七項計數寫入 `detail_link`。新版公開輸出的三個 JSON 欄由 R07-8 產生。明細欄位與例外處理詳見[資料契約](docs/資料契約.md)及[輸出欄位](docs/輸出欄位.md)。
 
 ## TGOS 回補
 

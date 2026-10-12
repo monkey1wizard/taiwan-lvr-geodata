@@ -37,7 +37,18 @@ P1_SCHEMAS = {
         ("raw_record_id", S), ("input_sha256", S), ("src_batch", S), ("category", S),
         ("member_path", S), ("source_row_number", I), ("source_line_end", I),
         ("raw_fields_json", S), ("raw_values_json", S), ("header_json", S), ("row_status", S),
-        ("outcome", S), ("reason", S)]])
+        ("outcome", S), ("reason", S)]]),
+    # R07-7: one row per detail CSV row (build, land, park) as read from the ZIP.
+    "ingest-detail": _schema("ingest-detail", [(key, kind, nullable) for key, kind, nullable in [
+        ("detail_record_id", S, False), ("input_sha256", S, False), ("src_batch", S, False),
+        ("category", S, False), ("detail_kind", S, False), ("member_path", S, False),
+        ("main_member_path", S, False), ("source_row_number", I, False), ("source_line_end", I, False),
+        ("serial", S, True), ("raw_fields_json", S, False), ("header_json", S, False),
+        ("row_status", S, False)]]),
+    # R07-7: a detail row linked to one main-file row by raw_record_id (same ZIP, county letter, category).
+    "detail": _schema("detail", [(key, kind, False) for key, kind in [
+        ("raw_record_id", S), ("detail_kind", S), ("detail_record_id", S), ("member_path", S),
+        ("source_row_number", I), ("raw_fields_json", S)]]),
 }
 
 OFFLINE_SCHEMAS = {

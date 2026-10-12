@@ -519,6 +519,8 @@ def load_snapshot(path: Path, expected_stage: str) -> tuple[dict, dict]:
     if expected_stage == "ingest":
         if counts.get("ingest-record") != report["input_rows"]:
             raise ValueError("Ingest report count differs from artifacts")
+        if counts.get("ingest-detail") != report["detail_input_rows"]:
+            raise ValueError("Ingest detail report count differs from artifacts")
     elif expected_stage == "address-patch":
         for dataset, counter in [
             ("address-patch", "patch_rows"),
@@ -532,6 +534,8 @@ def load_snapshot(path: Path, expected_stage: str) -> tuple[dict, dict]:
                                  ("address-component", "component_rows"), ("diagnostic", "diagnostic_rows"), ("disposition", "input_rows")]:
             if counts.get(dataset) != report[counter]:
                 raise ValueError("Processing report count differs from artifacts")
+        if counts.get("detail") != report["detail_rows"]:
+            raise ValueError("Processing detail report count differs from artifacts")
         if report["retained_rows"] + report["excluded_rows"] + report["failed_rows"] != report["input_rows"]:
             raise ValueError("Processing disposition counts inconsistent")
         if expected_stage == "converted" and counts != report["dataset_counts"]:

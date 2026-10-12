@@ -67,6 +67,26 @@ def make_source(tmp_path, records=None, *, count=None, batch="115q1", categories
     return raw,{"inputs":[describe_zip(path)]}
 
 
+def add_members(tmp_path, members, *, batch="115q1"):
+    """R07-7: append CSV members to a ZIP made by make_source and return the new manifest.
+
+    members maps a member path to (header, rows) or (header, rows, english_row); a missing
+    english_row means no second label line.
+    """
+    path=tmp_path/"raw"/f"{batch}_lvr_landcsv.zip"
+    with zipfile.ZipFile(path,"a",compression=zipfile.ZIP_DEFLATED) as archive:
+        for name,(header,body,*english) in members.items():
+            with archive.open(name,"w") as binary:
+                text=io.TextIOWrapper(binary,encoding="utf-8-sig",newline="")
+                writer=csv.writer(text)
+                writer.writerow(header)
+                if english and english[0]:
+                    writer.writerow(english[0])
+                writer.writerows(body)
+                text.flush()
+    return {"inputs":[describe_zip(path)]}
+
+
 def rules(tmp_path):
     path=tmp_path/"rules.csv"
     path.write_text("garbled,correct,kind,scope\nU+E000,試,char,\n",encoding="utf-8")

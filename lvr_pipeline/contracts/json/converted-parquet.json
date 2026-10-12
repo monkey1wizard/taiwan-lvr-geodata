@@ -339,6 +339,117 @@
         "lvr.dataset": "disposition",
         "lvr.schema_version": "1.0"
       }
+    },
+    "ingest-detail": {
+      "fields": [
+        {
+          "name": "detail_record_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "input_sha256",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "src_batch",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "category",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "detail_kind",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "member_path",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "main_member_path",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "source_row_number",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "source_line_end",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "serial",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "raw_fields_json",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "header_json",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "row_status",
+          "type": "string",
+          "nullable": false
+        }
+      ],
+      "metadata": {
+        "lvr.dataset": "ingest-detail",
+        "lvr.schema_version": "1.0"
+      }
+    },
+    "detail": {
+      "fields": [
+        {
+          "name": "raw_record_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "detail_kind",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "detail_record_id",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "member_path",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "source_row_number",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "raw_fields_json",
+          "type": "string",
+          "nullable": false
+        }
+      ],
+      "metadata": {
+        "lvr.dataset": "detail",
+        "lvr.schema_version": "1.0"
+      }
     }
   }
 }

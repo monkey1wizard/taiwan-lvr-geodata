@@ -20,6 +20,8 @@ FIELD_ALIASES = {
     "presale": {"date": ["交易年月日", "交易年月"], "amount": ["總價元", "房地總價元"], "area": ["建物移轉總面積平方公尺"]},
     "rent": {"date": ["租賃年月日"], "amount": ["總額元", "月租金"], "area": ["建物總面積平方公尺", "建物移轉總面積平方公尺"]},
 }
+DETAIL_MEMBER = re.compile(r"^([a-z])_lvr_land_([abc])_(build|land|park)\.csv$", re.I)
+DETAIL_CATEGORIES = {"a": "sales", "b": "presale", "c": "rent"}
 ENGLISH_ADDRESSES = {"address", "land sector position building sector house number plate"}
 
 
@@ -96,6 +98,65 @@ class _LineReader:
         return values
 
 
+_ENGLISH_LABEL = re.compile(r"[A-Za-z][A-Za-z ()/._&'-]*")
+
+
+def _is_english_label(value: str) -> bool:
+    return _ENGLISH_LABEL.fullmatch(value.strip()) is not None
+
+
+def _read_detail(archive: zipfile.ZipFile, entry: dict, member: dict, match: re.Match, writer: BatchWriter, report: dict) -> None:
+    """R07-7: read one detail member (build, land, park) into ingest-detail rows.
+
+    The reader, blank-row and repeated-header handling match the main members. The
+    second line is an English label row only when it has the header's width and every
+    value is a non-empty ASCII label without digits. A real detail row holds Chinese
+    text or digits, so it is never dropped as a label; the dropped line is kept in the
+    report. No column is required, a missing 編號 column is allowed.
+    """
+    category, kind = DETAIL_CATEGORIES[match[2].lower()], match[3].lower()
+    main_path = f"{match[1]}_lvr_land_{match[2]}.csv"
+    line_mode = not _strict_parses(archive, member["path"])
+    with archive.open(member["path"]) as binary:
+        reader = (_LineReader if line_mode else _StrictReader)(binary)
+        header = next(reader, [])
+        if len(set(header)) != len(header) or any(not field for field in header):
+            raise ValueError("Duplicate/empty CSV columns")
+        counts = {"input_rows": 0, "parse_failed_rows": 0, "blank_rows": 0, "repeated_headers": 0, "english_rows": 0}
+        item = {"path": member["path"], "batch": entry["batch"], "category": category, "detail_kind": kind,
+                "main_member_path": main_path, "header": header, "line_mode": line_mode, **counts}
+        report["detail_members"].append(item)
+        header_json = canonical_json(header)
+        while True:
+            start = reader.line_num + 1
+            try:
+                values = next(reader)
+            except StopIteration:
+                break
+            if not values:
+                item["blank_rows"] += 1
+                continue
+            if values == header:
+                item["repeated_headers"] += 1
+                continue
+            if start == 2 and len(values) == len(header) and all(_is_english_label(value) for value in values):
+                item["english_rows"] += 1
+                item["english_label"] = values
+                continue
+            valid = len(values) == len(header)
+            fields = dict(zip(header, values)) if valid else {}
+            serial = fields.get("編號", "").strip() or None
+            writer.add({"detail_record_id": observation_id(entry["sha256"], member["path"], start),
+                        "input_sha256": entry["sha256"], "src_batch": entry["batch"], "category": category,
+                        "detail_kind": kind, "member_path": member["path"], "main_member_path": main_path,
+                        "source_row_number": start, "source_line_end": reader.line_num, "serial": serial,
+                        "raw_fields_json": canonical_json(fields) if valid else "{}", "header_json": header_json,
+                        "row_status": "parsed" if valid else "failed"})
+            report["detail_input_rows"] += 1
+            item["input_rows"] += 1
+            item["parse_failed_rows"] += not valid
+
+
 def ingest(raw_dir: Path, manifest: dict, batches: list[str], work_dir: Path, *, batch_rows=1024, run_id=None, code_commit=None) -> Path:
     selected = select_inputs(manifest, batches)
     for entry in selected:
@@ -116,6 +177,7 @@ def ingest(raw_dir: Path, manifest: dict, batches: list[str], work_dir: Path, *,
     report = {"batches": [entry["batch"] for entry in selected], "known_empty_batches": [],
               "input_rows": 0, "parse_failed_rows": 0, "english_rows": 0, "repeated_headers": 0,
               "blank_rows": 0, "batch_rows": batch_rows, "max_buffer_rows": 0, "max_buffer_bytes": 0, "members": members,
+              "detail_input_rows": 0, "detail_members": [],
               "source_sha256": {entry["batch"]: entry["sha256"] for entry in selected}}
     report["resource_preflight"] = {"available_bytes": available, "uncompressed_input_bytes": uncompressed,
                                     "estimated_workspace_bytes": workspace_estimate, "headroom_fraction": 0.20,
@@ -191,6 +253,18 @@ def ingest(raw_dir: Path, manifest: dict, batches: list[str], work_dir: Path, *,
                 report["max_buffer_rows"] = max(report["max_buffer_rows"], writer.max_buffer_rows)
                 report["max_buffer_bytes"] = max(report["max_buffer_bytes"], writer.max_buffer_bytes)
                 artifacts.append((name, writer.path, "ingest-record", writer.row_count))
+                detail_name = f"details/{entry['batch']}/{category}.parquet"
+                detail_writer = BatchWriter(stage.build / detail_name, "ingest-detail", batch_rows)
+                try:
+                    for member in entry["members"]:
+                        match = DETAIL_MEMBER.fullmatch(member["path"])
+                        if match and DETAIL_CATEGORIES[match[2].lower()] == category:
+                            _read_detail(archive, entry, member, match, detail_writer, report)
+                finally:
+                    detail_writer.close()
+                report["max_buffer_rows"] = max(report["max_buffer_rows"], detail_writer.max_buffer_rows)
+                report["max_buffer_bytes"] = max(report["max_buffer_bytes"], detail_writer.max_buffer_bytes)
+                artifacts.append((detail_name, detail_writer.path, "ingest-detail", detail_writer.row_count))
     for entry in selected:
         if sha256_file(Path(raw_dir) / entry["filename"]) != entry["sha256"]:
             raise ValueError("Raw input changed during ingest")

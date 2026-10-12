@@ -6,12 +6,14 @@ import json
 from pathlib import Path
 import re
 
+import pyarrow.parquet as pq
+
 from ..addresses import identity
 from ..addresses.identity import building_key
 from ..addresses.parse import arab_to_cjk, is_garbled, norm
 from ..contracts import component_id
 from ..addresses.characters import fix_garbled, load_garbled
-from .read import FIELD_ALIASES
+from .read import DETAIL_CATEGORIES, DETAIL_MEMBER, FIELD_ALIASES
 from ..storage.parquet import BatchWriter, rows
 from ..storage.runs import Stage, bindings, canonical_json, load_snapshot
 from ..storage.runs import sha256_file
@@ -19,6 +21,10 @@ from .dates import validated_roc_to_tx_yyyymm
 
 DATASETS = {"observation": "observations", "address-component": "address_components",
             "exclusion": "exclusions", "diagnostic": "diagnostics", "disposition": "dispositions"}
+DETAIL_KINDS = ("build", "land", "park")
+DETAIL_COUNTERS = ("serial_missing", "serial_duplicated", "detail_unmatched", "detail_ambiguous", "detail_member_missing",
+                   "detail_serial_column_missing", "detail_row_failed", "linked_rows")
+MAIN_MEMBER = re.compile(r"^([a-z])_lvr_land_([abc])\.csv$", re.I)
 LAND = re.compile(r"地號|地段|等[0-9０-９]+筆")
 
 
@@ -171,6 +177,90 @@ def member_dispositions(ingest_members: list[dict], tallies: dict) -> list[dict]
     return result
 
 
+def _group_key(batch: str, letter: str, category: str) -> tuple:
+    return (batch, letter.lower(), category)
+
+
+def main_serials(path: Path, batch_rows: int) -> dict:
+    """R07-7: per file group, serial -> raw_record_ids over parsed main rows (every disposition)."""
+    groups: dict[tuple, dict] = {}
+    columns = ["raw_record_id", "src_batch", "category", "member_path", "raw_fields_json", "row_status"]
+    for batch in pq.ParquetFile(path).iter_batches(batch_size=batch_rows, columns=columns):
+        for row in batch.to_pylist():
+            if row["row_status"] != "parsed":
+                continue
+            letter = MAIN_MEMBER.fullmatch(row["member_path"])[1]
+            group = groups.setdefault(_group_key(row["src_batch"], letter, row["category"]),
+                                      {"serials": {}, "missing": 0})
+            serial = json.loads(row["raw_fields_json"]).get("編號", "").strip()
+            if serial:
+                group["serials"].setdefault(serial, []).append(row["raw_record_id"])
+            else:
+                group["missing"] += 1
+    return groups
+
+
+def link_details(detail_path: Path, groups: dict, serial_less_members: set, writer: BatchWriter, counters: dict, batch_rows: int) -> None:
+    """R07-7: link ingest-detail rows to main rows by serial inside one file group; count every exception."""
+    for batch in pq.ParquetFile(detail_path).iter_batches(batch_size=batch_rows):
+        for row in batch.to_pylist():
+            match = DETAIL_MEMBER.fullmatch(row["member_path"])
+            key = _group_key(row["src_batch"], match[1], row["category"])
+            kind = row["detail_kind"]
+            if (row["src_batch"], row["member_path"]) in serial_less_members:
+                continue  # counted once per member as detail_serial_column_missing
+            counter = counters[(*key, kind)]
+            if row["row_status"] == "failed":
+                counter["detail_row_failed"] += 1
+                continue
+            ids = groups.get(key, {"serials": {}})["serials"].get(row["serial"]) if row["serial"] else None
+            if not ids:
+                counter["detail_unmatched"] += 1
+            elif len(ids) > 1:
+                counter["detail_ambiguous"] += 1
+            else:
+                counter["linked_rows"] += 1
+                writer.add({"raw_record_id": ids[0], "detail_kind": kind, "detail_record_id": row["detail_record_id"],
+                            "member_path": row["member_path"], "source_row_number": row["source_row_number"],
+                            "raw_fields_json": row["raw_fields_json"]})
+
+
+def new_counters(ingest_report: dict) -> dict:
+    """R07-7: one counter set per (batch, county letter, category, kind) of every file group.
+
+    A group exists when its main member or any of its detail members is in the ingest report.
+    Member level exceptions are counted here, row level exceptions in ``link_details``.
+    """
+    counters, mains = {}, set()
+    for member in ingest_report["members"]:
+        mains.add(_group_key(member["batch"], MAIN_MEMBER.fullmatch(member["path"])[1], member["category"]))
+    present = {}
+    for member in ingest_report["detail_members"]:
+        key = _group_key(member["batch"], DETAIL_MEMBER.fullmatch(member["path"])[1], member["category"])
+        present[(*key, member["detail_kind"])] = member
+    for key in sorted(mains | {key[:3] for key in present}):
+        for kind in DETAIL_KINDS:
+            counter = counters[(*key, kind)] = dict.fromkeys(DETAIL_COUNTERS, 0)
+            member = present.get((*key, kind))
+            if member is None:
+                counter["detail_member_missing"] += key in mains
+            elif "編號" not in member["header"]:
+                counter["detail_serial_column_missing"] += 1
+    return counters
+
+
+def detail_link_report(group_totals: dict, counters: dict) -> list[dict]:
+    result = []
+    for key in sorted({key[:3] for key in counters}):
+        missing, duplicated = group_totals.get(key, (0, 0))
+        result.append({"batch": key[0], "county_letter": key[1], "category": key[2], "detail_kind": None,
+                       **dict.fromkeys(DETAIL_COUNTERS, 0), "serial_missing": missing, "serial_duplicated": duplicated})
+        for kind in DETAIL_KINDS:
+            result.append({"batch": key[0], "county_letter": key[1], "category": key[2], "detail_kind": kind,
+                           **counters[(*key, kind)]})
+    return result
+
+
 def normalize(ingest_snapshot: Path, work_dir: Path, *, cutoff: int, rules_path: Path, batch_rows=1024, run_id=None, code_commit=None) -> Path:
     # Validate cutoff even for known-empty source scopes.
     validated_roc_to_tx_yyyymm("0010101", run_cutoff_yyyymm=cutoff)
@@ -194,10 +284,29 @@ def normalize(ingest_snapshot: Path, work_dir: Path, *, cutoff: int, rules_path:
               "component_rows": 0, "amount_minor_sum": 0}
     artifacts = []
     tallies = {}
+    counters = new_counters(previous)
+    serial_less = {(member["batch"], member["path"]) for member in previous["detail_members"] if "編號" not in member["header"]}
+    detail_items = {item["path"]: item for item in manifest["artifacts"] if item["schema"] == "ingest-detail"}
+    group_totals, detail_rows = {}, 0
     for item in manifest["artifacts"]:
         if item["schema"] != "ingest-record":
             continue
         partition = Path(item["path"]).relative_to("records")
+        detail_item = detail_items.get(f"details/{partition.as_posix()}")
+        if detail_item is None:
+            raise ValueError("Ingest snapshot lacks the detail partition of a record partition")
+        groups = main_serials(Path(ingest_snapshot) / item["path"], batch_rows)
+        for key, group in groups.items():
+            group_totals[key] = (group["missing"], sum(len(ids) for ids in group["serials"].values() if len(ids) > 1))
+        detail_writer = BatchWriter(stage.build / "details" / partition, "detail", batch_rows)
+        try:
+            link_details(Path(ingest_snapshot) / detail_item["path"], groups, serial_less, detail_writer, counters, batch_rows)
+        finally:
+            detail_writer.close()
+        artifacts.append((f"details/{partition.as_posix()}", detail_writer.path, "detail", detail_writer.row_count))
+        detail_rows += detail_writer.row_count
+        report["max_buffer_rows"] = max(report["max_buffer_rows"], detail_writer.max_buffer_rows)
+        report["max_buffer_bytes"] = max(report["max_buffer_bytes"], detail_writer.max_buffer_bytes)
         writers = {name: BatchWriter(stage.build / DATASETS[name] / partition, name, batch_rows) for name in DATASETS}
         try:
             for raw in rows(Path(ingest_snapshot) / item["path"], batch_rows):
@@ -229,6 +338,8 @@ def normalize(ingest_snapshot: Path, work_dir: Path, *, cutoff: int, rules_path:
     if report["retained_rows"] + report["excluded_rows"] + report["failed_rows"] != report["input_rows"]:
         raise ValueError("Normalization source accounting mismatch")
     report["member_dispositions"] = member_dispositions(previous["members"], tallies)
+    report["detail_rows"] = detail_rows
+    report["detail_link"] = detail_link_report(group_totals, counters)
     report["line_mode_members"] = previous.get("line_mode_members", [])
     if sha256_file(rules_path) != rules_hash:
         raise ValueError("Garbled rules changed during normalization")

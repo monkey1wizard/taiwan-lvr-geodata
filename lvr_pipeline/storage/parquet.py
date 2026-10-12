@@ -85,6 +85,22 @@ def inspect_parquet(path: Path, dataset: str) -> int:
         values = batch.to_pylist()
         if dataset not in P1_DATASETS:
             validate_dataset_rows(values,dataset)
+        elif dataset == "ingest-detail":
+            for row in values:
+                if row["detail_record_id"] != observation_id(row["input_sha256"], row["member_path"], row["source_row_number"]):
+                    raise ValueError("Detail identity mismatch")
+                if row["source_line_end"] < row["source_row_number"] or row["row_status"] not in {"parsed", "failed"}:
+                    raise ValueError("Detail row lineage/status invalid")
+                if row["category"] not in {"sales", "presale", "rent"} or row["detail_kind"] not in {"build", "land", "park"}:
+                    raise ValueError("Unknown detail category or kind")
+                if not isinstance(json.loads(row["raw_fields_json"]), dict) or not isinstance(json.loads(row["header_json"]), list):
+                    raise ValueError("Detail fields must be an object and header an array")
+        elif dataset == "detail":
+            for row in values:
+                if row["detail_kind"] not in {"build", "land", "park"} or row["source_row_number"] < 1:
+                    raise ValueError("Unknown detail kind or row number")
+                if not isinstance(json.loads(row["raw_fields_json"]), dict):
+                    raise ValueError("Detail fields must be an object")
         elif dataset in {"ingest-record", "disposition"}:
             for row in values:
                 if row["raw_record_id"] != observation_id(row["input_sha256"], row["member_path"], row["source_row_number"]):
@@ -152,7 +168,8 @@ def verify_relations(groups: dict[str, list[Path]], *, source_scope: dict | None
                     if db.sql(f'SELECT count(*) FROM (SELECT {columns} FROM "{name}" GROUP BY {columns} HAVING count(*) > 1)').fetchone()[0]:
                         raise ValueError(f"Duplicate offline identity in {dataset}")
                     continue
-                primary = "component_id" if dataset == "address-component" else "raw_record_id"
+                primary = {"address-component": "component_id", "ingest-detail": "detail_record_id",
+                           "detail": "detail_record_id"}.get(dataset, "raw_record_id")
                 if dataset != "diagnostic":
                     if db.sql(f'SELECT count(*) FROM (SELECT "{primary}" FROM "{name}" GROUP BY 1 HAVING count(*) > 1)').fetchone()[0]:
                         raise ValueError(f"Duplicate {primary} across {dataset} partitions")
@@ -165,7 +182,7 @@ def verify_relations(groups: dict[str, list[Path]], *, source_scope: dict | None
                 if not isinstance(source_scope, dict) or not source_scope:
                     raise ValueError("Declared source scope required")
                 db.register("declared_scope", pa.table({"src_batch": list(source_scope), "input_sha256": list(source_scope.values())}))
-                for name in ["ingest-record", "observation", "disposition"]:
+                for name in ["ingest-record", "ingest-detail", "observation", "disposition"]:
                     if name in groups:
                         view = name.replace("-", "_")
                         reject(f'SELECT count(*) FROM "{view}" ANTI JOIN declared_scope USING(src_batch,input_sha256)', "Rows differ from declared source scope")
@@ -237,13 +254,14 @@ def verify_relations(groups: dict[str, list[Path]], *, source_scope: dict | None
             if "observation" in groups and "exclusion" in groups:
                 reject("SELECT count(*) FROM observation JOIN exclusion USING(raw_record_id)", "Observation also excluded")
             if "disposition" in groups:
-                required = {"observation", "address-component", "exclusion", "diagnostic"}
+                required = {"observation", "address-component", "exclusion", "diagnostic", "detail"}
                 if not required.issubset(groups):
                     raise ValueError("Converted snapshots require all datasets")
                 reject("SELECT count(*) FROM observation o ANTI JOIN disposition d USING(raw_record_id)", "Observation lacks lineage")
                 reject("SELECT count(*) FROM observation o ANTI JOIN address_component c USING(raw_record_id)", "Observation lacks address component")
                 reject("SELECT count(*) FROM exclusion e ANTI JOIN disposition d USING(raw_record_id)", "Exclusion lacks lineage")
                 reject("SELECT count(*) FROM diagnostic e ANTI JOIN disposition d USING(raw_record_id)", "Diagnostic lacks lineage")
+                reject("SELECT count(*) FROM detail e ANTI JOIN disposition d USING(raw_record_id)", "Detail lacks lineage")
                 reject("SELECT count(*) FROM disposition d LEFT JOIN observation o USING(raw_record_id) LEFT JOIN exclusion e USING(raw_record_id) WHERE (d.outcome='retained' AND (o.raw_record_id IS NULL OR e.raw_record_id IS NOT NULL)) OR (d.outcome='excluded' AND (e.raw_record_id IS NULL OR o.raw_record_id IS NOT NULL)) OR (d.outcome='failed' AND (o.raw_record_id IS NOT NULL OR e.raw_record_id IS NOT NULL))", "Disposition/outcome mismatch")
                 reject("SELECT count(*) FROM observation o JOIN disposition d USING(raw_record_id) WHERE o.input_sha256<>d.input_sha256 OR o.member_path<>d.member_path OR o.source_row_number<>d.source_row_number OR o.category<>d.category OR o.src_batch<>d.src_batch", "Observation lineage differs")
                 reject("SELECT count(*) FROM disposition d ANTI JOIN diagnostic e USING(raw_record_id) WHERE d.outcome='failed'", "Failed row lacks diagnostic")
