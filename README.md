@@ -102,12 +102,12 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline run-full \
 
 ## TGOS 回補
 
-TGOS 由個別命令處理，未接入 `run-full`。以下是步驟模板，不執行真實資料。既有 TGOS 原始回傳不會自動沿用或作為定位依據；須先按新規則重新核對送出地址與原文同址，並明確決定回傳是否可納入。預設不納入舊回傳。送查帳本及已送出紀錄必須保留以防重送，但只防止重複送查，不繼承定位結果。先將尖括號值替換為本次新重建狀態及路徑：
+TGOS 由個別命令處理，未接入 `run-full`。以下是步驟模板，不執行真實資料。執行前置條件是隔離護欄已完成，且所有狀態與 `CONVERTED` 都由本次重新核對輸入的新 run 產生並經適用階段驗證。不得將重建前的 converted、offline state、review、TGOS 採用結果或快照填入範本。既有 TGOS 原始回傳預設不納入；只有新規則核驗送出地址與回傳原文同址，並明確判定採用資格後才能納入。送查帳本及已送出紀錄必須保留以防重送，但只防止重複送查，不繼承定位結果。程式隔離護欄尚未實作，目前命令仍可能讀取舊快照；前置條件未完成前不得執行此範本。先將尖括號值替換為本次新重建產生的狀態及路徑：
 
 ```bash
-TGOS_STATE="<offline-state-snapshot>"
-CONVERTED="<converted-snapshot-used-by-offline-state>"
-REVIEW_STATE="<offline-state-snapshot>"
+TGOS_STATE="<initial-tgos-state-snapshot-from-this-new-run>"
+CONVERTED="<validated-converted-snapshot-from-this-new-run>"
+REVIEW_STATE="<offline-state-snapshot-from-this-new-run>"
 WORK_DIR="data/tmp/<purpose-specific-tgos-work-dir>"
 TGOS_BATCH="<batch-id-returned-by-prepare-tgos>"
 RESPONSE="<downloaded-Address_Finish.csv>"
@@ -149,7 +149,7 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline build-review \
   --tgos-state "$TGOS_STATE" --work-dir "$WORK_DIR"
 ```
 
-現有 `backfill-output` 用於舊契約，輸入需已核實，公告檔需先經核准：
+現有 `backfill-output` 是舊契約命令，目前沒有新重建隔離護欄。此命令及以下參數只記錄現行介面，不是新版回補流程。不得將重建前的 `--input`、`--state` 或 `--previous` 產物作為輸入；R-10 新版回補完成前，也不得用此命令為新重建結果建立相容輸出：
 
 ```bash
 uv run --locked --python 3.14.8 python -m lvr_pipeline backfill-output \
@@ -160,7 +160,7 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline backfill-output \
   --report <report-path> --run-id <new-run-id>
 ```
 
-此命令不是新版輸出回補，R-10 尚未完成。匯入會檢查查詢與回傳集合一對一，也具備相同批次及相同回傳雜湊的冪等重匯處理，並依 `same_door` 比對門牌。`same_door` 允許回傳補上送出地址未寫的村里或鄰。R09-2 尚待補足候選跨村里／鄰歧義核對，完整同址驗收仍未通過。座標軸不明、門牌不符或證據不足時不得採用。
+此舊契約命令不是新版輸出回補，R-10 尚未完成。現行實作未保證拒絕舊輸入，因此不可把文件上的禁止事項當成程式護欄。匯入目前會檢查查詢與回傳集合一對一，也具備相同批次及相同回傳雜湊的冪等重匯處理，並依 `same_door` 比對門牌。`same_door` 允許回傳補上送出地址未寫的村里或鄰。R09-2 尚待補足候選跨村里／鄰歧義核對，完整同址驗收仍未通過。座標軸不明、門牌不符或證據不足時不得採用。
 
 送查、回傳原檔及帳本屬執行資料。依實際命令提供 `--work-dir`，保存在指定 run 或 `data/tmp/` 工作區。不要覆寫原始回傳或重設配額帳本。
 

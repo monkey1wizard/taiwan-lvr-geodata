@@ -23,14 +23,14 @@
 | `transactions/` | 交易來源清單、ZIP 主檔讀取、欄位正規化與日期驗證 |
 | `contracts/` | Arrow／Parquet 資料契約與列驗證 |
 | `storage/` | 執行目錄、快照和 Parquet 儲存 |
-| `addresses/`、`address.py` | 地址補字、文字解析、門牌鍵及相容介面 |
+| `addresses/`、`address.py` | 地址補字、文字解析、門牌鍵及目前保留的程式介面 |
 | `address_pool.py`、`offline/` | 地址成員池、離線索引、候選比對與定位解析 |
 | `results/` | 例外、待查核、交叉比對與座標 reconcile 結果 |
 | `tgos/` | 批次狀態、交換檔及回傳驗證；TGOS 目前由個別命令執行 |
 | `output/` | 現行舊契約的月檔、年度檔、組裝、驗證及發布函式。新版公開契約尚未實作 |
 | `backfill.py`、`address_patch.py` | 現行歷史回補與地址補充候選入口；新版完整契約尚待實作 |
 | `converted.py`、`source_ref.py`、`tx_date.py` | 轉換快照、來源參照及相容日期入口 |
-| `0_parse_raw.py`、`1_normalize.py` | 保留的相容入口 |
+| `0_parse_raw.py`、`1_normalize.py` | 現行程式保留的舊入口 |
 
 本專案不含前端、線上資料庫服務、背景排程服務，也不負責發布或修改地址資料專案。GitHub Actions 執行 Linux 合成資料驗證及已配置的公開驗證工作流程。
 
@@ -53,9 +53,11 @@
 
 新版目標模組拆分與刪除項目見[重建企劃](plans/重建企劃.md)。規劃中的目錄尚未全部落地，表中現行模組不代表目標模組已建立。
 
+本表記錄程式現況，不保證舊入口、舊格式或舊結果可供新流程相容使用。新 run 必須受 R07-6a 隔離護欄約束；現行入口尚未保證拒絕重建前的衍生結果。`validated_roc_to_tx_yyyymm` 是明確保留的日期函式，不表示其他舊資料介面或結果可沿用。
+
 ## 目前能力與邊界
 
-- `run-full` 在 `pipeline.py` 編排來源核對、離線階段、輸出階段及 run report，並支援階段續跑。
+- `run-full` 在 `pipeline.py` 編排來源核對、離線階段、輸出階段及 run report，並支援階段續跑；這是現行實作事實，不授權續跑重建前快照。隔離護欄完成前不能用它安全地執行新重建。
 - TGOS 使用獨立 CLI 命令及 `--work-dir`，尚未由 `run-full` 管理 TGOS 狀態或回補。
 - `transactions/read.py` 目前只讀交易主檔。`_build.csv`、`_land.csv`、`_park.csv` 明細尚未連回主檔，新版公開輸出要求納入明細。
 - `tgos/validate.py` 的 `import_tgos` 已檢查查詢與回傳集合一對一，並以相同批次和回傳雜湊支援冪等重匯。`addresses/identity.py` 的 `same_door` 允許回傳補上送出地址未寫的村里或鄰。R09-2 尚須檢查候選是否跨多個村里或鄰，未完成完整同址驗收。
