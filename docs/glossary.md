@@ -6,7 +6,7 @@
 
 | 用詞 | 程式或契約名稱 | 說明 |
 | --- | --- | --- |
-| 交易 | `transaction_id` | 一筆來源主檔的一列，不跨批次合併。新版識別輸入為 ZIP SHA-256、ZIP 成員路徑及來源實體行號，序列化與雜湊細節待補實作契約 |
+| 交易 | `transaction_id` | 一筆來源主檔的一列，不跨批次合併。公開 id 為 `{src_batch}/{member_path}/{source_row_number}`，批次雜湊記在 `catalog.json` |
 | 來源觀測 | `source_observation`、`raw_record_id` | 原始交易主檔的一列及其來源識別 |
 | 地址成員 | `address_component`、`component_id` | 從觀測的地址欄拆出的一個門牌成員；成員序號從 0 起算 |
 | 地址鍵／門牌鍵 | 唯一目標名稱 `building_key` | 使用重新驗證後的現行 v2 地址規則，規則版本記於 metadata。現行程式仍有 `building_key_v2` 及 `legacy_building_key`，尚未遷移；R07-6b 必須移除函式、匯出、呼叫、欄位、讀寫及依賴，不保留相容別名或舊結果 fallback |
@@ -30,7 +30,7 @@
 
 | 用詞 | 程式或欄位名稱 | 說明 |
 | --- | --- | --- |
-| 批次 | `src_batch` | 原始季度來源識別，例如 `115q1` |
+| 批次 | `src_batch` | 原始季度來源識別，例如 `115q1`。內部欄位，公開輸出中是 `transaction_id` 的第一段 |
 | 類別 | `category` | `sales`（買賣）、`presale`（預售屋）或 `rent`（租賃） |
 | 交易日期 | `trade_date` | 單筆來源觀測記載的日期 |
 | 交易年月 | `tx_yyyymm` | 由合法交易日期換算的年月 |
@@ -41,11 +41,11 @@
 
 | 用詞 | 欄位或檔案名稱 | 說明 |
 | --- | --- | --- |
-| 多門牌交易 | `multi_door` | 一個來源觀測拆出多個地址成員 |
+| 多門牌交易 | `door_count > 1` | 一個來源觀測拆出多個門牌。沒有獨立欄位 |
+| 門牌序號 | `door_index` | 新版輸出欄位，從 1 起算。與 `transaction_id` 合為公開主鍵 |
+| 門牌文字 | `address` | 這個點代表的單一門牌，是地址欄拆解後的文字 |
 | 交易地址原文 | `transaction_addresses` | 來源觀測的原始地址欄文字 |
-| 交易識別碼 | `transaction_id` | 新版輸出欄位，由 ZIP SHA-256、ZIP 成員路徑及來源實體行號識別一筆交易；精確序列化及雜湊待補 |
-| 門牌識別碼 | `door_id` | 新版輸出欄位，由 `transaction_id` 與 1 起算的 `door_index` 組成；精確序列化待補 |
-| 唯一計價列 | `price_counted` | 多門牌資料加總交易總價時用來避免重複加總的欄位 |
+| 交易識別碼 | `transaction_id` | 新版輸出欄位，可讀自然鍵，見資料單位表 |
 | 檔案目錄 | `catalog.json` | 新版公開資料的檔案、範圍、筆數、大小及雜湊索引 |
 | 來源公告 | `NOTICE.json` | 每版資料的來源、顯名與使用限制 |
 
