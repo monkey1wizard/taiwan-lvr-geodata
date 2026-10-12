@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from lvr_pipeline.addresses.identity import building_key_v2
+from lvr_pipeline.addresses.identity import building_key
 from lvr_pipeline.results.review import build_review
 from lvr_pipeline.storage.parquet import rows, verify_relations
 from lvr_pipeline.storage.runs import digest
@@ -34,7 +34,7 @@ OTHERS = ["臺北市中正區測試路21號", "臺北市中正區測試路22號"
 @pytest.fixture(scope="module")
 def ledger(tmp_path_factory):
     """An old TGOS state whose submitted batch holds a query that has no key under the current rules."""
-    assert building_key_v2(UNKEYED) is None
+    assert building_key(UNKEYED) is None
     tmp_path = tmp_path_factory.mktemp("r09-0")
     converted, _, descriptor, _, _, state = run(
         tmp_path,
@@ -73,7 +73,7 @@ def test_unkeyed_query_is_kept_in_the_report_not_in_queries(ledger, seeded):
     assert UNKEYED not in {q["address"] for q in queries}
     carried = [q for q in queries if q["batch_id"] == ledger["batch_id"]]
     assert [q["address"] for q in carried] == [ledger["sent"]]
-    assert carried[0]["building_key"] == building_key_v2(ledger["sent"])
+    assert carried[0]["building_key"] == building_key(ledger["sent"])
     _, report, _ = load_state(seeded)  # relations verified, including the batch count
     assert report[UNCARRIED] == [{
         "batch_id": ledger["batch_id"], "ordinal": 2,

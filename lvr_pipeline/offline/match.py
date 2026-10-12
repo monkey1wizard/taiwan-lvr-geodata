@@ -59,7 +59,7 @@ class AdministrativeNames:
             node[""] = code
 
     def canonicalize(self, address):
-        # R05-7: the same repeated-county rule as building_key_v2 (新竹市新竹市東區… → 新竹市東區…).
+        # R05-7: the same repeated-county rule as building_key (新竹市新竹市東區… → 新竹市東區…).
         address = drop_repeated_county(normalize_address(address))
         node = self.tree
         found = None

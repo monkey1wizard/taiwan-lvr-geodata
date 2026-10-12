@@ -6,7 +6,7 @@ import csv
 import json
 from pathlib import Path
 
-from ..addresses.identity import building_key_v2, door_parts, same_door
+from ..addresses.identity import building_key, door_parts, same_door
 from ..contracts.validate import within_taiwan_bounds
 from ..results.reconcile import (
     DOOR_CROSS_CHECK,
@@ -89,7 +89,7 @@ def _rebuild_resolution(
                 if row["source_kind"] != "tgos_result":
                     text = row["normalized_address"]
                     if text not in door_cache:
-                        own = building_key_v2(text)
+                        own = building_key(text)
                         door_cache[text] = door_parts(own)[1:] if own else (None, None)
                     found.add(door_cache[text])
     address_rows = []
@@ -238,7 +238,7 @@ def import_tgos(
                 raise ValueError("Successful TGOS row lacks Response_Address")
             if coordinate:
                 response_address = normalize_address(row["Response_Address"])
-                target_key = building_key_v2(response_address)
+                target_key = building_key(response_address)
                 if not target_key:
                     raise ValueError("TGOS response is not a complete address")
                 # A success flag or a shared district does not prove the same

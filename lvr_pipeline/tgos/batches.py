@@ -6,7 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from ..addresses.identity import building_key_v2
+from ..addresses.identity import building_key
 from ..results.reconcile import check_suspended_counties, load_p2
 from ..storage.parquet import BatchWriter, rows
 from ..storage.runs import SnapshotStore, Stage, bindings, digest, sha256_file
@@ -215,7 +215,7 @@ def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict], int, list[dict]
     the current address checks. An operator may correct the service date on
     which a carried batch actually used quota; the old date stays in reason.
 
-    Carried queries are re-keyed with the current building_key_v2 and their
+    Carried queries are re-keyed with the current building_key and their
     fingerprints recomputed, so a rule change cannot hide an address already
     sent or leave a key the address pool no longer contains. The old snapshot
     is not modified. The third value is how many queries changed key.
@@ -249,7 +249,7 @@ def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict], int, list[dict]
     rekeyed = 0
     carried = []
     for query in queries:
-        key = building_key_v2(query["address"])
+        key = building_key(query["address"])
         if key is None:
             uncarried.append(
                 {

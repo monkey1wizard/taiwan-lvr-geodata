@@ -422,7 +422,7 @@ def _stale_ledger(tmp_path, submitted, work):
 
 
 def test_carried_queries_are_rekeyed_and_old_snapshot_is_untouched(tmp_path):
-    from lvr_pipeline.addresses.identity import building_key_v2
+    from lvr_pipeline.addresses.identity import building_key
     from lvr_pipeline.storage.runs import digest
 
     _, state, _ = fixture_two_unmatched(tmp_path)
@@ -433,7 +433,7 @@ def test_carried_queries_are_rekeyed_and_old_snapshot_is_untouched(tmp_path):
     seeded, _ = prepare_tgos(state, tmp_path / "new", tmp_path / "exchange", ledger=stale)
     carried = [r for r in rows(seeded / "tgos_queries.parquet") if r["batch_id"] == first["batch_id"]]
     assert len(carried) == 1
-    assert carried[0]["building_key"] == building_key_v2(first["address"])
+    assert carried[0]["building_key"] == building_key(first["address"])
     assert carried[0]["query_fingerprint"] == digest([carried[0]["building_key"], first["address"]])
     assert load_state(seeded)[1]["carried_query_keys_recomputed"] == 1
     assert list(rows(stale / "tgos_queries.parquet")) == before
@@ -462,10 +462,10 @@ def test_same_address_text_already_sent_is_not_selected_again(tmp_path, monkeypa
     _, state, addresses = fixture_two_unmatched(tmp_path)
     submitted, first = _submit_first(tmp_path, state, tmp_path / "old")
     # A rule change that moves every key: fingerprints no longer match, only the text can.
-    from lvr_pipeline.addresses.identity import building_key_v2 as real
+    from lvr_pipeline.addresses.identity import building_key as real
 
     monkeypatch.setattr(
-        "lvr_pipeline.tgos.batches.building_key_v2",
+        "lvr_pipeline.tgos.batches.building_key",
         lambda address: real(address).replace('"door":"', '"door":"9'),
     )
     seeded, _ = prepare_tgos(state, tmp_path / "new", tmp_path / "exchange", ledger=submitted)

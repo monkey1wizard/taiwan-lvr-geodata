@@ -35,7 +35,7 @@ def test_class3_legacy_only_subdivided():
 
 def test_class5_no_key():
     assert mod.classify(None, OLD, None, 30.0) == (mod.C5, None, None)
-    assert mod.classify(mod.building_key_v2("1至3號"), OLD, None, 30.0)[0] == mod.C5
+    assert mod.classify(mod.building_key("1至3號"), OLD, None, 30.0)[0] == mod.C5
 
 
 def test_class4_is_not_a_record_class():

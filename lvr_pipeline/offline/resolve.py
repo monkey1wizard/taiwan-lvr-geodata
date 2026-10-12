@@ -24,7 +24,7 @@ import os
 import re
 from typing import Callable
 
-from lvr_pipeline.addresses.identity import building_key_v2
+from lvr_pipeline.addresses.identity import building_key
 from lvr_pipeline.addresses.parse import arab_to_cjk, norm, parse
 
 
@@ -164,7 +164,7 @@ def resolve(
 
     # Door-number evidence: the candidate address must yield a valid building key
     # (exactly one door number, no range or sub-door guess). Without it, never adopt.
-    if building_key_v2(candidate_address) is None:
+    if building_key(candidate_address) is None:
         return ("tier2_review", candidate_address, f"corpus_match_no_door:{candidate_road}")
 
     if coord_probe(candidate_address):

@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import zipfile
 
-from lvr_pipeline.address import building_key, building_key_v2, norm
+from lvr_pipeline.address import building_key, norm
 from lvr_pipeline.contracts import component_id, observation_id, validate_relations
 from lvr_pipeline.storage.runs import SnapshotStore
 from lvr_pipeline.transactions.inventory import CATEGORIES, TRANSACTION_MEMBER, describe_zip, verify_raw
@@ -34,8 +34,8 @@ def test_synthetic_source_to_committed_typed_rows(tmp_path):
                 "currency":"TWD","amount_scale":100,"amount_minor":int(amount)*100,"area_m2_decimal":None,"props_json":{"synthetic_unknown":unknown},"parse_status":"retained"})
             normalized=norm(address)
             components.append({"raw_record_id":raw_id,"component_id":component_id(raw_id,0),"ordinal":0,
-                "normalized_address":normalized,"key_version":"v2","building_key":building_key_v2(normalized),
-                "legacy_building_key":building_key(address),"expansion_status":"confirmed"})
+                "normalized_address":normalized,"key_version":"v2","building_key":building_key(normalized),
+                "expansion_status":"confirmed"})
     validate_relations(observations,components,[])
     assert len(observations)==3 and sum(row["amount_minor"] for row in observations)==30000000
     assert len({row["building_key"] for row in components})==1

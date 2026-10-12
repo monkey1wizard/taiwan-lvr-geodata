@@ -13,7 +13,7 @@ import math
 
 import pytest
 
-from lvr_pipeline.addresses.identity import building_key_v2
+from lvr_pipeline.addresses.identity import building_key
 from lvr_pipeline.contracts.validate import validate_dataset_rows
 from lvr_pipeline.offline.index import EARTH_RADIUS_M
 from lvr_pipeline.results.reconcile import (
@@ -90,7 +90,7 @@ def results(state):
 
 
 def key(name):
-    return building_key_v2(TRADES[name])
+    return building_key(TRADES[name])
 
 
 def by_key(state):
@@ -185,7 +185,7 @@ def test_garbled_probe_uses_door_matching(built):
 
 
 def test_rebuild_resolution_door_rule_and_legacy_states():
-    k = building_key_v2(T + "測試路23號")
+    k = building_key(T + "測試路23號")
     evidence = [
         {"evidence_id": "a", "building_key": k, "lng": P1[0], "lat": P1[1], "validity": "valid",
          "source_kind": "legacy_base", "normalized_address": T + "甲里1鄰測試路23號"},
@@ -276,7 +276,7 @@ def test_bracket_note_is_listed_and_ignored_by_the_key(reviewed):
     found = [row for row in reviewed["rows"] if row["reason_code"] == "bracket_note"]
     assert [row["raw_address"] for row in found] == [TRADES["note"]]
     assert json.loads(found[0]["related_json"]) == {"notes": ["(店面)"]}
-    assert found[0]["building_key"] == building_key_v2(T + "測試路40號")
+    assert found[0]["building_key"] == building_key(T + "測試路40號")
 
 
 def test_every_r04_12_code_is_produced(reviewed):

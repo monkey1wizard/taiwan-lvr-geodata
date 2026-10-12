@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT))
 # Interfaces R-02 (docs/records/R02盤點.md, 程式去向) marks 保留相容, plus the contracts
 # re-exports required by plan 5.7 and the tx_date function named in AGENTS.md.
 RETAINED_SYMBOLS = {
-    "lvr_pipeline.address": ["_CITY_RE", "_dedup_prefix", "arab_to_cjk", "building_key", "building_key_v2",
+    "lvr_pipeline.address": ["_CITY_RE", "_dedup_prefix", "arab_to_cjk", "building_key",
                              "is_garbled", "norm", "parse"],
     "lvr_pipeline.contracts": ["SCHEMAS", "SCHEMA_VERSION", "component_id", "observation_id", "schema_validator",
                               "validate_relations", "validate_rows"],
@@ -91,7 +91,7 @@ def _v2(county, town, road, door, **sub_identity):
                               ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-BUILDING_KEY_V2_CASES = [
+BUILDING_KEY_CASES = [
     ("臺北市中正區重慶南路一段122號", _v2("63", "中正區", "重慶南路一段", "122")),
     ("台北市中正區重慶南路一段122號", _v2("63", "中正區", "重慶南路一段", "122")),
     ("新北市板橋區文化路二段100號5樓", _v2("65", "板橋區", "文化路二段", "100")),
@@ -117,14 +117,14 @@ BUILDING_KEY_V2_CASES = [
 ]
 
 
-def test_building_key_v2_table_has_enough_cases():
-    assert len(BUILDING_KEY_V2_CASES) >= 15
+def test_building_key_table_has_enough_cases():
+    assert len(BUILDING_KEY_CASES) >= 15
 
 
-@pytest.mark.parametrize("address,expected", BUILDING_KEY_V2_CASES)
-def test_building_key_v2_both_entry_points_agree(address, expected):
-    from lvr_pipeline.address import building_key_v2 as via_address
-    from lvr_pipeline.addresses.identity import building_key_v2 as via_v2
+@pytest.mark.parametrize("address,expected", BUILDING_KEY_CASES)
+def test_building_key_both_entry_points_agree(address, expected):
+    from lvr_pipeline.address import building_key as via_address
+    from lvr_pipeline.addresses.identity import building_key as via_v2
     assert via_address(address) == expected
     assert via_v2(address) == expected
 

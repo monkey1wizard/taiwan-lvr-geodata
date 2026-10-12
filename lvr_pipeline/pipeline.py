@@ -384,7 +384,7 @@ def run_bindings(manifest_path: Path, address_source: Path, rules_path: Path, co
             # The pipeline config holds the 30 m tolerance and the suspended counties.
             "rules_sha256": digest({"character_fixes": sha256_file(Path(rules_path)),
                                     "pipeline_config": sha256_file(Path(config))}),
-            "contract_version": SCHEMA_VERSION, "key_version": f"building_key_v2/{NORMALIZATION_VERSION}",
+            "contract_version": SCHEMA_VERSION, "key_version": f"building_key/{NORMALIZATION_VERSION}",
             "cutoff_yyyymm": f"{int(cutoff):06d}", "scope": RUN_FULL_SCOPE}
 
 

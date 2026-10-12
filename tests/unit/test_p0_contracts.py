@@ -5,33 +5,32 @@ from pathlib import Path
 import pytest
 from jsonschema import ValidationError
 
-from lvr_pipeline.address import building_key, building_key_v2
+from lvr_pipeline.address import building_key
 from lvr_pipeline.contracts import component_id, observation_id, validate_relations, validate_rows
 from lvr_pipeline.tx_date import validated_roc_to_tx_yyyymm
 
 
 @pytest.mark.parametrize("address", ["臺北市中正區測試路10號之1", "臺北市中正區測試路10號之1二樓"])
 def test_equivalent_full_subdoor(address):
-    assert building_key_v2(address) == building_key_v2("臺北市中正區測試路10號之1")
+    assert building_key(address) == building_key("臺北市中正區測試路10號之1")
 
 
 def test_distinct_subdoors_and_villages():
-    assert building_key_v2("臺北市中正區測試路10號之1") != building_key_v2("臺北市中正區測試路10號之2")
-    a = building_key_v2("金門縣金城鎮甲里10號")
-    b = building_key_v2("金門縣金城鎮乙里10號")
+    assert building_key("臺北市中正區測試路10號之1") != building_key("臺北市中正區測試路10號之2")
+    a = building_key("金門縣金城鎮甲里10號")
+    b = building_key("金門縣金城鎮乙里10號")
     assert a and b and a != b
     assert json.loads(a.removeprefix("v2:"))["county"] == "09020"
-    assert json.loads(building_key_v2("連江縣南竿鄉甲村10號").removeprefix("v2:"))["county"] == "09007"
+    assert json.loads(building_key("連江縣南竿鄉甲村10號").removeprefix("v2:"))["county"] == "09007"
 
 
 @pytest.mark.parametrize("address", ["臺北市中正區測試路10-12號", "臺北市中正區測試路10-1號", "臺北市中正區測試路10一1號", "臺北市中正區測試路10號及12號", "臺北市中正區測試?路10號", "測試路10號", "臺北市中正區測試路10號對面", "臺北市中正區測試路10之1號之2"])
 def test_ambiguous_or_unscoped_address(address):
-    assert building_key_v2(address) is None
+    assert building_key(address) is None
 
 
-def test_legacy_stays_compatible():
-    assert building_key("臺北市中正區測試路10號之1") == building_key("臺北市中正區測試路10號之2")
-    assert building_key_v2("台北市中正區測試路１０號之１") == building_key_v2("臺北市中正區測試路10號之1")
+def test_fullwidth_and_tai_variants_share_key():
+    assert building_key("台北市中正區測試路１０號之１") == building_key("臺北市中正區測試路10號之1")
 
 
 @pytest.mark.parametrize("value,expected", [("1130229",202402),("1140229",None),("1140230",None),("1140900",None),("1151101",None),("1140901",202509),("００１０１０１",None),("0000101",None)])
@@ -55,7 +54,7 @@ def observation(serial="same", sha="a"*64, member="a_lvr_land_a.csv", row=3):
 def component(record, ordinal=0):
     address = record["raw_address"]
     return {"raw_record_id":record["raw_record_id"],"component_id":component_id(record["raw_record_id"],ordinal),"ordinal":ordinal,
-        "normalized_address":address,"key_version":"v2","building_key":building_key_v2(address),"legacy_building_key":building_key(address),"expansion_status":"confirmed"}
+        "normalized_address":address,"key_version":"v2","building_key":building_key(address),"expansion_status":"confirmed"}
 
 
 def test_unproven_serial_is_not_transaction_identity():

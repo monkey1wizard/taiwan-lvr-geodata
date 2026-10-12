@@ -16,7 +16,7 @@
 - Linux 已安裝 uv 後執行 `bash scripts/setup.sh`。安裝與一般測試使用合成輸入，不需要憑證，也不得下載真實資料。GitHub Actions 提供 Linux 驗證。
 - 2026-10-12 起，既有衍生資料不作新流程輸入、定位依據或驗收基準。包含 normalized／converted、地址池／index／state、aliases、TGOS 採用結果、review 裁定、衍生 cache、舊快照、維護包、公開輸出及統計。歷史原文、JSON、raw ZIP 與 TGOS 回傳保留追查，但未重核前也不能視為正確來源或自動納入。
 - 新 run 必須使用重新核對的來源清單、原始 ZIP 與地址來源，獨立建立完整輸入清冊。快照只可在本次新 run 內經新規則驗證後重用。程式隔離護欄尚未實作；目前不得宣稱已能安全避開舊快照。
-- 保留 `validated_roc_to_tx_yyyymm`。門牌鍵唯一介面為 `building_key`，規則版本存 metadata。現行程式仍使用 `building_key_v2`，這項遷移尚未實作。R07-6b 必須移除該函式、匯出與所有呼叫，並移除 `legacy_building_key` 欄位及所有讀寫和依賴，不得留下 alias、wrapper、雙軌或舊結果 fallback。依賴盤點是刪除前的實作步驟，不是保留任何舊路徑的例外。一般無關 CLI 入口不因此要求刪除。
+- 保留 `validated_roc_to_tx_yyyymm`。門牌鍵唯一介面為 `building_key`，規則版本存 metadata。2026-10-12 已完成名稱遷移：程式只剩 `building_key` 單一路徑，舊演算法、`building_key_v2` 與 `legacy_building_key` 已移除。不得重新加入 alias、wrapper、雙軌或舊結果 fallback。依來源規格以獨立案例重驗地址規則仍未完成，R07-6b 尚未接受。一般無關 CLI 入口不因此要求刪除。
 - TGOS 送出帳本與已送出紀錄不得清空或繞過。帳本只防止重送，不代表舊回傳已核驗或其定位可沿用。舊回傳預設不納入，須有新規則核驗原文同址並明確允許。
 - 不推斷交易身分、修訂順序、子門牌等價、座標軸或來源權限。身分未獲證明時保留來源觀測。
 

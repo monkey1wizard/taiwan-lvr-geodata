@@ -9,7 +9,7 @@ import pytest
 
 from lvr_pipeline.addresses.identity import (
     NORMALIZATION_VERSION,
-    building_key_v2,
+    building_key,
     cjk_number,
     door_parts,
     same_door,
@@ -17,7 +17,7 @@ from lvr_pipeline.addresses.identity import (
 
 
 def fields(address):
-    key = building_key_v2(address)
+    key = building_key(address)
     assert key is not None, address
     return json.loads(key[3:])
 
@@ -39,7 +39,7 @@ def test_version_is_bumped():
     ("雲林縣北港鎮新街里14鄰文昌路176號", "雲林縣北港鎮舊街里14鄰文昌路176號"),
 ])
 def test_other_village_or_neighbourhood_is_another_door(a, b):
-    ka, kb = building_key_v2(a), building_key_v2(b)
+    ka, kb = building_key(a), building_key(b)
     assert ka and kb and ka != kb
     assert door_parts(ka)[0] == door_parts(kb)[0]
 
@@ -85,7 +85,7 @@ def test_town_ending_in_li_is_accepted():
     assert value["town"] == "太麻里鄉" and value["village"] == "泰和村"
     assert fields("臺東縣太麻里鄉太麻里村大王路1號")["town"] == "太麻里鄉"
     for kept in ["南投縣埔里鎮中山路一段1號", "屏東縣里港鄉中山路1號", "臺南市新市區中興街1號"]:
-        assert building_key_v2(kept) is not None
+        assert building_key(kept) is not None
 
 
 def test_no_street_door_keeps_village():
@@ -93,7 +93,7 @@ def test_no_street_door_keeps_village():
     assert fields("臺南市鹽水區三和里3鄰14之2號") == {
         "county": "67", "town": "鹽水區", "locality_road": "", "door": "14之2",
         "village": "三和里", "neighborhood": "3"}
-    assert building_key_v2("臺南市鹽水區14之2號") is None
+    assert building_key("臺南市鹽水區14之2號") is None
     assert fields("宜蘭縣五結鄉四結村2鄰頂寮15號")["locality_road"] == "頂寮"
 
 
@@ -130,7 +130,7 @@ def test_street_text_is_kept(address, road):
     "新竹縣竹北市中興里7鄰126G-1H-3號",
 ])
 def test_ranges_and_unparsed_doors_stay_none(address):
-    assert building_key_v2(address) is None
+    assert building_key(address) is None
 
 
 @pytest.mark.parametrize("variant", [
@@ -144,14 +144,14 @@ def test_ranges_and_unparsed_doors_stay_none(address):
 ])
 def test_floor_room_basement_note_and_cjk_door(variant):
     base = "臺北市大安區和平東路二段"
-    assert building_key_v2(base + variant) == building_key_v2(base + "5號")
+    assert building_key(base + variant) == building_key(base + "5號")
 
 
 def test_fullwidth_letter_door():
     base = "臺北市大安區和平東路二段"
-    assert building_key_v2(base + "13之3Ｂ號") == building_key_v2(base + "13之3B號")
+    assert building_key(base + "13之3Ｂ號") == building_key(base + "13之3B號")
     assert fields(base + "13之3Ｂ號")["door"] == "13之3B"
-    assert building_key_v2(base + "13之3B號") != building_key_v2(base + "13之3號")
+    assert building_key(base + "13之3B號") != building_key(base + "13之3號")
 
 
 @pytest.mark.parametrize("a,b,door_a,door_b", [
@@ -165,24 +165,24 @@ def test_fullwidth_letter_door():
 ])
 def test_door_notations_are_not_merged(a, b, door_a, door_b):
     assert fields(a)["door"] == door_a and fields(b)["door"] == door_b
-    assert building_key_v2(a) != building_key_v2(b)
+    assert building_key(a) != building_key(b)
 
 
 def test_lane_numerals_and_named_lane_are_not_merged():
     # 4 / 5.2: 十二巷 and 12巷; 1.4: with and without a text lane name.
-    assert building_key_v2("臺北市中山區中山北路十二巷2號") != building_key_v2("臺北市中山區中山北路12巷2號")
-    assert building_key_v2("新北市新莊區豐年街豐二巷52號") != building_key_v2("新北市新莊區豐年街52號")
+    assert building_key("臺北市中山區中山北路十二巷2號") != building_key("臺北市中山區中山北路12巷2號")
+    assert building_key("新北市新莊區豐年街豐二巷52號") != building_key("新北市新莊區豐年街52號")
 
 
 def test_same_door_allows_added_parts_only():
-    query = building_key_v2("屏東縣高樹鄉中正路55號")
-    with_lin = building_key_v2("屏東縣高樹鄉泰山村5鄰中正路55號")
-    other = building_key_v2("屏東縣高樹鄉廣興村1鄰中正路55號")
+    query = building_key("屏東縣高樹鄉中正路55號")
+    with_lin = building_key("屏東縣高樹鄉泰山村5鄰中正路55號")
+    other = building_key("屏東縣高樹鄉廣興村1鄰中正路55號")
     assert same_door(query, with_lin) and same_door(query, other)
     assert same_door(with_lin, with_lin)
     assert not same_door(with_lin, other)
-    assert not same_door(building_key_v2("屏東縣高樹鄉泰山村中正路55號"), other)
-    assert not same_door(query, building_key_v2("屏東縣高樹鄉中正路56號"))
+    assert not same_door(building_key("屏東縣高樹鄉泰山村中正路55號"), other)
+    assert not same_door(query, building_key("屏東縣高樹鄉中正路56號"))
     assert not same_door(query, None)
 
 

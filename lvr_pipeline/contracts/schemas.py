@@ -29,7 +29,7 @@ P1_SCHEMAS = {
     "address-component": _schema("address-component", [
         ("raw_record_id", S, False), ("component_id", S, False), ("ordinal", I, False),
         ("normalized_address", S, False), ("key_version", S, False), ("building_key", S, True),
-        ("legacy_building_key", S, True), ("expansion_status", S, False)]),
+        ("expansion_status", S, False)]),
     "exclusion": _schema("exclusion", [("raw_record_id", S, False), ("reason", S, False), ("source_ref", S, False)]),
     "diagnostic": _schema("diagnostic", [("raw_record_id", S, False), ("code", S, False),
                                            ("detail", S, False), ("source_ref", S, False)]),

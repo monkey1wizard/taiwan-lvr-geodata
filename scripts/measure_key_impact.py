@@ -1,7 +1,7 @@
-"""Read-only impact measurement for R04-6 (building_key_v2 changes). Writes nothing under data/.
+"""Read-only impact measurement for R04-6 (building_key changes). Writes nothing under data/.
 
 Usage: python scripts/measure_key_impact.py [snapshot_dir] [baseline_commit]
-Counts addresses in a normalized snapshot whose building_key_v2 changes (a) because a doubled county prefix is
+Counts addresses in a normalized snapshot whose building_key changes (a) because a doubled county prefix is
 dropped (fix 1: baseline commit vs current code) and (b) because 號之N would become distinguishable from 之N號
 (fix 2: counted from the address text, since the fix may not be applied yet).
 """
@@ -39,7 +39,7 @@ examples: dict[str, list] = {"fix1_changed": [], "fix1_none": [], "fix2": []}
 for address, n in counts.items():
     summary["distinct"] += 1
     summary["rows"] += n
-    before, after = old.building_key_v2(address), cur.building_key_v2(address)
+    before, after = old.building_key(address), cur.building_key(address)
     if before != after:
         kind = "fix1_none" if after is None else "fix1_changed"
         summary[kind + "_distinct"] += 1
@@ -59,6 +59,6 @@ for key, value in examples.items():
 # Breakdown of fix-1 effects by doubled county prefix.
 by_prefix = Counter()
 for address, n in counts.items():
-    if old.building_key_v2(address) != cur.building_key_v2(address):
-        by_prefix[(norm(address)[:6], cur.building_key_v2(address) is None)] += 1
+    if old.building_key(address) != cur.building_key(address):
+        by_prefix[(norm(address)[:6], cur.building_key(address) is None)] += 1
 print("fix1 by prefix (prefix, became_none):", dict(by_prefix.most_common(10)))

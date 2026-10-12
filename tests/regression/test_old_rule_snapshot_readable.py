@@ -12,12 +12,12 @@ from tests.integration.test_p1_conversion import CODE, ingest, make_source, rule
 
 
 def _change_key_rule(monkeypatch, version):
-    """Simulate a rule change: new version string and a building_key_v2 that returns different keys."""
-    original = identity.building_key_v2
+    """Simulate a rule change: new version string and a building_key that returns different keys."""
+    original = identity.building_key
     monkeypatch.setattr(identity, "NORMALIZATION_VERSION", version)
     changed = lambda address: None if original(address) is None else original(address).replace("door", "gate")
-    monkeypatch.setattr(identity, "building_key_v2", changed)
-    monkeypatch.setattr(normalize_module, "building_key_v2", changed)
+    monkeypatch.setattr(identity, "building_key", changed)
+    monkeypatch.setattr(normalize_module, "building_key", changed)
 
 
 @pytest.fixture
@@ -66,9 +66,9 @@ def test_same_version_with_wrong_key_still_fails(old_snapshot, monkeypatch):
     _, work, _, old = old_snapshot
     store = SnapshotStore(work / "normalized")
     store.verify(old)
-    original = identity.building_key_v2
+    original = identity.building_key
     # Same version string, but the stored keys no longer match the rule: must still fail.
-    monkeypatch.setattr(identity, "building_key_v2", lambda address: None if original(address) is None else original(address).replace("door", "gate"))
+    monkeypatch.setattr(identity, "building_key", lambda address: None if original(address) is None else original(address).replace("door", "gate"))
     assert store.key_rule_status(old) == "recomputed"
     with pytest.raises(ValueError, match="Component key does not match v2 rule"):
         store.verify(old)
@@ -105,8 +105,8 @@ def test_converted_same_version_with_wrong_key_still_fails(old_snapshot, monkeyp
     _, work, _, old = old_snapshot
     converted = _converted(old, work)
     store = SnapshotStore(work / "converted")
-    original = identity.building_key_v2
-    monkeypatch.setattr(identity, "building_key_v2", lambda address: None if original(address) is None else original(address).replace("door", "gate"))
+    original = identity.building_key
+    monkeypatch.setattr(identity, "building_key", lambda address: None if original(address) is None else original(address).replace("door", "gate"))
     assert store.key_rule_status(converted) == "recomputed"
     with pytest.raises(ValueError, match="Component key does not match v2 rule"):
         store.verify(converted)

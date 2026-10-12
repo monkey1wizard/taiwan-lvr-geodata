@@ -5,11 +5,11 @@
 Legacy input: the NDJSON files of the old project's data/output/ (fields ``lng`` and ``lat`` are
 named WGS84 degrees per that project's CONTRACT.md; no axis is inferred or swapped).
 Only ``geom_type == "point"`` records are compared; other geometry types are counted only.
-Each point's address is keyed with the current ``building_key_v2`` and looked up in the offline
+Each point's address is keyed with the current ``building_key`` and looked up in the offline
 state's ``address_index`` (and ``coordinate_resolutions`` for the conflict basis).
 
 Classes (per legacy point record): 1 both located within tolerance; 2 both located beyond it;
-3 legacy only (subdivided by the new state); 5 address has no building_key_v2.
+3 legacy only (subdivided by the new state); 5 address has no building_key.
 Class 4 (new state located, no legacy point) is reported per distinct key only, since it has no
 legacy record. Output goes to data/tmp/r05-5/ unless --out is given.
 """
@@ -27,7 +27,7 @@ from collections import Counter, defaultdict
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from lvr_pipeline.addresses.identity import building_key_v2  # noqa: E402
+from lvr_pipeline.addresses.identity import building_key  # noqa: E402
 from lvr_pipeline.results.reconcile import haversine_m  # noqa: E402
 
 LEGACY_DIR = "C:/Code/taiwan-lvr-geojson/data/output"
@@ -116,7 +116,7 @@ def main(argv=None):
             continue
         totals["points"] += 1
         address = rec.get("address")
-        points.append((name, number, rec.get("id"), address, building_key_v2(address), float(lng), float(lat)))
+        points.append((name, number, rec.get("id"), address, building_key(address), float(lng), float(lat)))
 
     keys = sorted({p[4] for p in points if p[4]})
     db = duckdb.connect()

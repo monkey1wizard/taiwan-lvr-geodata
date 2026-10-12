@@ -14,7 +14,7 @@ import subprocess
 import pytest
 
 from lvr_pipeline.addresses.pool import build_pool, district_query
-from lvr_pipeline.addresses.identity import building_key_v2, drop_repeated_county
+from lvr_pipeline.addresses.identity import building_key, drop_repeated_county
 from lvr_pipeline.contracts.validate import validate_dataset_rows
 from lvr_pipeline.offline.index import build_index
 from lvr_pipeline.offline.match import AdministrativeNames
@@ -163,7 +163,7 @@ def test_repeated_county_rule_is_shared(built):
     assert names.canonicalize("新竹市新竹市東區明湖路100號") == ("新竹市東區明湖路100號", "10018", "1001801")
     assert names.canonicalize("新竹市新竹市明湖路100號") == ("新竹市明湖路100號", "", "")
     row = occurrence(built, "repeated_full")
-    assert row["reason"] == "valid" and row["building_key"] == building_key_v2("新竹市東區光復路1號")
+    assert row["reason"] == "valid" and row["building_key"] == building_key("新竹市東區光復路1號")
 
 
 def test_district_query_splits_the_door_without_a_town():
@@ -182,7 +182,7 @@ def test_unique_town_is_filled_and_located(built, name):
     assert row["reason"] == "road_unique_in_county"
     assert (row["county_code"], row["town_code"]) == ("10018", "1001801")
     assert row["normalized_address"] == "新竹市東區明湖路100號"
-    assert row["building_key"] == building_key_v2("新竹市東區明湖路100號")
+    assert row["building_key"] == building_key("新竹市東區明湖路100號")
     result = status(built, row["building_key"])
     assert result["status"] == "located" and (result["lng"], result["lat"]) == P1
     detail = candidates(built)[row["component_id"]]
@@ -304,7 +304,7 @@ def test_existing_keys_keep_their_results(built, baseline):
                       "canonical_address", "county_code", "town_code"]:
             assert after[key][field] == row[field], (key, field)
     # The filled 新竹市東區明湖路100號 joins the key of the full address; the full address stays canonical.
-    assert after[building_key_v2(FULL["full_unique"])]["canonical_address"] == FULL["full_unique"]
+    assert after[building_key(FULL["full_unique"])]["canonical_address"] == FULL["full_unique"]
     full = occurrences(baseline)
     for (address, letter), row in occurrences(built).items():
         if (address, letter) in full:

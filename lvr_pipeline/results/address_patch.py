@@ -8,7 +8,7 @@ from collections import defaultdict
 from pathlib import Path
 import re
 
-from ..addresses.identity import building_key_v2
+from ..addresses.identity import building_key
 from ..addresses.parse import norm
 from ..storage.parquet import BatchWriter, rows
 from ..storage.runs import Stage, bindings, digest, load_snapshot
@@ -99,7 +99,7 @@ def _split_legacy(response_address: str, town_code: str, areas: dict[str, set[st
         return None, "response_address_missing_road_or_locality"
     return {
         "full_addr": value,
-        "county": json.loads(building_key_v2(value)[3:])["county"],
+        "county": json.loads(building_key(value)[3:])["county"],
         "town": town_code,
         "village": village_code,
         "neighborhood": village_match["neighborhood"] or "",
@@ -152,7 +152,7 @@ def export_address_patch(state: Path, area_files: list[Path], work_dir: Path, *,
         if result["status"] != "succeeded":
             continue
         query = queries[result["query_fingerprint"]]
-        target_key = building_key_v2(result["response_address"])
+        target_key = building_key(result["response_address"])
         candidate_id = digest(["address-patch-candidate", result["result_id"]])
         if not target_key:
             quarantined.append({"candidate_id": candidate_id, "batch_id": result["batch_id"], "query_fingerprint": result["query_fingerprint"], "submitted_address": result["address"], "response_address": result["response_address"], "reason": "response_address_not_complete"})

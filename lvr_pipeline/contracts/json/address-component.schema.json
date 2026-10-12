@@ -29,12 +29,6 @@
       ],
       "pattern": "^v2:"
     },
-    "legacy_building_key": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
     "expansion_status": {
       "enum": [
         "confirmed",
@@ -49,7 +43,6 @@
     "normalized_address",
     "key_version",
     "building_key",
-    "legacy_building_key",
     "expansion_status"
   ]
 }

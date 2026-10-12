@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 
 from ..addresses import identity
-from ..addresses.identity import building_key, building_key_v2
+from ..addresses.identity import building_key
 from ..addresses.parse import arab_to_cjk, is_garbled, norm
 from ..contracts import component_id
 from ..addresses.characters import fix_garbled, load_garbled
@@ -39,14 +39,14 @@ def normalize_address(value: str) -> str:
 def explicit_components(address: str) -> tuple[list[str], bool]:
     parts = re.split(r"[、,，]", address)
     if len(parts) == 1:
-        return [address], building_key_v2(address) is not None
+        return [address], building_key(address) is not None
     if len(parts) > 64 or any(not part for part in parts):
         return [address], False
     first = parts[0]
     if "號" not in first:
         first += "號"
     match = re.fullmatch(r"(.+?)([0-9]+(?:之[0-9]+)*)號(?:之[0-9]+)*", first)
-    if not match or building_key_v2(first) is None:
+    if not match or building_key(first) is None:
         return [address], False
     result = [first]
     for part in parts[1:]:
@@ -54,7 +54,7 @@ def explicit_components(address: str) -> tuple[list[str], bool]:
             part = match[1] + part
             if "號" not in part:
                 part += "號"
-        if building_key_v2(part) is None:
+        if building_key(part) is None:
             return [address], False
         result.append(part)
     return result, True
@@ -128,8 +128,8 @@ def normalize_record(raw: dict, cutoff: int, char_map: dict, token_patterns: lis
     for ordinal, member_address in enumerate(addresses):
         output["address-component"].append({"raw_record_id": raw_id, "component_id": component_id(raw_id, ordinal),
             "ordinal": ordinal, "normalized_address": member_address, "key_version": "v2",
-            "building_key": building_key_v2(member_address) if confirmed else None,
-            "legacy_building_key": building_key(member_address), "expansion_status": "confirmed" if confirmed else "review"})
+            "building_key": building_key(member_address) if confirmed else None,
+            "expansion_status": "confirmed" if confirmed else "review"})
     output["observation"].append({"raw_record_id": raw_id, "schema_version": "1.0", "category": raw["category"],
         "src_batch": raw["src_batch"], "source_serial": fields.get("編號", "").strip() or None,
         "input_sha256": raw["input_sha256"], "member_path": raw["member_path"], "source_row_number": raw["source_row_number"],

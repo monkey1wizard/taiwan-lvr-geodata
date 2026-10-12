@@ -206,11 +206,6 @@
           "nullable": true
         },
         {
-          "name": "legacy_building_key",
-          "type": "string",
-          "nullable": true
-        },
-        {
           "name": "expansion_status",
           "type": "string",
           "nullable": false

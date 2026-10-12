@@ -9,7 +9,7 @@
 | 交易 | `transaction_id` | 一筆來源主檔的一列，不跨批次合併。公開 id 為 `{src_batch}/{member_path}/{source_row_number}`，批次雜湊記在 `catalog.json` |
 | 來源觀測 | `source_observation`、`raw_record_id` | 原始交易主檔的一列及其來源識別 |
 | 地址成員 | `address_component`、`component_id` | 從觀測的地址欄拆出的一個門牌成員；成員序號從 0 起算 |
-| 地址鍵／門牌鍵 | 唯一目標名稱 `building_key` | 使用重新驗證後的現行 v2 地址規則，規則版本記於 metadata。現行程式仍有 `building_key_v2` 及 `legacy_building_key`，尚未遷移；R07-6b 必須移除函式、匯出、呼叫、欄位、讀寫及依賴，不保留相容別名或舊結果 fallback |
+| 地址鍵／門牌鍵 | 唯一目標名稱 `building_key` | 使用重新驗證後的現行 v2 地址規則，規則版本記於 metadata。2026-10-12 名稱遷移完成，舊名稱已自程式移除，不保留相容別名或舊結果 fallback |
 | 定位證據 | `evidence_id` | 地址或座標判定所依據的一筆來源證據 |
 | 快照 | `snapshot` | 經驗證、綁定特定輸入與規則的階段資料 |
 | Run | `run`、`run_id` | 一次固定版本的資料處理執行 |
@@ -49,4 +49,4 @@
 | 檔案目錄 | `catalog.json` | 新版公開資料的檔案、範圍、筆數、大小及雜湊索引 |
 | 來源公告 | `NOTICE.json` | 每版資料的來源、顯名與使用限制 |
 
-程式中仍存在的舊名稱只供描述現況或定位歷史證據，不代表新流程允許相容讀取或沿用舊結果。門牌鍵唯一目標名稱是 `building_key`；現行 `building_key_v2` 與 `legacy_building_key` 依 R07-6b 移除。
+程式中仍存在的舊名稱只供描述現況或定位歷史證據，不代表新流程允許相容讀取或沿用舊結果。門牌鍵唯一名稱是 `building_key`；`building_key_v2` 與 `legacy_building_key` 已於 R07-6b 移除。

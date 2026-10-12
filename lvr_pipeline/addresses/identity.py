@@ -1,16 +1,15 @@
-"""Building identity: conservative v2 door key (legacy keys are never accepted as evidence) and the legacy key."""
+"""Building identity: the conservative door key (building_key)."""
 from __future__ import annotations
 
 import json
 import re
 
-from .parse import (_CITY_RE, _COUNTY_CODE, _dedup_prefix, _LI_LIN_RE, _REJECT_RE, _JUNCTION_RE, _VAGUE_SUFFIX,
-                    arab_to_cjk, is_garbled, norm)
+from .parse import _COUNTY_CODE, _REJECT_RE, arab_to_cjk, is_garbled, norm
 
 KEY_VERSION = "v2"
-# Bump whenever a change alters building_key_v2 output for some input. Recorded in the bindings of the
+# Bump whenever a change alters building_key output for some input. Recorded in the bindings of the
 # normalize, address-pool and offline-index stages so snapshots made under older rules are not reused.
-# v2.5 (R04-12): village and neighbourhood become sub-identifiers of the door; see building_key_v2.
+# v2.5 (R04-12): village and neighbourhood become sub-identifiers of the door; see building_key.
 NORMALIZATION_VERSION = "v2.5"
 _COUNTIES = "|".join(sorted(_COUNTY_CODE, key=len, reverse=True))
 # Town names end in 市, 區, 鄉 or 鎮, never 里 (R04-12: 太麻里鄉 was rejected by the old 里 alternative).
@@ -65,7 +64,7 @@ def cjk_number(text: str) -> int | None:
 def drop_repeated_county(text: str) -> str:
     """Drop an exactly repeated county name at the start (owner decision R04-6).
 
-    Shared by building_key_v2 and AdministrativeNames.canonicalize (R05-7), so both read
+    Shared by building_key and AdministrativeNames.canonicalize (R05-7), so both read
     新竹市新竹市東區… as 新竹市東區…. Only an identical repeat is dropped (台北市臺北市 is kept).
     """
     return _REPEATED_COUNTY.sub(lambda m: m.group(1), text, count=1)
@@ -95,7 +94,7 @@ def _split_village(rest: str):
     return True, None, None, rest
 
 
-def building_key_v2(address: str) -> str | None:
+def building_key(address: str) -> str | None:
     """Door identity: county, town, street or place with lanes, door; plus written village and neighbourhood.
 
     R04-12 (owner-approved rule of 2026-10-09): floors, rooms and basements are not part of the door.
@@ -150,7 +149,7 @@ def building_key_v2(address: str) -> str | None:
 
 
 def door_parts(key: str) -> tuple[str, str | None, str | None]:
-    """(door signature, village, neighbourhood) of a building_key_v2 key.
+    """(door signature, village, neighbourhood) of a building_key key.
 
     The signature joins county, town, locality_road and door with U+001F; SQL builds the same
     string with DOOR_SIGNATURE_SQL.
@@ -185,66 +184,3 @@ def same_door(query_key: str | None, response_key: str | None) -> bool:
     if query[0] != response[0]:
         return False
     return all(a is None or a == b for a, b in zip(query[1:], response[1:]))
-
-
-# ── building_key ──────────────────────────────────────────────────────────────
-
-_NUM_END_RE = re.compile(r"號")
-_FLOOR_RE = re.compile(r"(?:[一二三四五六七八九十百千0-9]+樓.*|[A-Za-z]棟.*)$")
-_YI_TO_ZHI_RE = re.compile(r"([0-9]+)一([0-9]+號)")
-_DASH_ZHI_RE = re.compile(r"([0-9]+)-([0-9]+)號")
-
-
-def building_key(addr: str) -> str:
-    """棟級唯一鍵（CJK 正規式）。
-
-    - 全形→半形後，路/街/段前阿拉伯序數 → 國字（arab_to_cjk）
-    - 去里鄰、截到「號」、去樓層
-    - 非門牌（地號/路口/對面/旁/無「號」）→ ""
-    """
-    if not addr:
-        return ""
-
-    addr = norm(addr)           # 全形→半形
-    addr = arab_to_cjk(addr)   # 2段→二段, 24街→二十四街（錯誤輸入修正）
-    addr = _dedup_prefix(addr)
-
-    if _REJECT_RE.search(addr):
-        return ""
-    if _JUNCTION_RE.search(addr):
-        return ""
-    if _VAGUE_SUFFIX.search(addr):
-        return ""
-
-    m = _CITY_RE.match(addr)
-    if m:
-        city_town = addr[:m.end()]
-        rest = addr[m.end():]
-        rest = _LI_LIN_RE.sub("", rest)
-        addr = city_town + rest
-
-    # 之/一誤植：3一3號 → 3之3號
-    addr = _YI_TO_ZHI_RE.sub(r"\1之\2", addr)
-
-    # N-M號 且 M<N → N之M號（子門牌，非多門牌區間）
-    def _fix_dash(mo: re.Match) -> str:
-        n, sub = int(mo.group(1)), int(mo.group(2))
-        if sub < n:
-            return f"{n}之{sub}號"
-        return mo.group()
-
-    addr = _DASH_ZHI_RE.sub(_fix_dash, addr)
-
-    last_num = None
-    for mo in _NUM_END_RE.finditer(addr):
-        last_num = mo
-    if last_num is None:
-        return ""
-
-    addr = addr[:last_num.end()]
-    addr = _FLOOR_RE.sub("", addr)
-
-    if not addr.endswith("號"):
-        return ""
-
-    return addr

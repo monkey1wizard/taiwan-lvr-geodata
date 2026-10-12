@@ -12,7 +12,7 @@ import re
 import subprocess
 
 from ..addresses import identity
-from ..addresses.identity import building_key_v2
+from ..addresses.identity import building_key
 from ..transactions.normalize import normalize_address
 from ..storage.parquet import BatchWriter
 from ..contracts.validate import TAIWAN_BOUNDS, TAIWAN_BOUNDS_RULE, within_taiwan_bounds
@@ -131,7 +131,7 @@ def _assess(names: AdministrativeNames, address, county, town, x, y):
     reasons; callers decide whether to keep it.
     """
     canonical, c, t = names.canonicalize(address)
-    key = building_key_v2(canonical)
+    key = building_key(canonical)
     validity = "valid"
     if c != county or t != town:
         validity = "invalid_admin"
@@ -351,11 +351,11 @@ def audit_address_source(
     offline index and never alters coordinates. Categories may overlap:
 
     1. exact_duplicates: identical source rows (all CSV columns, any file).
-    2. key_text_variants: index-valid rows sharing building_key_v2 with
+    2. key_text_variants: index-valid rows sharing building_key with
        different FULL_ADDR text.
-    3. key_coordinate_variants: index-valid rows sharing building_key_v2 with
+    3. key_coordinate_variants: index-valid rows sharing building_key with
        different coordinates; carries the largest pairwise distance.
-    4. unparsed_addresses: building_key_v2 is None.
+    4. unparsed_addresses: building_key is None.
     5. invalid_admin: the parsed county or town differs from COUNTY/TOWN.
 
     Distances use the haversine formula on a sphere of radius 6,371,008.8 m

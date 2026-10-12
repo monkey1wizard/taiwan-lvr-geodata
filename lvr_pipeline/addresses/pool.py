@@ -30,7 +30,7 @@ import duckdb
 import pyarrow as pa
 
 from . import identity
-from .identity import building_key_v2, door_parts, door_signature_sql, sub_identity_sql
+from .identity import building_key, door_parts, door_signature_sql, sub_identity_sql
 from .parse import _COUNTY_CODE
 from ..offline.index import load_pinned_source
 from ..storage.parquet import BatchWriter, duckdb_config, rows
@@ -53,12 +53,12 @@ def district_query(address: str):
 
     Returns (county code or None, text after the county, locality_road, door, village,
     neighbourhood), or None when no door can be parsed. The town is replaced by a placeholder
-    only to split the text with building_key_v2; the placeholder never reaches a key.
+    only to split the text with building_key; the placeholder never reaches a key.
     """
     match = _COUNTY_START.match(address)
     county = _COUNTY_CODE[match.group(1)] if match else None
     rest = address[match.end():] if match else address
-    key = building_key_v2((match.group(1) if match else "臺北市") + _PLACEHOLDER_TOWN + rest)
+    key = building_key((match.group(1) if match else "臺北市") + _PLACEHOLDER_TOWN + rest)
     if key is None:
         return None
     value = json.loads(key[3:])
@@ -175,7 +175,7 @@ def build_pool(
                 continue
             for row in rows(Path(converted) / item["path"]):
                 address, county, town = names.canonicalize(row["normalized_address"])
-                key = building_key_v2(address) if county and town else None
+                key = building_key(address) if county and town else None
                 reason = (
                     "valid"
                     if key
@@ -195,7 +195,7 @@ def build_pool(
                 ):
 
                     def probe(candidate):
-                        candidate_key = building_key_v2(
+                        candidate_key = building_key(
                             names.canonicalize(candidate)[0]
                         )
                         if candidate_key is None:
@@ -215,7 +215,7 @@ def build_pool(
                     )
                     if tier == "tier1_apply":
                         address, county, town = names.canonicalize(candidate)
-                        key = building_key_v2(address)
+                        key = building_key(address)
                         reason = "coordinate_confirmed_candidate"
                     else:
                         key = None
@@ -343,7 +343,7 @@ def _fill_districts(db, pending, names, observation_paths, occurrence, candidate
             key, filled, town = None, address, ""
             if town_count == 1:
                 candidate, county_found, town_found = names.canonicalize(names.current[first_town] + rest)
-                key = building_key_v2(candidate) if town_found == first_town else None
+                key = building_key(candidate) if town_found == first_town else None
                 parts = door_parts(key) if key else None
                 if parts and parts[0].split("\x1f")[2:] == [lr, door] and parts[1:] == (village, neighborhood):
                     filled, county, town = candidate, county_found, town_found

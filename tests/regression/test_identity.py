@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
-"""R04-5: building_key_v2 same-address regression cases (V-06 evidence). Synthetic addresses only.
+"""R04-5: building_key same-address regression cases (V-06 evidence). Synthetic addresses only.
 
 Fixed-expectation cases assert equality or inequality. Cases marked "record" assert nothing about equality;
 the actual outputs are recorded in docs/records/R04執行紀錄.md. This file does not change identity.py.
 """
 import pytest
 
-from lvr_pipeline.addresses.identity import building_key_v2
+from lvr_pipeline.addresses.identity import building_key
 
 R = "臺北市大安區和平東路二段"
 
 
 def _keys(a, b):
-    return building_key_v2(a), building_key_v2(b)
+    return building_key(a), building_key(b)
 
 
 def _assert_same(a, b):
@@ -68,11 +68,11 @@ def test_doubled_county_prefix_equals_single_prefix_key(doubled):
 @pytest.mark.parametrize("address", ["北投區臺北市北投區和平東路二段100號", "大安區臺北市大安區和平東路二段100號",
                                      "新北市臺北市大安區和平東路二段100號"])
 def test_other_unparseable_start_is_none(address):
-    assert building_key_v2(address) is None
+    assert building_key(address) is None
 
 
 def test_range_door_is_none():
-    assert building_key_v2(R + "10-12號") is None
+    assert building_key(R + "10-12號") is None
 
 
 def test_sub_door_before_vs_after_number_differ():
