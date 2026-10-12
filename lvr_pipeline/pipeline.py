@@ -9,14 +9,14 @@ import subprocess
 import time
 from pathlib import Path
 
-from .address_pool import build_pool
+from .addresses.pool import build_pool
 from .offline.index import audit_address_source, pin_address_source, build_index
 from .addresses.identity import NORMALIZATION_VERSION
 from .contracts import SCHEMA_VERSION
 from .results.reconcile import DEFAULT_CONFIG, load_coordinate_tolerance, load_suspended_counties, resolve_offline, load_p2
 from .results.review import build_review
-from .backfill import backfill_output
-from .address_patch import export_address_patch, verify_address_patch
+from .results.backfill import backfill_output
+from .results.address_patch import export_address_patch, verify_address_patch
 from .output.publish import fetch_output, publish_release, commit_pointer
 from .output.monthly import write_json
 from .output.monthly import MAX_ASSET_BYTES

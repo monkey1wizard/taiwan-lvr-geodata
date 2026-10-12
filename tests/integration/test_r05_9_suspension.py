@@ -11,7 +11,7 @@ import subprocess
 
 import pytest
 
-from lvr_pipeline.address_pool import build_pool
+from lvr_pipeline.addresses.pool import build_pool
 from lvr_pipeline.contracts.schemas import EXCEPTION_REASON_CODES
 from lvr_pipeline.contracts.validate import validate_dataset_rows
 from lvr_pipeline.offline.index import build_index

@@ -29,13 +29,13 @@ import re
 import duckdb
 import pyarrow as pa
 
-from .addresses import identity
-from .addresses.identity import building_key_v2, door_parts, door_signature_sql, sub_identity_sql
-from .addresses.parse import _COUNTY_CODE
-from .offline.index import load_pinned_source
-from .storage.parquet import BatchWriter, duckdb_config, rows
-from .storage.runs import Stage, bindings, digest, load_snapshot
-from .storage.runs import ROOT, sha256_file
+from . import identity
+from .identity import building_key_v2, door_parts, door_signature_sql, sub_identity_sql
+from .parse import _COUNTY_CODE
+from ..offline.index import load_pinned_source
+from ..storage.parquet import BatchWriter, duckdb_config, rows
+from ..storage.runs import Stage, bindings, digest, load_snapshot
+from ..storage.runs import ROOT, sha256_file
 
 DISTRICT_FILL_RULE = "road_unique_v1"
 REPEATED_COUNTY_RULE = "exact_repeat_v1"
@@ -120,8 +120,8 @@ def build_pool(
     probe_db = None
     roads = {}
     if index_path:
-        from .results.reconcile import load_p2
-        from .offline.resolve import resolve
+        from ..results.reconcile import load_p2
+        from ..offline.resolve import resolve
 
         _, index_report = load_p2(index_path, "offline-index")
         if index_report["address_source_commit"] != descriptor["commit"]:

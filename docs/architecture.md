@@ -24,11 +24,11 @@
 | `contracts/` | Arrow／Parquet 資料契約與列驗證 |
 | `storage/` | 執行目錄、快照和 Parquet 儲存 |
 | `addresses/`、`address.py` | 地址補字、文字解析、門牌鍵及目前保留的程式介面 |
-| `address_pool.py`、`offline/` | 地址成員池、離線索引、候選比對與定位解析 |
+| `addresses/pool.py`、`offline/` | 地址成員池、離線索引、候選比對與定位解析 |
 | `results/` | 例外、待查核、交叉比對與座標 reconcile 結果 |
 | `tgos/` | 批次狀態、交換檔及回傳驗證；TGOS 目前由個別命令執行 |
 | `output/` | 現行舊契約的月檔、年度檔、組裝、驗證及發布函式。新版公開契約尚未實作 |
-| `backfill.py`、`address_patch.py` | 現行歷史回補與地址補充候選入口；新版完整契約尚待實作 |
+| `results/backfill.py`、`results/address_patch.py` | 現行歷史回補與地址補充候選入口；僅完成模組位置整理，新版完整契約尚待實作 |
 | `converted.py`、`source_ref.py`、`tx_date.py` | 轉換快照、來源參照及相容日期入口 |
 | `0_parse_raw.py`、`1_normalize.py` | 現行程式保留的舊入口 |
 
@@ -44,7 +44,7 @@
 | --- | --- | --- |
 | `cli.py` | `pipeline.py` 及各獨立命令的實作模組 | 分派命令；TGOS 是獨立命令 |
 | `pipeline.py` | `transactions/`、`contracts/`、`storage/`、地址／離線／review 模組及現有 `output/` | `run-full` 不呼叫 TGOS 狀態流程 |
-| `address_pool.py`、`offline/` | `addresses/`、`contracts/`、`storage/` | 地址鍵及定位使用共用地址規則 |
+| `addresses/pool.py`、`offline/` | `addresses/`、`contracts/`、`storage/` | 地址鍵及定位使用共用地址規則 |
 | `tgos/batches.py` | `tgos/exchange.py` 及狀態儲存能力 | 建立批次與交換檔 |
 | `tgos/validate.py` | `tgos/batches.py`、`tgos/exchange.py` | 驗證回傳並更新 TGOS 結果 |
 | `output/yearly.py` | `output/monthly.py` | 使用月檔共用邏輯 |

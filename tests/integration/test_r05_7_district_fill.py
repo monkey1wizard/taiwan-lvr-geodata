@@ -13,7 +13,7 @@ import subprocess
 
 import pytest
 
-from lvr_pipeline.address_pool import build_pool, district_query
+from lvr_pipeline.addresses.pool import build_pool, district_query
 from lvr_pipeline.addresses.identity import building_key_v2, drop_repeated_county
 from lvr_pipeline.contracts.validate import validate_dataset_rows
 from lvr_pipeline.offline.index import build_index

@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from lvr_pipeline.address_pool import build_pool
+from lvr_pipeline.addresses.pool import build_pool
 from lvr_pipeline.results.reconcile import load_p2, resolve_offline
 from lvr_pipeline.offline.index import build_index
 from lvr_pipeline.offline.match import AdministrativeNames

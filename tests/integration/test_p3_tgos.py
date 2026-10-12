@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from lvr_pipeline.backfill import backfill_output
+from lvr_pipeline.results.backfill import backfill_output
 from lvr_pipeline.tgos import tgos_log_date as _tgos_log_date
 from lvr_pipeline.output.package import package_output
 from lvr_pipeline.output.verify import verify_output

@@ -8,12 +8,12 @@ from collections import defaultdict
 from pathlib import Path
 import re
 
-from .addresses.identity import building_key_v2
-from .addresses.parse import norm
-from .storage.parquet import BatchWriter, rows
-from .storage.runs import Stage, bindings, digest, load_snapshot
-from .storage.runs import sha256_file
-from .tgos import load_state
+from ..addresses.identity import building_key_v2
+from ..addresses.parse import norm
+from ..storage.parquet import BatchWriter, rows
+from ..storage.runs import Stage, bindings, digest, load_snapshot
+from ..storage.runs import sha256_file
+from ..tgos import load_state
 
 
 _ADMIN_RE = re.compile(r"^(?P<county>.+?[縣市])(?P<town>.+?[市區鎮鄉])(?P<rest>.+)$")
