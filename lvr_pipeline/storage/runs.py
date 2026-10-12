@@ -14,7 +14,7 @@ import shutil
 import time
 import uuid
 
-from ..contracts import keys_not_recomputed, validate_relations, validate_rows
+from ..contracts import validate_relations, validate_rows
 
 
 def sha256_file(path: Path) -> str:
@@ -97,11 +97,38 @@ def _inspect(path: Path, format_name: str, schema: str | None) -> tuple[int | No
     raise ValueError("Unsupported artifact format")
 
 
-OLD_RULE_NOTE = "舊規則版本，未重算鍵"
+# R07-6a: every snapshot, run and source inventory of the fresh rebuild carries this marker.
+# Anything without it predates the 2026-10-12 decision and is never read as input.
+REBUILD_EPOCH = "2026-10-12"
+SOURCE_CHECK_PENDING = {"status": "pending", "checked_by": None, "checked_at": None, "evidence": None}
+
+
+def rebuild_source_failures(document: dict, kind: str) -> list[dict]:
+    """Failures that keep a source inventory out of a new run; empty when it may be used.
+
+    The inventory must be built for this rebuild and verified by the owner. The program never
+    sets ``source_check.status`` to ``verified`` itself.
+    """
+    failures = []
+    if not isinstance(document, dict) or document.get("rebuild_epoch") != REBUILD_EPOCH:
+        found = document.get("rebuild_epoch") if isinstance(document, dict) else None
+        failures.append({"code": "source_predates_rebuild",
+                         "detail": f"{kind} rebuild_epoch is {found!r}, expected {REBUILD_EPOCH!r}"})
+    check = document.get("source_check") if isinstance(document, dict) else None
+    if not isinstance(check, dict) or check.get("status") != "verified":
+        status = check.get("status") if isinstance(check, dict) else None
+        failures.append({"code": "source_not_verified",
+                         "detail": f"{kind} source_check.status is {status!r}; the owner must verify it before a run"})
+    elif not all(isinstance(check.get(key), str) and check[key] for key in ["checked_by", "checked_at", "evidence"]):
+        failures.append({"code": "source_check_incomplete",
+                         "detail": f"{kind} source_check needs checked_by, checked_at and evidence"})
+    return failures
 
 
 def _check_bindings(bindings: dict) -> None:
-    if set(bindings) != {"code_commit", "schema_version", "config_sha256", "input_sha256"}:
+    if "rebuild_epoch" not in bindings or bindings["rebuild_epoch"] != REBUILD_EPOCH:
+        raise ValueError(f"Snapshot predates the {REBUILD_EPOCH} rebuild; it is never read")
+    if set(bindings) != {"code_commit", "schema_version", "config_sha256", "input_sha256", "rebuild_epoch"}:
         raise ValueError("Incomplete snapshot bindings")
     if not re.fullmatch(r"[0-9a-f]{40}", bindings["code_commit"]):
         raise ValueError("Invalid code commit")
@@ -201,11 +228,6 @@ class SnapshotStore:
             return None
         return version if isinstance(version, str) and version else None
 
-    def key_rule_status(self, directory: Path) -> str:
-        """'recomputed' when verify() rechecks address keys; otherwise the note for an older rule version."""
-        version = self.snapshot_normalization_version(directory, _read_json(directory / "manifest.json"))
-        return OLD_RULE_NOTE if self._is_old_rule(version) else "recomputed"
-
     @staticmethod
     def _is_old_rule(version: str | None) -> bool:
         from ..addresses import identity
@@ -215,9 +237,8 @@ class SnapshotStore:
         manifest = _read_json(directory / ("draft.json" if draft else "manifest.json"))
         version = self.snapshot_normalization_version(directory, manifest) if manifest.get("bindings") else None
         if self._is_old_rule(version):
-            # Older rule version: hashes and structure are still checked, keys are not recomputed.
-            with keys_not_recomputed():
-                return self._verify(directory, draft=draft)
+            # R07-6a: a snapshot made under another address rule version is rejected, not tolerated.
+            raise ValueError(f"Snapshot was made under address rule {version}; it is never read")
         return self._verify(directory, draft=draft)
 
     def _verify(self, directory: Path, *, draft: bool = False) -> dict:
@@ -302,17 +323,17 @@ class SnapshotStore:
         _check_bindings(bindings)
         directory = self.root / "snapshots" / _identifier(snapshot_id)
         manifest = self.verify(directory)
-        if self._is_old_rule(self.snapshot_normalization_version(directory, manifest)):
-            return False
         return manifest["bindings"] == bindings
 
 
 RUN_BINDING_KEYS = {"code_commit", "raw_manifest_sha256", "address_source_sha256", "rules_sha256",
-                    "contract_version", "key_version", "cutoff_yyyymm", "scope"}
+                    "contract_version", "key_version", "cutoff_yyyymm", "scope", "rebuild_epoch"}
 DEFAULT_RUNS_ROOT = Path(__file__).resolve().parents[2] / "data" / "runs"
 
 
 def _check_run_bindings(bindings: dict) -> dict:
+    if isinstance(bindings, dict) and bindings.get("rebuild_epoch") != REBUILD_EPOCH:
+        raise ValueError(f"Run predates the {REBUILD_EPOCH} rebuild; use a new run")
     if not isinstance(bindings, dict) or set(bindings) != RUN_BINDING_KEYS:
         raise ValueError("Incomplete run bindings")
     if not isinstance(bindings["code_commit"], str) or not re.fullmatch(r"[0-9a-f]{40}", bindings["code_commit"]):
@@ -442,7 +463,8 @@ def bindings(stage: str, parameters: dict, input_hashes: list[str], code_commit:
     config = {"stage": stage, "parameters": parameters, "producer_files": code, "working_tree_source_dirty": dirty}
     fingerprint = digest(config)
     PRODUCER_CONFIGS[fingerprint] = config
-    return {"code_commit": code_commit, "schema_version": "1.0", "config_sha256": fingerprint, "input_sha256": input_hashes}
+    return {"code_commit": code_commit, "schema_version": "1.0", "config_sha256": fingerprint, "input_sha256": input_hashes,
+            "rebuild_epoch": REBUILD_EPOCH}
 
 
 class Stage:

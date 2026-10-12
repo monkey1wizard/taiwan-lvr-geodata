@@ -36,6 +36,7 @@ from .transactions.inventory import verify_inventory, write_raw_manifest
 from .transactions.read import ingest
 from .transactions.normalize import normalize
 from .storage.runs import (
+    REBUILD_EPOCH,
     ROOT,
     RunStore,
     DEFAULT_RUNS_ROOT,
@@ -45,6 +46,7 @@ from .storage.runs import (
     digest,
     load_snapshot,
     peak_rss_bytes,
+    rebuild_source_failures,
     sha256_file,
 )
 
@@ -385,7 +387,7 @@ def run_bindings(manifest_path: Path, address_source: Path, rules_path: Path, co
             "rules_sha256": digest({"character_fixes": sha256_file(Path(rules_path)),
                                     "pipeline_config": sha256_file(Path(config))}),
             "contract_version": SCHEMA_VERSION, "key_version": f"building_key/{NORMALIZATION_VERSION}",
-            "cutoff_yyyymm": f"{int(cutoff):06d}", "scope": RUN_FULL_SCOPE}
+            "cutoff_yyyymm": f"{int(cutoff):06d}", "scope": RUN_FULL_SCOPE, "rebuild_epoch": REBUILD_EPOCH}
 
 
 def coverage_failures(manifest: dict, report: dict) -> list[dict]:
@@ -447,6 +449,14 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, notices_path: Path,
     """
     config = Path(config) if config is not None else DEFAULT_CONFIG
     clock = time.perf_counter()
+    # R07-6a: both source inventories must be built for this rebuild and verified by the owner.
+    # Checked before anything is written: no run directory, lock or attempts file.
+    source_failures = [{"step": "rebuild-sources", **failure}
+                       for path, kind in [(manifest_path, "raw manifest"), (address_source, "address source")]
+                       for failure in rebuild_source_failures(_read(path), kind)]
+    if source_failures:
+        return {"run_id": run_id, "completed": False, "started_at": datetime.now(timezone.utc).isoformat(),
+                "quarantined": [], "steps": [], "failures": source_failures}
     bindings_ = run_bindings(manifest_path, address_source, rules_path, config, cutoff)
     headroom_start = disk_headroom(DEFAULT_RUNS_ROOT if runs_root is None else runs_root)
     if not headroom_start["ok"]:  # stop before anything is written: no run directory, lock or attempts file

@@ -7,7 +7,7 @@ import zipfile
 
 from lvr_pipeline.address import building_key, norm
 from lvr_pipeline.contracts import component_id, observation_id, validate_relations
-from lvr_pipeline.storage.runs import SnapshotStore
+from lvr_pipeline.storage.runs import REBUILD_EPOCH, SnapshotStore
 from lvr_pipeline.transactions.inventory import CATEGORIES, TRANSACTION_MEMBER, describe_zip, verify_raw
 from lvr_pipeline.tx_date import validated_roc_to_tx_yyyymm
 
@@ -40,7 +40,7 @@ def test_synthetic_source_to_committed_typed_rows(tmp_path):
     assert len(observations)==3 and sum(row["amount_minor"] for row in observations)==30000000
     assert len({row["building_key"] for row in components})==1
     store=SnapshotStore(tmp_path/"store")
-    bindings={"code_commit":"0"*40,"schema_version":"1.0","config_sha256":"a"*64,"input_sha256":[manifest["sha256"]]}
+    bindings={"code_commit":"0"*40,"schema_version":"1.0","config_sha256":"a"*64,"input_sha256":[manifest["sha256"]],"rebuild_epoch":REBUILD_EPOCH}
     store.begin("synthetic",expected_parent=None,bindings=bindings)
     for name, rows in [("observation",observations),("address-component",components)]:
         source=tmp_path/(name+".jsonl")

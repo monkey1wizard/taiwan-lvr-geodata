@@ -9,7 +9,7 @@ import re
 import zipfile
 from pathlib import Path
 
-from ..storage.runs import sha256_file
+from ..storage.runs import REBUILD_EPOCH, SOURCE_CHECK_PENDING, sha256_file
 
 TRANSACTION_MEMBER = re.compile(r"^[a-z]_lvr_land_([abc])\.csv$", re.I)
 CATEGORIES = {"a": "sales", "b": "presale", "c": "rent"}
@@ -79,7 +79,9 @@ def build_raw_manifest(raw_dir: Path) -> dict:
         raise ValueError("No raw inputs found")
     return {"schema_version": "1.0", "raw_count": len(raw), "size_bytes": sum(row["size_bytes"] for row in raw),
             "license_status": "legacy_documentation_only_pending_current_source_check",
-            "license_evidence": "docs/DATA_SOURCES.md", "inputs": raw}
+            "license_evidence": "docs/DATA_SOURCES.md",
+            # R07-6a: built for this rebuild; the owner verifies the source before any run uses it.
+            "rebuild_epoch": REBUILD_EPOCH, "source_check": dict(SOURCE_CHECK_PENDING), "inputs": raw}
 
 
 def write_raw_manifest(raw_dir: Path, output: Path) -> dict:

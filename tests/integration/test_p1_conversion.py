@@ -19,12 +19,19 @@ from lvr_pipeline.contracts import component_id
 from lvr_pipeline.transactions.read import ingest
 from lvr_pipeline.transactions.normalize import normalize
 from lvr_pipeline.storage.parquet import BatchWriter, SCHEMAS, rows
-from lvr_pipeline.storage.runs import load_snapshot
+from lvr_pipeline.storage.runs import REBUILD_EPOCH, load_snapshot
 from lvr_pipeline.storage.runs import SnapshotStore
 from lvr_pipeline.storage.runs import sha256_file
 from lvr_pipeline.transactions.inventory import describe_zip
 
 CODE="1"*40
+
+
+def verified_source(document):
+    """Return a copy of a raw manifest or address source document that run_full accepts (R07-6a)."""
+    return {**document, "rebuild_epoch": REBUILD_EPOCH,
+            "source_check": {"status": "verified", "checked_by": "synthetic-test", "checked_at": "2026-10-12",
+                             "evidence": "synthetic fixture"}}
 ADDRESS="臺北市中正區測試路10號之1"
 
 

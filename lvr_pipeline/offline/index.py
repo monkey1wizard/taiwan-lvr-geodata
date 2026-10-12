@@ -16,7 +16,7 @@ from ..addresses.identity import building_key
 from ..transactions.normalize import normalize_address
 from ..storage.parquet import BatchWriter
 from ..contracts.validate import TAIWAN_BOUNDS, TAIWAN_BOUNDS_RULE, within_taiwan_bounds
-from ..storage.runs import Stage, bindings, digest
+from ..storage.runs import REBUILD_EPOCH, SOURCE_CHECK_PENDING, Stage, bindings, digest
 from ..storage.runs import sha256_file
 from .match import COUNTY_NAMES, AdministrativeNames
 
@@ -72,6 +72,9 @@ def pin_address_source(root: Path, output: Path) -> dict:
         "administrative_files": [describe(name) for name in ADMINISTRATIVE],
         "road_index": describe("road.csv"),
         "source_metadata": [describe(name) for name in METADATA if (root / name).is_file()],
+        # R07-6a: pinned for this rebuild; the owner verifies the source before any run uses it.
+        "rebuild_epoch": REBUILD_EPOCH,
+        "source_check": dict(SOURCE_CHECK_PENDING),
     }
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)

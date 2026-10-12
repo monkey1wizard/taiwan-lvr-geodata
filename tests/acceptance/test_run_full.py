@@ -13,8 +13,8 @@ from lvr_pipeline.pipeline import RUN_FULL_STAGES, coverage_failures, run_full  
 from lvr_pipeline.results.reconcile import DEFAULT_CONFIG  # noqa: E402
 from lvr_pipeline.storage.parquet import rows  # noqa: E402
 from lvr_pipeline.storage.runs import Stage  # noqa: E402
-from lvr_pipeline.transactions.inventory import write_raw_manifest  # noqa: E402
-from test_p1_conversion import ADDRESS, dataset, make_source, rules  # noqa: E402
+from lvr_pipeline.transactions.inventory import inventory_json, write_raw_manifest  # noqa: E402
+from test_p1_conversion import ADDRESS, dataset, make_source, rules, verified_source  # noqa: E402
 from test_p2_offline import source  # noqa: E402
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "p0"
@@ -27,10 +27,10 @@ def setup_inputs(tmp_path):
     make_source(tmp_path, [{}], batch="115q2")
     shutil.copyfile(FIXTURES / "101q1_lvr_landcsv.zip", raw / "101q1_lvr_landcsv.zip")
     manifest = tmp_path / "raw_manifest.json"
-    write_raw_manifest(raw, manifest)
+    manifest.write_text(inventory_json(verified_source(write_raw_manifest(raw, manifest))) + "\n", encoding="utf-8")
     address_dir, descriptor = source(tmp_path)
     descriptor_path = tmp_path / "address_source.json"
-    descriptor_path.write_text(json.dumps(descriptor, ensure_ascii=False), encoding="utf-8")
+    descriptor_path.write_text(json.dumps(verified_source(descriptor), ensure_ascii=False), encoding="utf-8")
     notices = tmp_path / "notices.json"
     notices.write_text(json.dumps({"publication_authorized": True, "record_grain": "source_observation",
                                    "sources": [{"provider": "synthetic", "title": "synthetic source"}]}), encoding="utf-8")

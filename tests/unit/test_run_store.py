@@ -6,12 +6,13 @@ from pathlib import Path
 import pytest
 
 from lvr_pipeline.storage import runs
-from lvr_pipeline.storage.runs import RunStore, SnapshotStore
+from lvr_pipeline.storage.runs import REBUILD_EPOCH, RunStore, SnapshotStore
 
 RUN = {"code_commit": "9fec324" + "0" * 33, "raw_manifest_sha256": "a" * 64, "address_source_sha256": "b" * 64,
        "rules_sha256": "c" * 64, "contract_version": "1.0", "key_version": "building_key",
-       "cutoff_yyyymm": "202609", "scope": "all"}
-SNAP = {"code_commit": RUN["code_commit"], "schema_version": "1.0", "config_sha256": "d" * 64, "input_sha256": ["e" * 64]}
+       "cutoff_yyyymm": "202609", "scope": "all", "rebuild_epoch": REBUILD_EPOCH}
+SNAP = {"code_commit": RUN["code_commit"], "schema_version": "1.0", "config_sha256": "d" * 64, "input_sha256": ["e" * 64],
+        "rebuild_epoch": REBUILD_EPOCH}
 
 
 def build(run, tmp_path, stage, snapshot_id, parent=None, payload=b"data"):

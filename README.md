@@ -4,7 +4,7 @@
 
 本文件是唯一使用入口，包含下載、安裝、來源準備、現有命令、TGOS、回補、發布與常見問題。模組責任見[架構](docs/architecture.md)，新版資料處理階段見[資料處理流程](docs/資料處理流程.md)，地址判定見[地址規則](docs/地址規則.md)，內部資料關聯見[資料契約](docs/資料契約.md)，公開欄位與目錄見[輸出欄位](docs/輸出欄位.md)。工作依賴與驗收狀態以[重建企劃](docs/plans/重建企劃.md)為準。
 
-**2026-10-12 重建決定：所有既有衍生資料均不可信，不得用於新流程、定位或新版驗收。程式隔離護欄尚未實作，目前不能保證 `run-full` 不會讀取舊快照。**
+**2026-10-12 重建決定：所有既有衍生資料均不可信，不得用於新流程、定位或新版驗收。程式隔離護欄已實作，`run-full` 會拒絕舊快照、舊 run 及未核驗的來源清冊；舊公開輸出、維護包與 TGOS 帳本轉接仍不在護欄範圍。**
 
 ## 下載
 
@@ -60,7 +60,7 @@ uv run --locked --python 3.14.8 python -m pytest -q
 
 相關地址資料專案位於 `C:/Code/taiwan-address-data`，舊專案 `C:/Code/taiwan-lvr-geojson` 僅作唯讀參考。取得真實來源須依擁有者明確授權的操作方式辦理，不自行推定來源權限或複製第三方地址來源列進 Git。
 
-`verify-sources` 目前只執行程式已有的檔案、雜湊及 ZIP 結構檢查；它不是獨立的來源正確性或完整性證明。完成 R07-6a 的全新輸入清單及獨立驗證，並實作舊結果隔離護欄前，不要把現有 `run-full` 執行結果視為新版候選或驗收資料。程式目前仍可能續用舊快照。
+`verify-sources` 目前只執行程式已有的檔案、雜湊及 ZIP 結構檢查；它不是獨立的來源正確性或完整性證明。`run-full` 只接受帶 `rebuild_epoch: "2026-10-12"` 且 `source_check.status` 為 `verified` 的原始清冊與地址來源描述。程式重新產生的清冊預設為 `pending`；擁有者核對來源頁面、授權與下載紀錄後，填入 `checked_by`、`checked_at`、`evidence` 並改為 `verified`。現有 `config/sources/raw_manifest.json` 與 `address_source.json` 是舊清冊，會被拒絕。
 
 檢查設定和命令選項時，先查看實際入口：
 
@@ -81,7 +81,7 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline verify-sources \
   --raw-dir data/raw
 ```
 
-`run-full` 必須提供唯一 run ID、截止年月、地址資料目錄及公告 JSON。原始輸入、正式公告及隔離護欄都完成核對與適用驗收之前，以下模板不能作為新重建入口。公告內容待確認，不能自行建立正式公告；不可指定舊 run ID、舊工作目錄或舊快照：
+`run-full` 必須提供唯一 run ID、截止年月、地址資料目錄及公告 JSON。原始輸入與正式公告完成核對、隔離護欄完成適用驗收之前，以下模板不能作為新重建入口。公告內容待確認，不能自行建立正式公告；不可指定舊 run ID、舊工作目錄或舊快照：
 
 ```bash
 uv run --locked --python 3.14.8 python -m lvr_pipeline run-full \
@@ -104,7 +104,7 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline run-full \
 
 TGOS 由個別命令處理，未接入 `run-full`。預定順序為 `prepare-tgos`、人工交換、`set-tgos-status`、`import-tgos`、`build-review`，之後新版回補由 R-10 定義。`prepare-tgos` 可從本次離線狀態建立初始 TGOS state，後續每個狀態更新都須使用前一命令輸出的新快照路徑。`build-review` 用 `--state` 接收離線狀態。該路徑須來自同一次 run。
 
-目前沒有按新 `building_key` 契約核驗過的安全帳本轉接步驟。現行 `--ledger` 會轉接舊送查記錄，並以 `building_key` 重新生成查詢鍵與指紋；無法重鍵的查詢會保留診斷資料，不能當成新防重送索引。此行為尚未按新契約驗收。轉接會丟棄舊 results、evidence 與 aliases，因此不得用舊定位結果。R07-6a/R09 須保留送查事實、核對歷史送出狀態並建立新的防重送索引，不繼承舊鍵、定位、aliases 或裁定。不得清空帳本、忽略未知送出狀態或重送。舊 TGOS 回傳預設排除，僅在新規則核對回傳原文同址並明確允許後才能納入。程式隔離護欄尚未實作，前置條件未完成前以下只可查詢命令參數：
+目前沒有按新 `building_key` 契約核驗過的安全帳本轉接步驟。現行 `--ledger` 會轉接舊送查記錄，並以 `building_key` 重新生成查詢鍵與指紋；無法重鍵的查詢會保留診斷資料，不能當成新防重送索引。此行為尚未按新契約驗收。轉接會丟棄舊 results、evidence 與 aliases，因此不得用舊定位結果。R07-6a/R09 須保留送查事實、核對歷史送出狀態並建立新的防重送索引，不繼承舊鍵、定位、aliases 或裁定。不得清空帳本、忽略未知送出狀態或重送。舊 TGOS 回傳預設排除，僅在新規則核對回傳原文同址並明確允許後才能納入。R07-6a 護欄不涵蓋 TGOS 帳本轉接，R09-2 完成前以下只可查詢命令參數：
 
 目前只可查看命令參數，不能依此執行新重建 TGOS 流程。每檔最多 10,000 筆是單檔上限，不是每日程式限制。未知送出狀態必須保留，阻止重送或釋放配額。以下命令僅查詢介面：
 

@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from lvr_pipeline.storage.runs import SnapshotStore
+from lvr_pipeline.storage.runs import REBUILD_EPOCH, SnapshotStore
 from test_p0_contracts import observation, component
 
-BINDINGS={"code_commit":"9fec324"+"0"*33,"schema_version":"1.0","config_sha256":"a"*64,"input_sha256":["b"*64]}
+BINDINGS={"code_commit":"9fec324"+"0"*33,"schema_version":"1.0","config_sha256":"a"*64,"input_sha256":["b"*64],"rebuild_epoch":REBUILD_EPOCH}
 
 
 def prepare(store, tmp_path, name, parent=None):

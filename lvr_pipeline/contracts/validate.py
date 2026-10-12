@@ -7,8 +7,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from contextlib import contextmanager
-from contextvars import ContextVar
 from functools import lru_cache
 from pathlib import Path
 
@@ -44,19 +42,6 @@ def schema_validator(schema_name: str) -> Draft202012Validator:
     return Draft202012Validator(schema)
 
 
-_RECOMPUTE_KEYS: ContextVar[bool] = ContextVar("recompute_component_keys", default=True)
-
-
-@contextmanager
-def keys_not_recomputed():
-    """Validate rows from a snapshot made under another NORMALIZATION_VERSION: check structure, skip the key rule."""
-    token = _RECOMPUTE_KEYS.set(False)
-    try:
-        yield
-    finally:
-        _RECOMPUTE_KEYS.reset(token)
-
-
 def validate_rows(rows: list[dict], schema_name: str) -> None:
     validator = schema_validator(schema_name)
     primary = "component_id" if schema_name == "address-component" else "raw_record_id"
@@ -76,7 +61,7 @@ def validate_rows(rows: list[dict], schema_name: str) -> None:
             from ..addresses.identity import building_key
             # A component held for review has no key until its members are proven.
             expected = building_key(row["normalized_address"]) if row["expansion_status"] == "confirmed" else None
-            if _RECOMPUTE_KEYS.get() and row["building_key"] != expected:
+            if row["building_key"] != expected:
                 raise ValueError("Component key does not match v2 rule")
         if schema_name != "diagnostic" and row[primary] in seen:
             raise ValueError(f"Duplicate {primary}")
