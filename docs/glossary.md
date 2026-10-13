@@ -47,6 +47,6 @@
 | 交易地址原文 | `transaction_addresses` | 來源觀測的原始地址欄文字 |
 | 交易識別碼 | `transaction_id` | 新版輸出欄位，可讀自然鍵，見資料單位表 |
 | 檔案目錄 | `catalog.json` | 新版公開資料的檔案、範圍、筆數、大小及雜湊索引 |
-| 來源顯名 | README 公開資料節、`catalog.json` 的 `sources` 區塊 | 每版資料的來源、授權與地址來源提交。2026-10-13 起不設 NOTICE 檔 |
+| 來源顯名 | README 公開資料節 | 資料來源與授權的固定文字。2026-10-13 起不設 NOTICE 檔；每版變更寫在 GitHub release 說明 |
 
 程式中仍存在的舊名稱只供描述現況或定位歷史證據，不代表新流程允許相容讀取或沿用舊結果。門牌鍵唯一名稱是 `building_key`；`building_key_v2` 與 `legacy_building_key` 已於 R07-6b 移除。

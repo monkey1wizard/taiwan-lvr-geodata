@@ -25,7 +25,7 @@
 
 多門牌交易的一個總價屬於整筆交易，不分攤或推算。輸出列以 `door_count` 大於 1 表示多門牌，以 `transaction_id` 找出同筆交易的點，加總時依 `transaction_id` 去重。這些新欄位尚未由程式產生。每種格式的使用方式與加總規則將隨新版資料交付。
 
-資料來源、顯名與限制見本節與每版 `catalog.json` 的 `sources` 區塊，不另設 NOTICE 檔。交易資料來自內政部不動產成交案件實際資訊資料供應系統，依政府資料開放授權條款第 1 版使用；門牌座標來自 `taiwan-address-data` 的固定提交。程式授權不代表第三方資料適用相同授權。
+資料來源、顯名與限制見本節，不另設 NOTICE 檔。每版的變更內容寫在 GitHub release 說明。交易資料來自內政部不動產成交案件實際資訊資料供應系統，依政府資料開放授權條款第 1 版使用；門牌座標來自 `taiwan-address-data` 的固定提交。程式授權不代表第三方資料適用相同授權。
 
 ## 安裝與測試
 
@@ -60,7 +60,7 @@ uv run --locked --python 3.14.8 python -m pytest -q
 
 相關地址資料專案位於 `C:/Code/taiwan-address-data`，舊專案 `C:/Code/taiwan-lvr-geojson` 僅作唯讀參考。取得真實來源須依擁有者明確授權的操作方式辦理，不自行推定來源權限或複製第三方地址來源列進 Git。
 
-`verify-sources` 目前只執行程式已有的檔案、雜湊及 ZIP 結構檢查；它不是獨立的來源正確性或完整性證明。`run-full` 只接受帶 `rebuild_epoch: "2026-10-12"` 且 `source_check.status` 為 `verified` 的原始清冊與地址來源描述。程式重新產生的清冊預設為 `pending`；擁有者核對來源頁面、授權與下載紀錄後，填入 `checked_by`、`checked_at`、`evidence` 並改為 `verified`。現有 `config/sources/raw_manifest.json` 與 `address_source.json` 是舊清冊，會被拒絕。
+`verify-sources` 目前只執行程式已有的檔案、雜湊及 ZIP 結構檢查；它不是獨立的來源正確性或完整性證明。`run-full` 只接受帶 `rebuild_epoch: "2026-10-12"` 的原始清冊與地址來源描述。現行程式另要求 `source_check.status` 為 `verified`；2026-10-13 擁有者決定取消人工簽核，以本次紀元重新掃描即為核驗，該檢查由 R07-6c 移除。現有 `config/sources/raw_manifest.json` 與 `address_source.json` 是舊清冊，會被拒絕，R07-6c 重新產生。
 
 檢查設定和命令選項時，先查看實際入口：
 
@@ -71,7 +71,7 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline <command> --help
 
 ## 現有全量命令
 
-`run-full` 是現行全量離線流程入口。它核對來源、執行離線階段、產生待查核資料、輸出及 run report。程式流程包含續跑與階段驗證。它目前不讀取 TGOS 狀態。輸出階段已改用新版 22 欄公開契約，但尚未以真實資料執行與驗收。來源清冊與地址來源描述核驗為 `verified` 之前它會被拒絕；公告檔 `config/sources/notice.json` 與 `data/output/` 目前不存在，發布（R08）尚未實作。
+`run-full` 是現行全量離線流程入口。它核對來源、執行離線階段、產生待查核資料、輸出及 run report。程式流程包含續跑與階段驗證。它目前不讀取 TGOS 狀態。輸出階段已改用新版 22 欄公開契約，但尚未以真實資料執行與驗收。來源清冊與地址來源描述經 R07-6c 重新掃描之前它會被拒絕；`data/output/` 目前不存在，發布（R08）尚未實作。
 
 先核對來源清單與本機原始 ZIP：
 
@@ -81,7 +81,7 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline verify-sources \
   --raw-dir data/raw
 ```
 
-`run-full` 必須提供唯一 run ID、截止年月與地址資料目錄。原始清冊與地址來源描述經擁有者核驗為 `verified` 之前，以下模板會被拒絕。不可指定舊 run ID、舊工作目錄或舊快照：
+`run-full` 必須提供唯一 run ID、截止年月與地址資料目錄。原始清冊與地址來源描述經 R07-6c 重新掃描之前，以下模板會被拒絕。不可指定舊 run ID、舊工作目錄或舊快照：
 
 ```bash
 uv run --locked --python 3.14.8 python -m lvr_pipeline run-full \
