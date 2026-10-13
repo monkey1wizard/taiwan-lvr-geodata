@@ -29,9 +29,7 @@ CODE="1"*40
 
 def verified_source(document):
     """Return a copy of a raw manifest or address source document that run_full accepts (R07-6a)."""
-    return {**document, "rebuild_epoch": REBUILD_EPOCH,
-            "source_check": {"status": "verified", "checked_by": "synthetic-test", "checked_at": "2026-10-12",
-                             "evidence": "synthetic fixture"}}
+    return {**document, "rebuild_epoch": REBUILD_EPOCH}
 ADDRESS="臺北市中正區測試路10號之1"
 
 

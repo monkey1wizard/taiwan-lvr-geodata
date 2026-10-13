@@ -60,7 +60,7 @@ uv run --locked --python 3.14.8 python -m pytest -q
 
 相關地址資料專案位於 `C:/Code/taiwan-address-data`，舊專案 `C:/Code/taiwan-lvr-geojson` 僅作唯讀參考。本機 `data/raw/` 與地址專案可隨時讀取。下載新來源須依擁有者指定的方式辦理，不自行推定來源權限，也不複製第三方地址來源列進 Git。
 
-`verify-sources` 目前只執行程式已有的檔案、雜湊及 ZIP 結構檢查；它不是獨立的來源正確性或完整性證明。`run-full` 只接受帶 `rebuild_epoch: "2026-10-12"` 的原始清冊與地址來源描述。現行程式另要求 `source_check.status` 為 `verified`；2026-10-13 擁有者決定取消人工簽核，以本次紀元重新掃描即為核驗，該檢查由 R07-6c 移除。現有 `config/sources/raw_manifest.json` 與 `address_source.json` 是舊清冊，會被拒絕，R07-6c 重新產生。
+`verify-sources` 目前只執行程式已有的檔案、雜湊及 ZIP 結構檢查；它不是獨立的來源正確性或完整性證明。`run-full` 只接受帶 `rebuild_epoch: "2026-10-12"` 的原始清冊與地址來源描述。2026-10-13 擁有者決定取消人工簽核，以本次紀元重新掃描即為核驗，兩份清冊以 `scanned_at` 記錄掃描時間。`config/sources/raw_manifest.json` 與 `address_source.json` 已由 R07-6c 重新產生。
 
 檢查設定和命令選項時，先查看實際入口：
 

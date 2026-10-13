@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 import csv
 import subprocess
 import sys
@@ -100,29 +101,24 @@ def _inspect(path: Path, format_name: str, schema: str | None) -> tuple[int | No
 # R07-6a: every snapshot, run and source inventory of the fresh rebuild carries this marker.
 # Anything without it predates the 2026-10-12 decision and is never read as input.
 REBUILD_EPOCH = "2026-10-12"
-SOURCE_CHECK_PENDING = {"status": "pending", "checked_by": None, "checked_at": None, "evidence": None}
+
+
+def scanned_at() -> str:
+    """Current time in Asia/Taipei as ISO 8601 with seconds and a fixed +08:00 offset."""
+    return datetime.now(timezone(timedelta(hours=8))).isoformat(timespec="seconds")
 
 
 def rebuild_source_failures(document: dict, kind: str) -> list[dict]:
     """Failures that keep a source inventory out of a new run; empty when it may be used.
 
-    The inventory must be built for this rebuild and verified by the owner. The program never
-    sets ``source_check.status`` to ``verified`` itself.
+    An inventory may be used when it was built for this rebuild. Rescanning with this epoch is
+    the check (owner decision 2026-10-13); no manual sign-off field exists.
     """
-    failures = []
     if not isinstance(document, dict) or document.get("rebuild_epoch") != REBUILD_EPOCH:
         found = document.get("rebuild_epoch") if isinstance(document, dict) else None
-        failures.append({"code": "source_predates_rebuild",
-                         "detail": f"{kind} rebuild_epoch is {found!r}, expected {REBUILD_EPOCH!r}"})
-    check = document.get("source_check") if isinstance(document, dict) else None
-    if not isinstance(check, dict) or check.get("status") != "verified":
-        status = check.get("status") if isinstance(check, dict) else None
-        failures.append({"code": "source_not_verified",
-                         "detail": f"{kind} source_check.status is {status!r}; the owner must verify it before a run"})
-    elif not all(isinstance(check.get(key), str) and check[key] for key in ["checked_by", "checked_at", "evidence"]):
-        failures.append({"code": "source_check_incomplete",
-                         "detail": f"{kind} source_check needs checked_by, checked_at and evidence"})
-    return failures
+        return [{"code": "source_predates_rebuild",
+                 "detail": f"{kind} rebuild_epoch is {found!r}, expected {REBUILD_EPOCH!r}"}]
+    return []
 
 
 def _check_bindings(bindings: dict) -> None:

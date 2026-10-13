@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "repository": "https://github.com/monkey1wizard/taiwan-address-data",
-  "commit": "3ff9be0265b22a4910abf2bd4e3e96c7653fb6f0",
+  "commit": "7cf0f3db0810381a3ef8e73c3e19fd17b0ef56ac",
   "source_kind": "legacy_base",
   "roads": [
     {
@@ -135887,8 +135887,6 @@
   ],
   "road_count": 27176,
   "size_bytes": 1575111184,
-  "license_status": "pending_upstream_evidence",
-  "license_evidence": "docs/drafts/taiwan-lvr-geodata-完整企劃.md#已確認現況",
   "rights_note": "Each upstream dataset requires its own redistribution evidence before public coordinate release.",
   "administrative_files": [
     {
@@ -135943,5 +135941,7 @@
       "size_bytes": 33589,
       "sha256": "22989597675004df1d5eac53d296b84c946c6a9e0f1f3a0e859607c02f45bac3"
     }
-  ]
+  ],
+  "rebuild_epoch": "2026-10-12",
+  "scanned_at": "2026-10-13T12:45:55+08:00"
 }

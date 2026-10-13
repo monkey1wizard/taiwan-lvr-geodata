@@ -48,5 +48,8 @@ def test_tracked_actual_inventory():
     assert raw["raw_count"] == len(raw["inputs"]) == 58
     assert len({r["batch"] for r in raw["inputs"]}) == 58
     assert [r["batch"] for r in raw["inputs"] if r["known_empty"]] == ["101q1"]
-    assert address["commit"] == "3ff9be0265b22a4910abf2bd4e3e96c7653fb6f0"
+    assert address["commit"] == "7cf0f3db0810381a3ef8e73c3e19fd17b0ef56ac"
     assert address["road_count"] == len(address["roads"]) == 27176
+    for document in [raw, address]:
+        assert document["rebuild_epoch"] == "2026-10-12" and document["scanned_at"]
+        assert not {"source_check", "license_status", "license_evidence"} & document.keys()

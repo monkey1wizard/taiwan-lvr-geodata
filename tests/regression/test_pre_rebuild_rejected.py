@@ -8,18 +8,20 @@ import json
 
 import pytest
 
+from datetime import datetime, timedelta
+
 from lvr_pipeline.addresses import identity
 from lvr_pipeline.converted import export_converted
 from lvr_pipeline.pipeline import run_full
 from lvr_pipeline.storage.runs import (
     REBUILD_EPOCH,
-    SOURCE_CHECK_PENDING,
     RunStore,
     SnapshotStore,
     Stage,
     load_snapshot,
     rebuild_source_failures,
 )
+from lvr_pipeline.transactions.inventory import build_raw_manifest
 from lvr_pipeline.transactions.normalize import normalize
 from tests.integration.test_p1_conversion import CODE, ingest, make_source, rules
 
@@ -142,33 +144,34 @@ def test_pre_rebuild_run_directory_cannot_be_resumed(tmp_path):
         RunStore.open(tmp_path, "r1", _run_bindings())
 
 
-VERIFIED = {"status": "verified", "checked_by": "owner", "checked_at": "2026-10-12", "evidence": "source page check"}
-
-
 @pytest.mark.parametrize("document,codes", [
-    ({"license_status": "legacy_documentation_only_pending_current_source_check"},
-     ["source_predates_rebuild", "source_not_verified"]),
-    ({"rebuild_epoch": REBUILD_EPOCH, "source_check": dict(SOURCE_CHECK_PENDING)}, ["source_not_verified"]),
-    ({"rebuild_epoch": REBUILD_EPOCH, "source_check": {**VERIFIED, "evidence": ""}}, ["source_check_incomplete"]),
-    ({"rebuild_epoch": "2026-10-01", "source_check": VERIFIED}, ["source_predates_rebuild"]),
-    ({"rebuild_epoch": REBUILD_EPOCH, "source_check": VERIFIED}, []),
+    ({}, ["source_predates_rebuild"]),
+    ({"rebuild_epoch": "2026-10-01"}, ["source_predates_rebuild"]),
+    ({"rebuild_epoch": REBUILD_EPOCH}, []),
 ])
 def test_rebuild_source_failures(document, codes):
     assert [failure["code"] for failure in rebuild_source_failures(document, "raw manifest")] == codes
 
 
-def test_run_full_refuses_unverified_sources_before_writing(tmp_path):
+def test_run_full_refuses_old_epoch_sources_before_writing(tmp_path):
     manifest = tmp_path / "raw_manifest.json"
-    manifest.write_text(json.dumps({"license_status": "legacy_documentation_only_pending_current_source_check"}),
-                        encoding="utf-8")
+    manifest.write_text(json.dumps({"rebuild_epoch": "2026-10-01"}), encoding="utf-8")
     address = tmp_path / "address_source.json"
-    address.write_text(json.dumps({"rebuild_epoch": REBUILD_EPOCH, "source_check": dict(SOURCE_CHECK_PENDING)}),
-                       encoding="utf-8")
+    address.write_text(json.dumps({"rebuild_epoch": "2026-10-01"}), encoding="utf-8")
     runs = tmp_path / "runs"
     result = run_full(run_id="r1", cutoff=202610, address_dir=tmp_path,
                       runs_root=runs, raw_dir=tmp_path, manifest_path=manifest, address_source=address)
     assert result["completed"] is False
     assert [(f["detail"].split(" ")[0] + " " + f["detail"].split(" ")[1], f["code"]) for f in result["failures"]] == [
-        ("raw manifest", "source_predates_rebuild"), ("raw manifest", "source_not_verified"),
-        ("address source", "source_not_verified")]
+        ("raw manifest", "source_predates_rebuild"), ("address source", "source_predates_rebuild")]
     assert not runs.exists()
+
+
+def test_scanned_at_is_taipei_time_and_no_manual_signoff_fields(tmp_path):
+    raw, _ = make_source(tmp_path)
+    document = build_raw_manifest(raw)
+    stamp = datetime.fromisoformat(document["scanned_at"])
+    assert stamp.utcoffset() == timedelta(hours=8)
+    assert document["rebuild_epoch"] == REBUILD_EPOCH
+    for key in ["source_check", "license_status", "license_evidence"]:
+        assert key not in json.dumps(document)

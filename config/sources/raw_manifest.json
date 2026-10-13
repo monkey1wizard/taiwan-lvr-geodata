@@ -2,8 +2,8 @@
   "schema_version": "1.0",
   "raw_count": 58,
   "size_bytes": 674172610,
-  "license_status": "legacy_documentation_only_pending_current_source_check",
-  "license_evidence": "docs/DATA_SOURCES.md",
+  "rebuild_epoch": "2026-10-12",
+  "scanned_at": "2026-10-13T12:12:39+08:00",
   "inputs": [
     {
       "filename": "101q1_lvr_landcsv.zip",
