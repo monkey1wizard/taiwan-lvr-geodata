@@ -3,7 +3,7 @@
 ## 現況與文件入口
 
 - 以 [README](README.md) 作為唯一使用入口，禁止新增操作手冊或子目錄 README。
-- 使用 [重建企劃](docs/plans/重建企劃.md)查看唯一現況、R 工作依賴、V 驗收及待補契約。`.dev` 與 GAL 狀態不是專案現況來源。
+- 使用 [重建企劃](docs/plans/重建企劃.md)查看唯一現況、R 工作依賴、V 驗收及待補契約。地址專案匯入見[地址專案匯入企劃](docs/plans/地址專案匯入企劃.md)。`.dev` 與 GAL 狀態不是專案現況來源。
 - 文件權責、行數限制與同步方式見 [CONTRIBUTING](CONTRIBUTING.md)。正式文件不得超過 550 行，建議 450 行內。不得壓縮文字或刪減需求以規避上限。歷史 records 與 archive 不受限制，新驗收紀錄不得超過 550 行。
 - [輸出欄位](docs/輸出欄位.md)是新版公開輸出的唯一規格權威文件。企劃只追蹤規格狀態與待驗收工作，不複製欄位表。
 - 從 [空白結果範本](docs/task-result-template.md)複製新驗收紀錄到 `docs/records/`，每卡或每次驗收各一份。填寫命令與 pass／fail／not-run。範本必須保持空白。舊紀錄的結論依當時版本保留。
@@ -11,7 +11,7 @@
 
 ## 執行與相容性
 
-- 使用 `C:/Code/taiwan-lvr-geodata` 作為權威工作區。在 `main` 修改、完成適用驗收、本機提交，再直接推送 `origin/main`。除非擁有者明確要求，不建立工作副本、階段分支或 PR。
+- 使用 `C:/Code/taiwan-lvr-geodata` 作為權威工作區。在 `main` 修改、完成適用驗收、本機提交。不推送 `origin/main`，也不詢問推送。除非擁有者明確要求，不建立工作副本、階段分支或 PR。
 - 不回復其他人的變更。開始工作前確認 Git 狀態及檔案變更歸屬。
 - Linux 已安裝 uv 後執行 `bash scripts/setup.sh`。安裝與一般測試使用合成輸入，不需要憑證，也不得下載真實資料。GitHub Actions 提供 Linux 驗證。
 - 2026-10-12 起，既有衍生資料不作新流程輸入、定位依據或驗收基準。包含 normalized／converted、地址池／index／state、aliases、TGOS 採用結果、review 裁定、衍生 cache、舊快照、維護包、公開輸出及統計。本機只保留 `data/raw/` 的原始 ZIP，未重核前不能視為正確來源或自動納入。舊 TGOS 回傳結果已於 2026-10-13 由擁有者決定廢棄，不重核、不納入任何新結果；本機已無這些檔案。
