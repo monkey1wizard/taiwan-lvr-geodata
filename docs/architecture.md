@@ -56,7 +56,7 @@
 
 ## 目前能力與邊界
 
-- `run-full` 在 `pipeline.py` 編排來源核對、離線階段、輸出階段及 run report，並支援階段續跑；這是現行實作事實，不授權續跑重建前快照。它會在寫入任何檔案前拒絕未核驗的來源清冊。
+- `run-full` 在 `pipeline.py` 編排來源核對、離線階段、輸出階段及 run report，並支援階段續跑；這是現行實作事實，不授權續跑重建前快照。它會在寫入任何檔案前拒絕沒有本次紀元的來源清冊。
 - TGOS 使用獨立 CLI 命令及 `--work-dir`，尚未由 `run-full` 管理 TGOS 狀態或回補。
 - `transactions/read.py` 讀入交易主檔與 `_build.csv`、`_land.csv`、`_park.csv` 明細；`transactions/normalize.py` 依明細關聯契約把明細連回主檔，計數寫入 `detail_link`。
 - `tgos/validate.py` 的 `import_tgos` 已檢查查詢與回傳集合一對一，並以相同批次和回傳雜湊支援冪等重匯。`addresses/identity.py` 的 `same_door` 允許回傳補上送出地址未寫的村里或鄰。R09-2 尚須檢查候選是否跨多個村里或鄰，未完成完整同址驗收。
