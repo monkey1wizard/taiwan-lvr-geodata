@@ -20,6 +20,7 @@ import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from ..addresses.admin import admin_towns_sha256
 from ..addresses.identity import NORMALIZATION_VERSION
 from ..storage.parquet import duckdb_config
 from ..storage.runs import sha256_file
@@ -560,6 +561,7 @@ def verify_output(public_root, release_root) -> dict:
         (catalog.get("currency") == CURRENCY, f"currency is {catalog.get('currency')!r}, expected {CURRENCY!r}"),
         (catalog.get("contract_version") == CONTRACT_VERSION, f"contract_version is {catalog.get('contract_version')!r}"),
         (catalog.get("door_rule_version") == NORMALIZATION_VERSION, f"door_rule_version is {catalog.get('door_rule_version')!r}"),
+        (catalog.get("admin_towns_sha256") == admin_towns_sha256(), f"admin_towns_sha256 is {catalog.get('admin_towns_sha256')!r}"),
         (cutoff_ok, f"cutoff_yyyymm is {catalog.get('cutoff_yyyymm')!r}, expected a YYYYMM string"),
         (
             isinstance(sources, dict) and bool(sources) and all(

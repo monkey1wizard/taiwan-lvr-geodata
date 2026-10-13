@@ -29,7 +29,7 @@ import re
 import duckdb
 import pyarrow as pa
 
-from . import identity
+from . import admin, identity
 from .identity import building_key, door_parts, door_signature_sql, sub_identity_sql
 from .parse import _COUNTY_CODE
 from ..offline.index import load_pinned_source
@@ -45,24 +45,25 @@ _COUNTY_START = re.compile("^(" + "|".join(sorted(_COUNTY_CODE, key=len, reverse
 # Text that starts like a county or town name (市東區…, v新興區…, 桃園縣…); used only to label a
 # lookup without candidates as invalid_admin, never to match.
 _ADMIN_START = re.compile(r"^[^0-9路街道段巷弄號村里鄰]{0,4}?[縣市區鄉鎮]")
-_PLACEHOLDER_TOWN = "東區"
 
 
 def district_query(address: str):
     """Door parts of an address whose town was not found.
 
     Returns (county code or None, text after the county, locality_road, door, village,
-    neighbourhood), or None when no door can be parsed. The town is replaced by a placeholder
-    only to split the text with building_key; the placeholder never reaches a key.
+    neighbourhood), or None when no door can be parsed. A real town of that county stands in for
+    the missing one only to split the text with building_key (the town must exist in the county);
+    the stand-in never reaches a key. Without a county, 臺北市 is used for the split.
     """
     match = _COUNTY_START.match(address)
     county = _COUNTY_CODE[match.group(1)] if match else None
     rest = address[match.end():] if match else address
-    key = building_key((match.group(1) if match else "臺北市") + _PLACEHOLDER_TOWN + rest)
+    stand_in = max(admin.load_admin_towns()["counties"][county or "63"], key=lambda t: (len(t), t))
+    key = building_key((match.group(1) if match else "臺北市") + stand_in + rest)
     if key is None:
         return None
     value = json.loads(key[3:])
-    if value["town"] != _PLACEHOLDER_TOWN:
+    if value["town"] != stand_in:
         return None
     return county, rest, value["locality_road"], value["door"], value.get("village"), value.get("neighborhood")
 
@@ -149,6 +150,7 @@ def build_pool(
             "coordinate_confirmed_candidates": bool(index_path),
             "district_fill_rule": DISTRICT_FILL_RULE if index_path else None,
             "normalization_version": identity.NORMALIZATION_VERSION,
+            "admin_towns_sha256": admin.admin_towns_sha256(),
             "repeated_county_rule": REPEATED_COUNTY_RULE,
         },
         input_hashes,

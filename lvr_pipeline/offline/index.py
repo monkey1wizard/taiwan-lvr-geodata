@@ -11,7 +11,7 @@ from pathlib import Path
 import re
 import subprocess
 
-from ..addresses import identity
+from ..addresses import admin, identity
 from ..addresses.identity import building_key
 from ..transactions.normalize import normalize_address
 from ..storage.parquet import BatchWriter
@@ -175,6 +175,7 @@ def build_index(
         "counties": sorted(counties or COUNTY_NAMES),
         "official": official_metadata,
         "normalization_version": identity.NORMALIZATION_VERSION,
+        "admin_towns_sha256": admin.admin_towns_sha256(),
         # R05-10: coordinates outside these bounds are invalid_coordinate.
         "coordinate_bounds_rule": TAIWAN_BOUNDS_RULE,
         "coordinate_bounds": list(TAIWAN_BOUNDS),
@@ -448,6 +449,7 @@ def audit_address_source(
         "address_counties": sorted(counties or COUNTY_NAMES),
         "road_files": len(selected),
         "normalization_version": identity.NORMALIZATION_VERSION,
+        "admin_towns_sha256": admin.admin_towns_sha256(),
         "distance_method": "haversine, sphere radius 6371008.8 m, X=longitude Y=latitude",
         "categories_overlap": True,
         "files": AUDIT_FILES,

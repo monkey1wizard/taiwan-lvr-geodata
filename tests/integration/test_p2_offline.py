@@ -6,6 +6,7 @@ import subprocess
 
 import pytest
 
+from lvr_pipeline.addresses import admin
 from lvr_pipeline.addresses.pool import build_pool
 from lvr_pipeline.results.reconcile import load_p2, resolve_offline
 from lvr_pipeline.offline.index import build_index
@@ -67,6 +68,17 @@ def source(tmp_path, coordinates=None):
         ],
         "roads": [{"path": "roads/" + path.name, "sha256": sha256_file(path)}],
     }
+
+
+def use_synthetic_admin_towns(tmp_path, root, descriptor):
+    """Point the town table at one built from the synthetic area tables (run_full checks it against the source).
+
+    tests/conftest.py puts the committed file back after the test.
+    """
+    path = tmp_path / "admin_towns.json"
+    admin.write_admin_towns(root, descriptor, path)
+    admin.ADMIN_TOWNS_PATH = path
+    admin.load_admin_towns.cache_clear()
 
 
 def run(tmp_path, coordinates=None, records=None, **kwargs):

@@ -17,6 +17,12 @@ def _add_offline_and_output_commands(sub):
     p = sub.add_parser("pin-address-source")
     p.add_argument("--address-dir", type=Path, required=True)
     p.add_argument("--output", type=Path, default=Path("config/sources/address_source.json"))
+    p = sub.add_parser("build-admin-towns", help="Write the county to town table from the pinned area tables (R07-6b)")
+    p.add_argument("--address-dir", type=Path, required=True)
+    p.add_argument(
+        "--address-source", type=Path, default=Path("config/sources/address_source.json")
+    )
+    p.add_argument("--output", type=Path, default=Path("config/rules/admin_towns.json"))
     p = sub.add_parser("verify-sources", help="Check raw ZIPs against the raw manifest (read-only)")
     p.add_argument("--raw-dir", type=Path, default=Path("data/raw"))
     p.add_argument("--manifest", type=Path, default=Path("config/sources/raw_manifest.json"))

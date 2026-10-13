@@ -41,6 +41,8 @@ SUBCOMMANDS = {
     "verify-sources", "inventory-sources",
     # R06-4 依卡片新增 run-full，卡片預期改動。
     "run-full",
+    # R07-6b adds build-admin-towns (the county to town table).
+    "build-admin-towns",
 }
 
 
@@ -64,8 +66,9 @@ def test_retained_symbols_exist(module_name):
 # R06-4 依卡片新增 run-full，卡片預期改動，由 27 改為 28。
 # R07-8b 移除 package-output、verify-output、backfill-output、fetch-output、publish-output、
 # commit-release-pointer、verify-public-snapshot 共 7 個，由 29 改為 22。
-def test_cli_subcommand_set_is_exactly_22():
-    assert len(SUBCOMMANDS) == 22
+# R07-6b adds build-admin-towns (the county to town table), 22 to 23.
+def test_cli_subcommand_set_is_exactly_23():
+    assert len(SUBCOMMANDS) == 23
     result = subprocess.run([sys.executable, "-m", "lvr_pipeline", "--help"], cwd=ROOT, capture_output=True,
                             text=True, encoding="utf-8", check=True)
     match = re.search(r"\{([a-z0-9,\-]+)\}", result.stdout)

@@ -6,6 +6,7 @@ import csv
 from pathlib import Path
 import re
 
+from ..addresses.admin import resolve_old_county, town_in_county
 from ..addresses.identity import drop_repeated_county
 from ..addresses.parse import _COUNTY_CODE, _CITY_RE, norm
 from ..transactions.normalize import normalize_address
@@ -61,6 +62,11 @@ class AdministrativeNames:
     def canonicalize(self, address):
         # R05-7: the same repeated-county rule as building_key (新竹市新竹市東區… → 新竹市東區…).
         address = drop_repeated_county(normalize_address(address))
+        # R07-6b: the same old-county mapping as building_key; an unmapped old town gives no canonical form.
+        mapped = resolve_old_county(address)
+        if mapped is None:
+            return address, "", ""
+        address = mapped
         node = self.tree
         found = None
         for index, character in enumerate(address):
@@ -73,5 +79,8 @@ class AdministrativeNames:
             return address, "", ""
         end, town = found
         canonical = self.current[town]
-        county = _COUNTY_CODE[_CITY_RE.fullmatch(canonical)[1]]
+        region = _CITY_RE.fullmatch(canonical)
+        county = _COUNTY_CODE[region[1]]
+        if not town_in_county(county, region[2]):
+            return address, "", ""
         return canonical + address[end:], county, town

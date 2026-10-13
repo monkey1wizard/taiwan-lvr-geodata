@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .addresses.pool import build_pool
 from .offline.index import audit_address_source, pin_address_source, build_index
+from .addresses.admin import admin_towns_failures, admin_towns_sha256, write_admin_towns
 from .addresses.identity import NORMALIZATION_VERSION
 from .contracts import SCHEMA_VERSION
 from .results.reconcile import DEFAULT_CONFIG, load_coordinate_tolerance, load_suspended_counties, resolve_offline, load_p2
@@ -104,6 +105,12 @@ def _run_offline_and_output(args):
     if command == "inventory-sources":
         document = write_raw_manifest(args.raw_dir, args.output)
         print(json.dumps({"output": str(args.output), "raw_count": document["raw_count"]}))
+        return 0
+    if command == "build-admin-towns":
+        document = write_admin_towns(args.address_dir, read(args.address_source), args.output)
+        print(json.dumps({"output": str(args.output), "source_commit": document["source_commit"],
+                          "counties": len(document["counties"]),
+                          "towns": sum(len(t) for t in document["counties"].values())}))
         return 0
     if command == "pin-address-source":
         descriptor = pin_address_source(args.address_dir, args.output)
@@ -315,6 +322,7 @@ def run_bindings(manifest_path: Path, address_source: Path, rules_path: Path, co
     commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
     return {"code_commit": commit, "raw_manifest_sha256": sha256_file(Path(manifest_path)),
             "address_source_sha256": sha256_file(Path(address_source)),
+            "admin_towns_sha256": admin_towns_sha256(),
             # The pipeline config holds the 30 m tolerance and the suspended counties.
             "rules_sha256": digest({"character_fixes": sha256_file(Path(rules_path)),
                                     "pipeline_config": sha256_file(Path(config))}),
@@ -386,6 +394,10 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
     source_failures = [{"step": "rebuild-sources", **failure}
                        for path, kind in [(manifest_path, "raw manifest"), (address_source, "address source")]
                        for failure in rebuild_source_failures(_read(path), kind)]
+    # R07-6b: the town table must come from the pinned address source of this run.
+    # (Judged only for an address source of this rebuild; an older one is already refused above.)
+    if not source_failures:
+        source_failures += [{"step": "admin-towns", **failure} for failure in admin_towns_failures(_read(address_source))]
     if source_failures:
         return {"run_id": run_id, "completed": False, "started_at": datetime.now(timezone.utc).isoformat(),
                 "quarantined": [], "steps": [], "failures": source_failures}

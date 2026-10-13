@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 
+from ..addresses.admin import admin_towns_sha256
 from ..addresses.identity import NORMALIZATION_VERSION
 from ..storage.runs import sha256_file
 
@@ -64,6 +65,7 @@ def write_catalog(public_root, release_root, summary, *, converted_report, cutof
         "currency": CURRENCY,
         "contract_version": CONTRACT_VERSION,
         "door_rule_version": NORMALIZATION_VERSION,
+        "admin_towns_sha256": admin_towns_sha256(),
         "cutoff_yyyymm": cutoff_text(cutoff_yyyymm),
         "source_zip_sha256": {batch: sources[batch] for batch in sorted(sources)},
         "files": entries,

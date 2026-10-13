@@ -60,7 +60,8 @@ FILL = {
     "one_town_two_doors": "新竹市香路7號",
     "typo_city": "嘉義市嘉義市市東區民族路72號",
     "typo_letter": "臺北市v新興區民族二路72號",
-    "old_county": "桃園縣中壢市中山路1號",
+    # R07-6b: an old county whose town maps (桃園縣中壢市) is read as 桃園市中壢區; one that does not map stays invalid.
+    "old_county": "高雄縣那瑪夏鄉中山路1號",
     "road_hsinchu_only": "明湖路100號",
     "road_both_counties": "共同路3號",
     "road_two_towns": "光復路1號",

@@ -8,7 +8,7 @@ import re
 
 import pyarrow.parquet as pq
 
-from ..addresses import identity
+from ..addresses import admin, identity
 from ..addresses.identity import building_key
 from ..addresses.parse import arab_to_cjk, is_garbled, norm
 from ..contracts import component_id
@@ -270,7 +270,8 @@ def normalize(ingest_snapshot: Path, work_dir: Path, *, cutoff: int, rules_path:
     manifest, previous = load_snapshot(ingest_snapshot, "ingest")
     rules_hash = sha256_file(rules_path)
     binding = bindings("normalize", {"cutoff": cutoff, "batch_rows": batch_rows,
-                                "normalization_version": identity.NORMALIZATION_VERSION},
+                                "normalization_version": identity.NORMALIZATION_VERSION,
+                                "admin_towns_sha256": admin.admin_towns_sha256()},
                        [sha256_file(Path(ingest_snapshot) / "manifest.json"), rules_hash], code_commit)
     stage = Stage(Path(work_dir) / "normalized", "normalize", binding, run_id)
     if stage.reused:

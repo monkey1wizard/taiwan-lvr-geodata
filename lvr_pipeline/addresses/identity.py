@@ -4,16 +4,18 @@ from __future__ import annotations
 import json
 import re
 
+from .admin import resolve_old_county, town_in_county
 from .parse import _COUNTY_CODE, _REJECT_RE, arab_to_cjk, is_garbled, norm
 
 KEY_VERSION = "v2"
 # Bump whenever a change alters building_key output for some input. Recorded in the bindings of the
 # normalize, address-pool and offline-index stages so snapshots made under older rules are not reused.
 # v2.5 (R04-12): village and neighbourhood become sub-identifiers of the door; see building_key.
-NORMALIZATION_VERSION = "v2.5"
+# v2.6 (R07-6b): district must exist in its county; old county names mapped by admin_towns.json.
+NORMALIZATION_VERSION = "v2.6"
 _COUNTIES = "|".join(sorted(_COUNTY_CODE, key=len, reverse=True))
 # Town names end in 市, 區, 鄉 or 鎮, never 里 (R04-12: 太麻里鄉 was rejected by the old 里 alternative).
-_REGION_RE = re.compile("^(" + _COUNTIES + r")([東西南北中]區|.{2,4}?(?:市|區|鄉|鎮))")
+_COUNTY_RE = re.compile("^(" + _COUNTIES + ")")
 _REPEATED_COUNTY = re.compile("^(" + _COUNTIES + r")\1+")
 _CJK_DIGITS = "一二三四五六七八九十百"
 _DOOR = re.compile(
@@ -65,9 +67,30 @@ def drop_repeated_county(text: str) -> str:
     """Drop an exactly repeated county name at the start (owner decision R04-6).
 
     Shared by building_key and AdministrativeNames.canonicalize (R05-7), so both read
-    新竹市新竹市東區… as 新竹市東區…. Only an identical repeat is dropped (台北市臺北市 is kept).
+    新竹市新竹市東區… as 新竹市東區…. Only an identical repeat is dropped. The text is read after
+    norm (台 becomes 臺), so an exact repeat is judged on normalized text: 台北市臺北市 is dropped too.
     """
     return _REPEATED_COUNTY.sub(lambda m: m.group(1), text, count=1)
+
+
+def _split_town(text: str):
+    """(county code, town, remainder) when the town exists in the county written first, else None.
+
+    The county is decided first and the town is checked only inside it (owner decision R07-6b).
+    Candidates grow from the shortest, so 北區 wins over a longer string that also ends in a suffix.
+    """
+    county = _COUNTY_RE.match(text)
+    if not county:
+        return None
+    code = _COUNTY_CODE[county.group(1)]
+    rest = text[county.end():]
+    for end in range(2, 6):
+        if end > len(rest):
+            break
+        town = rest[:end]
+        if town[-1] in "市區鄉鎮" and town_in_county(code, town):
+            return code, town, rest[end:]
+    return None
 
 
 def _split_village(rest: str):
@@ -113,10 +136,14 @@ def building_key(address: str) -> str | None:
         return None
     # Owner decision (R04-6): an exactly repeated county name is dropped; any other odd start is rejected.
     text = drop_repeated_county(text)
-    region = _REGION_RE.match(text)
-    if not region or region.group(2) in _COUNTY_CODE:
+    text = resolve_old_county(text)
+    if text is None:
         return None
-    ok, village, neighborhood, rest = _split_village(text[region.end():])
+    region = _split_town(text)
+    if region is None:
+        return None
+    county_code, town, remainder = region
+    ok, village, neighborhood, rest = _split_village(remainder)
     if not ok:
         return None
     rest = _CJK_DOOR.sub(lambda m: str(cjk_number(m.group(1)) or m.group(1)), rest)
@@ -135,8 +162,8 @@ def building_key(address: str) -> str | None:
     if not locality_road and not village:
         return None
     identity = {
-        "county": _COUNTY_CODE[region.group(1)],
-        "town": region.group(2),
+        "county": county_code,
+        "town": town,
         "locality_road": locality_road,
         "door": (door.group("pre") or "") + door.group("main")
         + (door.group("before") or ("號" + door.group("after") if door.group("after") else "")),

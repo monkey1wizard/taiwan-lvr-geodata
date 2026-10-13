@@ -16,7 +16,7 @@ from lvr_pipeline.transactions.inventory import inventory_json, write_raw_manife
 from lvr_pipeline.transactions.normalize import normalize  # noqa: E402
 from lvr_pipeline.transactions.read import ingest  # noqa: E402
 from test_p1_conversion import CODE, add_members, dataset, make_source, rules, verified_source  # noqa: E402
-from test_p2_offline import source  # noqa: E402
+from test_p2_offline import source, use_synthetic_admin_towns  # noqa: E402
 
 HEADER = ["編號", "棟別", "note"]
 ENGLISH = ["Serial", "Kind", "Remark"]
@@ -229,6 +229,7 @@ def test_run_full_report_has_detail_link_and_detail_rows(tmp_path):
     manifest = tmp_path / "raw_manifest.json"
     manifest.write_text(inventory_json(verified_source(write_raw_manifest(raw, manifest))) + "\n", encoding="utf-8")
     address_dir, descriptor = source(tmp_path)
+    use_synthetic_admin_towns(tmp_path, address_dir, descriptor)
     descriptor_path = tmp_path / "address_source.json"
     descriptor_path.write_text(json.dumps(verified_source(descriptor), ensure_ascii=False), encoding="utf-8")
     result = run_full(run_id="detail1", cutoff=202610, address_dir=address_dir, runs_root=tmp_path / "runs",

@@ -121,7 +121,7 @@ def test_converted_snapshot_records_input_normalization_version(current_snapshot
 
 
 def _run_bindings(**changes):
-    bindings = {"code_commit": CODE, "raw_manifest_sha256": "a" * 64, "address_source_sha256": "b" * 64,
+    bindings = {"code_commit": CODE, "raw_manifest_sha256": "a" * 64, "address_source_sha256": "b" * 64, "admin_towns_sha256": "f" * 64,
                 "rules_sha256": "c" * 64, "contract_version": "1.0", "key_version": "building_key/v2.5",
                 "cutoff_yyyymm": "202610", "scope": "full", "rebuild_epoch": REBUILD_EPOCH}
     bindings.update(changes)
