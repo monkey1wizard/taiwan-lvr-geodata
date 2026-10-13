@@ -16,7 +16,7 @@ Python 版本、安裝及測試命令見[README 安裝與測試](README.md#安�
 
 可以維持無關的 CLI 使用者入口，但不得因此保留舊門牌鍵介面或讀取舊衍生結果。2026-10-12 決定門牌鍵唯一介面為 `building_key`，採現行 v2 規則並在 metadata 記錄規則版本。2026-10-12 已完成名稱遷移，舊演算法、`building_key_v2` 與 `legacy_building_key` 已自程式、schema 與測試移除。不得重新加入 alias、wrapper、雙軌或舊結果 fallback。`validated_roc_to_tx_yyyymm` 保留。所有地址規則需以來源規格及獨立合成案例建立預期，不能只沿用既有函式或測試結果作正確性證明。
 
-不得把既有 normalized／converted 資料、地址池／index／state、aliases、TGOS 採用結果、review 裁定、衍生 cache、快照、維護包、公開輸出或統計帶入新 run。原始來源也須重新核對，不能因檔案存在或舊驗收通過而自動採用。新 run 的來源清冊須獨立重建，快照只在本次 run 內經新規則驗證後使用。舊 TGOS 帳本隨舊結果一併歸檔，不轉接、不擋重送；新重建以新帳本從零開始，離線定位不到的門牌全部重新送查。歸檔的舊帳本與舊回傳原檔保留不刪。秘密、raw ZIP、執行／階段快照與第三方地址來源列不得進 Git。檢查、驗證、診斷、審查輸出及需保留的失敗產物放在 `data/tmp/<purpose>/`。`data/output/` 是公開 Git 位置。`.gitignore` 已於 R07-9 改為忽略 `data/*` 但不忽略 `data/output/`，所以 `data/output/` 下的檔案會被 Git 追蹤；只有經發布流程核准的公開輸出應放進該目錄。
+不得把既有 normalized／converted 資料、地址池／index／state、aliases、TGOS 採用結果、review 裁定、衍生 cache、快照、維護包、公開輸出或統計帶入新 run。原始來源也須重新核對，不能因檔案存在或舊驗收通過而自動採用。新 run 的來源清冊須獨立重建，快照只在本次 run 內經新規則驗證後使用。舊 TGOS 帳本與舊回傳在本機已不存在，不轉接、不擋重送；新重建以新帳本從零開始，離線定位不到的門牌全部重新送查。秘密、raw ZIP、執行／階段快照與第三方地址來源列不得進 Git。檢查、驗證、診斷、審查輸出及需保留的失敗產物放在 `data/tmp/<purpose>/`。`data/output/` 是公開 Git 位置。`.gitignore` 已於 R07-9 改為忽略 `data/*` 但不忽略 `data/output/`，所以 `data/output/` 下的檔案會被 Git 追蹤；只有經發布流程核准的公開輸出應放進該目錄。
 
 ## 文件位置與同步
 
