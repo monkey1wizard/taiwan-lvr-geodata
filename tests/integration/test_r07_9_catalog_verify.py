@@ -89,10 +89,11 @@ def test_catalog_content_and_hashes(base):
     catalog = json.loads((base["root"] / "public" / "catalog.json").read_text(encoding="utf-8"))
     assert catalog == base["catalog"]
     assert set(catalog) == {"currency", "contract_version", "door_rule_version", "cutoff_yyyymm", "source_zip_sha256",
-                            "files", "total_rows", "admin_towns_sha256"}
+                            "files", "total_rows", "admin_towns_sha256", "char_fixes_sha256"}
     assert catalog["currency"] == "TWD" and catalog["contract_version"] == "2026-10-12-22col"
     assert catalog["door_rule_version"] == NORMALIZATION_VERSION and catalog["cutoff_yyyymm"] == CUTOFF
     assert catalog["admin_towns_sha256"] == admin_towns_sha256()  # R07-6b
+    assert catalog["char_fixes_sha256"] == base["report"]["char_fixes_sha256"] and len(catalog["char_fixes_sha256"]) == 64  # R07-6d
     assert catalog["source_zip_sha256"] == base["report"]["source_sha256"] and catalog["source_zip_sha256"]
     assert catalog["total_rows"] == 21
     text = (base["root"] / "public" / "catalog.json").read_text(encoding="utf-8")
@@ -162,6 +163,15 @@ def test_catalog_made_with_another_town_table_is_a_failure(out):
     catalog["admin_towns_sha256"] = "0" * 64
     path.write_text(json.dumps(catalog, ensure_ascii=False, indent=2, sort_keys=True) + chr(10), encoding="utf-8")
     assert any("admin_towns_sha256" in json.dumps(f, ensure_ascii=False) for f in failures_of(public, release))
+
+
+def test_catalog_without_a_char_fixes_hash_is_a_failure(out):
+    public, release = out
+    path = public / "catalog.json"
+    catalog = json.loads(path.read_text(encoding="utf-8"))
+    catalog["char_fixes_sha256"] = "not a hash"
+    path.write_text(json.dumps(catalog, ensure_ascii=False, indent=2, sort_keys=True) + chr(10), encoding="utf-8")
+    assert any("char_fixes_sha256" in json.dumps(f, ensure_ascii=False) for f in failures_of(public, release))
 
 
 def test_changed_csv_byte_is_found_by_the_hash(out):

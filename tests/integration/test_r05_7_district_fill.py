@@ -22,7 +22,7 @@ from lvr_pipeline.results.reconcile import DOOR_CROSS_CHECK, load_p2, resolve_of
 from lvr_pipeline.results.review import R05_7_CODES, build_review
 from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.storage.runs import sha256_file
-from test_p1_conversion import pipeline
+from test_p1_conversion import pipeline, write_char_fixes
 
 P1, P2, P3, P4, P5 = (120.97, 24.80), (120.98, 24.81), (120.99, 24.82), (121.51, 25.03), (120.93, 24.78)
 TOWNS = {
@@ -90,6 +90,7 @@ def address_source(tmp_path):
             writer = csv.writer(stream)
             writer.writerow(["FULL_ADDR", "COUNTY", "TOWN", "ROAD", "X", "Y"])
             writer.writerows(values)
+    char_fixes = write_char_fixes(root)
     _git(root, "init")
     _git(root, "add", ".")
     _git(root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
@@ -99,6 +100,7 @@ def address_source(tmp_path):
         "commit": commit,
         "administrative_files": [{"path": p.name, "sha256": sha256_file(p)} for p in [area, custom]],
         "roads": [{"path": "roads/" + name, "sha256": sha256_file(root / "roads" / name)} for name in sorted(files)],
+        "char_fixes": char_fixes,
     }
 
 

@@ -10,7 +10,7 @@ from lvr_pipeline.addresses.admin import build_admin_towns, load_admin_towns, re
 from lvr_pipeline.addresses.identity import building_key
 from lvr_pipeline.pipeline import run_full
 from lvr_pipeline.transactions.normalize import normalize
-from tests.integration.test_p1_conversion import CODE, ingest, make_source, rules
+from tests.integration.test_p1_conversion import CODE, ingest, make_source, no_char_fixes, rules
 
 FILES = {
     "area_1984.csv": (
@@ -93,11 +93,11 @@ def test_different_admin_table_prevents_snapshot_reuse(tmp_path, monkeypatch):
     raw, manifest = make_source(tmp_path)
     work = tmp_path / "work"
     ingested = ingest(raw, manifest, ["115q1"], work, batch_rows=2, code_commit=CODE)
-    first = normalize(ingested, work, cutoff=202610, rules_path=rules(tmp_path), batch_rows=2, code_commit=CODE)
-    again = normalize(ingested, work, cutoff=202610, rules_path=rules(tmp_path), batch_rows=2, code_commit=CODE)
+    first = normalize(ingested, work, cutoff=202610, rules_path=rules(tmp_path), char_fixes=no_char_fixes(), batch_rows=2, code_commit=CODE)
+    again = normalize(ingested, work, cutoff=202610, rules_path=rules(tmp_path), char_fixes=no_char_fixes(), batch_rows=2, code_commit=CODE)
     assert again == first  # same table: the snapshot is reused
     monkeypatch.setattr(admin, "admin_towns_sha256", lambda: "0" * 64)
-    other = normalize(ingested, work, cutoff=202610, rules_path=rules(tmp_path), batch_rows=2, code_commit=CODE)
+    other = normalize(ingested, work, cutoff=202610, rules_path=rules(tmp_path), char_fixes=no_char_fixes(), batch_rows=2, code_commit=CODE)
     assert other != first
     bindings = lambda p: json.loads((p / "manifest.json").read_text(encoding="utf-8"))["bindings"]
     assert bindings(other)["config_sha256"] != bindings(first)["config_sha256"]

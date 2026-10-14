@@ -69,6 +69,7 @@ def pin_address_source(root: Path, output: Path) -> dict:
         "rights_note": "Each upstream dataset requires its own redistribution evidence before public coordinate release.",
         "administrative_files": [describe(name) for name in ADMINISTRATIVE],
         "road_index": describe("road.csv"),
+        "char_fixes": describe("char_fixes.csv"),
         "source_metadata": [describe(name) for name in METADATA if (root / name).is_file()],
         "rebuild_epoch": REBUILD_EPOCH,
         "scanned_at": scanned_at(),

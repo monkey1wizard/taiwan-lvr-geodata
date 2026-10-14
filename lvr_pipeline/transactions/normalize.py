@@ -13,6 +13,7 @@ from ..addresses.identity import building_key
 from ..addresses.parse import arab_to_cjk, is_garbled, norm
 from ..contracts import component_id
 from ..addresses.characters import fix_garbled, load_garbled
+from ..addresses.address_fixes import DIAGNOSTIC_CODE, AddressCharFixes, apply_address_char_fixes
 from .read import DETAIL_CATEGORIES, DETAIL_MEMBER, FIELD_ALIASES
 from ..storage.parquet import BatchWriter, rows
 from ..storage.runs import Stage, bindings, canonical_json, load_snapshot
@@ -66,7 +67,8 @@ def explicit_components(address: str) -> tuple[list[str], bool]:
     return result, True
 
 
-def normalize_record(raw: dict, cutoff: int, char_map: dict, token_patterns: list) -> dict[str, list[dict]]:
+def normalize_record(raw: dict, cutoff: int, char_map: dict, token_patterns: list,
+                     char_fixes: AddressCharFixes) -> dict[str, list[dict]]:
     output = {name: [] for name in DATASETS}
     raw_id = raw["raw_record_id"]
     source = f"{raw['src_batch']}/{raw['member_path']}:{raw['source_row_number']}"
@@ -93,6 +95,11 @@ def normalize_record(raw: dict, cutoff: int, char_map: dict, token_patterns: lis
     if target == "車位":
         return exclude("parking")
     corrected = normalize_address(fix_garbled(address, char_map, token_patterns))
+    corrected, applied_fixes = apply_address_char_fixes(corrected, char_fixes)
+    for item in applied_fixes:
+        detail = {key: item[key] for key in ["county", "town_code", "field", "source_value", "fixed_value",
+                                             "evidence", "before", "after"]}
+        diagnostic(DIAGNOSTIC_CODE, json.dumps(detail, ensure_ascii=False, sort_keys=True))
     if "號" not in corrected:
         return exclude("no_doorplate")
     aliases = FIELD_ALIASES[raw["category"]]
@@ -131,6 +138,8 @@ def normalize_record(raw: dict, cutoff: int, char_map: dict, token_patterns: lis
         diagnostic("unresolved_garbled_address", corrected)
     if not confirmed:
         diagnostic("address_review", corrected)
+    # address_char_fix only records evidence; it does not ask for review.
+    review = any(item["code"] != DIAGNOSTIC_CODE for item in output["diagnostic"])
     for ordinal, member_address in enumerate(addresses):
         output["address-component"].append({"raw_record_id": raw_id, "component_id": component_id(raw_id, ordinal),
             "ordinal": ordinal, "normalized_address": member_address, "key_version": "v2",
@@ -141,9 +150,9 @@ def normalize_record(raw: dict, cutoff: int, char_map: dict, token_patterns: lis
         "input_sha256": raw["input_sha256"], "member_path": raw["member_path"], "source_row_number": raw["source_row_number"],
         "record_grain": "source_observation", "transaction_key": None, "raw_address": address, "tx_date_raw": date_raw,
         "tx_yyyymm": month, "run_cutoff_yyyymm": cutoff, "amount_minor": amount, "area_m2_decimal": area,
-        "props_json": canonical_json(fields), "parse_status": "review" if output["diagnostic"] else "retained",
+        "props_json": canonical_json(fields), "parse_status": "review" if review else "retained",
         "currency": "TWD", "amount_scale": 100})
-    disposition.update(outcome="retained", reason="review" if output["diagnostic"] else "normalized")
+    disposition.update(outcome="retained", reason="review" if review else "normalized")
     return output
 
 
@@ -261,7 +270,8 @@ def detail_link_report(group_totals: dict, counters: dict) -> list[dict]:
     return result
 
 
-def normalize(ingest_snapshot: Path, work_dir: Path, *, cutoff: int, rules_path: Path, batch_rows=1024, run_id=None, code_commit=None) -> Path:
+def normalize(ingest_snapshot: Path, work_dir: Path, *, cutoff: int, rules_path: Path, char_fixes: AddressCharFixes,
+              batch_rows=1024, run_id=None, code_commit=None) -> Path:
     # Validate cutoff even for known-empty source scopes.
     validated_roc_to_tx_yyyymm("0010101", run_cutoff_yyyymm=cutoff)
     rules_path = Path(rules_path)
@@ -271,7 +281,9 @@ def normalize(ingest_snapshot: Path, work_dir: Path, *, cutoff: int, rules_path:
     rules_hash = sha256_file(rules_path)
     binding = bindings("normalize", {"cutoff": cutoff, "batch_rows": batch_rows,
                                 "normalization_version": identity.NORMALIZATION_VERSION,
-                                "admin_towns_sha256": admin.admin_towns_sha256()},
+                                "admin_towns_sha256": admin.admin_towns_sha256(),
+                                "char_fixes_sha256": char_fixes.sha256,
+                                "char_fix_towns_sha256": char_fixes.towns_sha256},
                        [sha256_file(Path(ingest_snapshot) / "manifest.json"), rules_hash], code_commit)
     stage = Stage(Path(work_dir) / "normalized", "normalize", binding, run_id)
     if stage.reused:
@@ -279,6 +291,7 @@ def normalize(ingest_snapshot: Path, work_dir: Path, *, cutoff: int, rules_path:
     char_map, patterns = load_garbled(str(rules_path))
     report = {"batches": previous["batches"], "known_empty_batches": previous["known_empty_batches"],
               "input_snapshot_sha256": binding["input_sha256"][0], "garbled_rules_sha256": rules_hash,
+              "char_fixes_sha256": char_fixes.sha256, "char_fixes_counts": dict(char_fixes.counts),
               "source_sha256": previous["source_sha256"], "input_rows": previous["input_rows"],
               "cutoff": cutoff, "batch_rows": batch_rows, "max_buffer_rows": 0, "max_buffer_bytes": 0,
               "retained_rows": 0, "excluded_rows": 0, "failed_rows": 0, "diagnostic_rows": 0,
@@ -311,7 +324,7 @@ def normalize(ingest_snapshot: Path, work_dir: Path, *, cutoff: int, rules_path:
         writers = {name: BatchWriter(stage.build / DATASETS[name] / partition, name, batch_rows) for name in DATASETS}
         try:
             for raw in rows(Path(ingest_snapshot) / item["path"], batch_rows):
-                output = normalize_record(raw, cutoff, char_map, patterns)
+                output = normalize_record(raw, cutoff, char_map, patterns, char_fixes)
                 outcome = output["disposition"][0]["outcome"]
                 report[outcome + "_rows"] += 1
                 disposition = output["disposition"][0]

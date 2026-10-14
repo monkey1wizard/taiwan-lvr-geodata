@@ -562,6 +562,8 @@ def verify_output(public_root, release_root) -> dict:
         (catalog.get("contract_version") == CONTRACT_VERSION, f"contract_version is {catalog.get('contract_version')!r}"),
         (catalog.get("door_rule_version") == NORMALIZATION_VERSION, f"door_rule_version is {catalog.get('door_rule_version')!r}"),
         (catalog.get("admin_towns_sha256") == admin_towns_sha256(), f"admin_towns_sha256 is {catalog.get('admin_towns_sha256')!r}"),
+        (isinstance(catalog.get("char_fixes_sha256"), str) and bool(SHA256.fullmatch(catalog["char_fixes_sha256"])),
+         f"char_fixes_sha256 is {catalog.get('char_fixes_sha256')!r}, expected a SHA-256"),
         (cutoff_ok, f"cutoff_yyyymm is {catalog.get('cutoff_yyyymm')!r}, expected a YYYYMM string"),
         (
             isinstance(sources, dict) and bool(sources) and all(

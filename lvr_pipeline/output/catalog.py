@@ -57,6 +57,9 @@ def write_catalog(public_root, release_root, summary, *, converted_report, cutof
     sources = converted_report.get("source_sha256") if isinstance(converted_report, dict) else None
     if not isinstance(sources, dict) or not sources:
         raise ValueError("The converted report has no source_sha256, so the catalog cannot record the source ZIP hashes")
+    char_fixes = converted_report.get("char_fixes_sha256")
+    if not isinstance(char_fixes, str) or not re.fullmatch(r"[0-9a-f]{64}", char_fixes):
+        raise ValueError("The converted report has no char_fixes_sha256, so the catalog cannot record the address fix table")
     entries = sorted(
         (_entry(relative, info, public_root, release_root) for relative, info in summary["files"].items()),
         key=lambda e: e["path"],
@@ -66,6 +69,7 @@ def write_catalog(public_root, release_root, summary, *, converted_report, cutof
         "contract_version": CONTRACT_VERSION,
         "door_rule_version": NORMALIZATION_VERSION,
         "admin_towns_sha256": admin_towns_sha256(),
+        "char_fixes_sha256": char_fixes,
         "cutoff_yyyymm": cutoff_text(cutoff_yyyymm),
         "source_zip_sha256": {batch: sources[batch] for batch in sorted(sources)},
         "files": entries,

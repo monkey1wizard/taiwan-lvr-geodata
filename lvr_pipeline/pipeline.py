@@ -12,6 +12,7 @@ from pathlib import Path
 from .addresses.pool import build_pool
 from .offline.index import audit_address_source, pin_address_source, build_index
 from .addresses.admin import admin_towns_failures, admin_towns_sha256, write_admin_towns
+from .addresses.address_fixes import load_address_char_fixes
 from .addresses.identity import NORMALIZATION_VERSION
 from .contracts import SCHEMA_VERSION
 from .results.reconcile import DEFAULT_CONFIG, load_coordinate_tolerance, load_suspended_counties, resolve_offline, load_p2
@@ -53,6 +54,13 @@ def _read(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+def _char_fixes(args):
+    """The address character fixes of the pinned address source named by --address-dir and --address-source."""
+    if args.address_dir is None:
+        raise ValueError("--address-dir is required to normalize addresses")
+    return load_address_char_fixes(args.address_dir, _read(args.address_source))
+
+
 def _run_local_stage(args):
     start = time.perf_counter()
     if args.command == "verify-converted":
@@ -64,7 +72,7 @@ def _run_local_stage(args):
         path = ingest(args.raw_dir, manifest, args.batch, args.work_dir, batch_rows=args.batch_rows, run_id=args.run_id)
     elif args.command == "normalize":
         path = normalize(args.input, args.work_dir, cutoff=args.cutoff, rules_path=args.garbled_rules,
-                         batch_rows=args.batch_rows, run_id=args.run_id)
+                         char_fixes=_char_fixes(args), batch_rows=args.batch_rows, run_id=args.run_id)
     else:
         normalized = args.input
         if normalized is not None:
@@ -77,7 +85,8 @@ def _run_local_stage(args):
             manifest = _read(args.manifest)
             raw = ingest(args.raw_dir, manifest, args.batch, args.work_dir, batch_rows=args.batch_rows,
                          run_id=args.run_id + "-ingest" if args.run_id else None)
-            normalized = normalize(raw, args.work_dir, cutoff=args.cutoff, rules_path=args.garbled_rules, batch_rows=args.batch_rows,
+            normalized = normalize(raw, args.work_dir, cutoff=args.cutoff, rules_path=args.garbled_rules,
+                                   char_fixes=_char_fixes(args), batch_rows=args.batch_rows,
                                    run_id=args.run_id + "-normalize" if args.run_id else None)
         path = export_converted(normalized, args.work_dir, run_id=args.run_id)
     print(json.dumps({"snapshot": str(path), "internal_only": True,
@@ -317,12 +326,14 @@ def quarantine_residue(run_root: Path) -> list[dict]:
     return moved
 
 
-def run_bindings(manifest_path: Path, address_source: Path, rules_path: Path, config: Path, cutoff: int) -> dict:
-    """The eight RunStore bindings of a full run; any change needs a new run id."""
+def run_bindings(manifest_path: Path, address_source: Path, rules_path: Path, config: Path, cutoff: int,
+                 char_fixes_sha256: str) -> dict:
+    """The RunStore bindings of a full run; any change needs a new run id."""
     commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
     return {"code_commit": commit, "raw_manifest_sha256": sha256_file(Path(manifest_path)),
             "address_source_sha256": sha256_file(Path(address_source)),
             "admin_towns_sha256": admin_towns_sha256(),
+            "char_fixes_sha256": char_fixes_sha256,
             # The pipeline config holds the 30 m tolerance and the suspended counties.
             "rules_sha256": digest({"character_fixes": sha256_file(Path(rules_path)),
                                     "pipeline_config": sha256_file(Path(config))}),
@@ -398,10 +409,15 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
     # (Judged only for an address source of this rebuild; an older one is already refused above.)
     if not source_failures:
         source_failures += [{"step": "admin-towns", **failure} for failure in admin_towns_failures(_read(address_source))]
+        # R07-6d: the pinned source must name char_fixes.csv, or addresses would be normalized without it.
+        if not isinstance(_read(address_source).get("char_fixes"), dict):
+            source_failures.append({"step": "address-source", "code": "address_source_missing_char_fixes",
+                                    "detail": "the address source has no char_fixes entry; run pin-address-source"})
     if source_failures:
         return {"run_id": run_id, "completed": False, "started_at": datetime.now(timezone.utc).isoformat(),
                 "quarantined": [], "steps": [], "failures": source_failures}
-    bindings_ = run_bindings(manifest_path, address_source, rules_path, config, cutoff)
+    char_fixes = load_address_char_fixes(address_dir, _read(address_source))
+    bindings_ = run_bindings(manifest_path, address_source, rules_path, config, cutoff, char_fixes.sha256)
     headroom_start = disk_headroom(DEFAULT_RUNS_ROOT if runs_root is None else runs_root)
     if not headroom_start["ok"]:  # stop before anything is written: no run directory, lock or attempts file
         return {"run_id": run_id, "completed": False, "started_at": datetime.now(timezone.utc).isoformat(),
@@ -552,7 +568,7 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
             index = stage("offline-index", lambda: build_index(address_dir, descriptor, work))
             ingested = stage("ingested", lambda: ingest(raw_dir, manifest, batches, work, batch_rows=batch_rows))
             normalized = stage("normalized", lambda: normalize(ingested, work, cutoff=cutoff, rules_path=rules_path,
-                                                               batch_rows=batch_rows))
+                                                               char_fixes=char_fixes, batch_rows=batch_rows))
             converted = stage("converted", lambda: export_converted(normalized, work))
             current["step"] = "coverage"
             _, converted_report = load_snapshot(converted, "converted")

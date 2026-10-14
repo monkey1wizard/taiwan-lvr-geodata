@@ -171,6 +171,9 @@ def build_parser():
             p.add_argument("--batch-rows", type=int, default=1024)
             p.add_argument("--run-id")
         if command in {"normalize", "export-converted"}:
+            # R07-6d: addresses are repaired with the pinned address project's char_fixes.csv.
+            p.add_argument("--address-dir", type=Path, required=command == "normalize")
+            p.add_argument("--address-source", type=Path, default=Path("config/sources/address_source.json"))
             p.add_argument("--cutoff", type=int, required=True)
             p.add_argument("--garbled-rules", type=Path, default=Path("config/rules/character-fixes.csv"))
     return parser

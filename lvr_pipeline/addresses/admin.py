@@ -107,6 +107,42 @@ def build_admin_towns(address_dir: Path, descriptor: dict) -> dict:
     }
 
 
+def county_name(county_code: str) -> str:
+    """The current county name written for a county code (臺 spelling)."""
+    return _CURRENT_COUNTY[county_code]
+
+
+def town_names_by_code(address_dir: Path, descriptor: dict) -> dict[tuple[str, str], frozenset[str]]:
+    """(county code, 7-digit town code) to every town name that code has had under that county (R07-6d).
+
+    Read from the descriptor's administrative files after checking their sha256. The county is the one the
+    town code belongs to; a written county (current or old) is cut off the name. 1000710 is both 員林鎮 and 員林市.
+    """
+    address_dir = Path(address_dir)
+    names: dict[tuple[str, str], set[str]] = {}
+    for item in descriptor["administrative_files"]:
+        path = address_dir / item["path"]
+        if _sha256(path) != item["sha256"]:
+            raise ValueError(f"Administrative source hash mismatch: {item['path']}")
+        for name, code in _rows(path):
+            county_code = code[:2] if code[:2] in _CURRENT_COUNTY else code[:5]
+            county = _CURRENT_COUNTY.get(county_code)
+            if county is None:
+                continue
+            old = next((o for o in OLD_COUNTY_PAIRS if name.startswith(o)), None)
+            if old is not None:
+                town = name[len(old):]
+            elif name.startswith(county):
+                town = name[len(county):]
+            elif any(name.startswith(other) for other in _COUNTY_CODE):
+                continue  # written with a different county than the dgbas_id says
+            else:
+                town = name
+            if _is_town(town):
+                names.setdefault((county_code, code), set()).add(town)
+    return {key: frozenset(towns) for key, towns in names.items()}
+
+
 def write_admin_towns(address_dir: Path, descriptor: dict, output: Path) -> dict:
     document = build_admin_towns(address_dir, descriptor)
     output = Path(output)

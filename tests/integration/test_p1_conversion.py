@@ -14,6 +14,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from lvr_pipeline.addresses.address_fixes import COUNT_KEYS, AddressCharFixes
 from lvr_pipeline.converted import export_converted
 from lvr_pipeline.contracts import component_id
 from lvr_pipeline.transactions.read import ingest
@@ -25,6 +26,21 @@ from lvr_pipeline.storage.runs import sha256_file
 from lvr_pipeline.transactions.inventory import describe_zip
 
 CODE="1"*40
+
+
+def write_char_fixes(root, rows=()):
+    """Write root/char_fixes.csv (header only by default) and return its address-source descriptor entry (R07-6d)."""
+    path=Path(root)/"char_fixes.csv"
+    with path.open("w",encoding="utf-8",newline="") as stream:
+        writer=csv.writer(stream)
+        writer.writerow(["county","town","field","source_value","fixed_value","evidence","checked_on"])
+        writer.writerows(rows)
+    return {"path":path.name,"size_bytes":path.stat().st_size,"sha256":sha256_file(path)}
+
+
+def no_char_fixes():
+    """Loaded fixes without any rule, for tests that are not about address character fixes."""
+    return AddressCharFixes((),dict.fromkeys(COUNT_KEYS,0),"c"*64,"d"*64)
 
 
 def verified_source(document):
@@ -95,7 +111,7 @@ def pipeline(tmp_path,records=None,**kwargs):
     raw,manifest=make_source(tmp_path,records,**kwargs)
     work=tmp_path/"work"
     ingested=ingest(raw,manifest,["115q1"],work,batch_rows=2,code_commit=CODE)
-    normalized=normalize(ingested,work,cutoff=202610,rules_path=rules(tmp_path),batch_rows=2,code_commit=CODE)
+    normalized=normalize(ingested,work,cutoff=202610,rules_path=rules(tmp_path), char_fixes=no_char_fixes(),batch_rows=2,code_commit=CODE)
     converted=export_converted(normalized,work,code_commit=CODE)
     return ingested,normalized,converted
 
@@ -236,7 +252,7 @@ def test_known_empty_batch_is_a_zero_scope_not_missing_input(tmp_path):
     manifest={"inputs":[describe_zip(path)]}
     work=tmp_path/"work"
     ingested=ingest(raw,manifest,["101q1"],work,code_commit=CODE)
-    normalized=normalize(ingested,work,cutoff=202610,rules_path=rules(tmp_path),code_commit=CODE)
+    normalized=normalize(ingested,work,cutoff=202610,rules_path=rules(tmp_path), char_fixes=no_char_fixes(),code_commit=CODE)
     converted=export_converted(normalized,work,code_commit=CODE)
     report=load_snapshot(converted,"converted")[1]
     assert report["known_empty_batches"]==["101q1"] and report["input_rows"]==0
@@ -307,7 +323,16 @@ def test_cli_runs_and_verifies_only_internal_output(tmp_path):
     raw,manifest=make_source(tmp_path)
     manifest_path=tmp_path/"manifest.json"
     manifest_path.write_text(json.dumps(manifest,ensure_ascii=False),encoding="utf-8")
-    command=[sys.executable,"-m","lvr_pipeline","export-converted","--manifest",str(manifest_path),"--raw-dir",str(raw),"--batch","115q1","--cutoff","202610","--garbled-rules",str(rules(tmp_path)),"--work-dir",str(tmp_path/"work"),"--batch-rows","2"]
+    address_dir=tmp_path/"address"
+    address_dir.mkdir()
+    area=address_dir/"area_2014.csv"
+    area.write_text("name,dgbas_id"+chr(10)+"臺北市中正區,6300100"+chr(10),encoding="utf-8")
+    descriptor={"administrative_files":[{"path":area.name,"sha256":sha256_file(area)}],"char_fixes":write_char_fixes(address_dir)}
+    descriptor_path=tmp_path/"address_source.json"
+    descriptor_path.write_text(json.dumps(descriptor),encoding="utf-8")
+    command=[sys.executable,"-m","lvr_pipeline","export-converted","--manifest",str(manifest_path),"--raw-dir",str(raw),"--batch","115q1","--cutoff","202610","--garbled-rules",str(rules(tmp_path)),"--work-dir",str(tmp_path/"work"),"--batch-rows","2","--address-dir",str(address_dir),"--address-source",str(descriptor_path)]
+    refused=subprocess.run(command[:-4],capture_output=True,text=True)  # R07-6d: normalizing needs the address project
+    assert refused.returncode==1 and "--address-dir is required" in json.loads(refused.stdout)["error"]
     completed=subprocess.run(command,capture_output=True,text=True,check=True)
     payload=json.loads(completed.stdout)
     assert payload["internal_only"] and payload["process_peak_rss_bytes"]>0
@@ -347,7 +372,7 @@ def test_member_destination_report_balances_across_batches_and_line_mode(tmp_pat
         (raw/source.name).write_bytes(source.read_bytes())
     work=tmp_path/"work"
     ingested=ingest(raw,{"inputs":[e1,e2]},["115q1","115q2"],work,code_commit=CODE)
-    normalized=normalize(ingested,work,cutoff=202610,rules_path=rules(tmp_path),code_commit=CODE)
+    normalized=normalize(ingested,work,cutoff=202610,rules_path=rules(tmp_path), char_fixes=no_char_fixes(),code_commit=CODE)
     report=load_snapshot(normalized,"normalize")[1]
     members=report["member_dispositions"]
     assert len(members)==4

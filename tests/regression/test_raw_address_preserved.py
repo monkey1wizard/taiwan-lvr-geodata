@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "integration"))
 
 from lvr_pipeline.transactions.read import ingest  # noqa: E402
 from lvr_pipeline.transactions.normalize import normalize  # noqa: E402
-from test_p1_conversion import CODE, dataset, make_source  # noqa: E402
+from test_p1_conversion import CODE, dataset, make_source, no_char_fixes  # noqa: E402
 
 RULES = Path(__file__).resolve().parents[2] / "config" / "rules" / "character-fixes.csv"
 RAW = "高雄市榔七街10號"
@@ -22,7 +22,7 @@ def test_normalize_keeps_original_address_and_stores_corrected_text(tmp_path):
     raw, manifest = make_source(tmp_path, [{"address": RAW}, {"address": RAW_VARIANT}], categories=("sales",))
     work = tmp_path / "work"
     ingested = ingest(raw, manifest, ["115q1"], work, code_commit=CODE)
-    normalized = normalize(ingested, work, cutoff=202610, rules_path=RULES, code_commit=CODE)
+    normalized = normalize(ingested, work, cutoff=202610, rules_path=RULES, char_fixes=no_char_fixes(), code_commit=CODE)
     observations = dataset(normalized, "observation")
     components = dataset(normalized, "address-component")
     assert [o["raw_address"] for o in observations] == [RAW, RAW_VARIANT]

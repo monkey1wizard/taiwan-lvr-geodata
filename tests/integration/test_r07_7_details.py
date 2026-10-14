@@ -15,7 +15,7 @@ from lvr_pipeline.storage.runs import load_snapshot  # noqa: E402
 from lvr_pipeline.transactions.inventory import inventory_json, write_raw_manifest  # noqa: E402
 from lvr_pipeline.transactions.normalize import normalize  # noqa: E402
 from lvr_pipeline.transactions.read import ingest  # noqa: E402
-from test_p1_conversion import CODE, add_members, dataset, make_source, rules, verified_source  # noqa: E402
+from test_p1_conversion import CODE, add_members, dataset, make_source, no_char_fixes, rules, verified_source  # noqa: E402
 from test_p2_offline import source, use_synthetic_admin_towns  # noqa: E402
 
 HEADER = ["編號", "棟別", "note"]
@@ -32,7 +32,7 @@ def detail(rows, header=HEADER, english=ENGLISH):
 def stages(tmp_path, raw, manifest, batches=("115q1",)):
     work = tmp_path / "work"
     ingested = ingest(raw, manifest, list(batches), work, batch_rows=2, code_commit=CODE)
-    normalized = normalize(ingested, work, cutoff=202610, rules_path=rules(tmp_path), batch_rows=2, code_commit=CODE)
+    normalized = normalize(ingested, work, cutoff=202610, rules_path=rules(tmp_path), char_fixes=no_char_fixes(), batch_rows=2, code_commit=CODE)
     return ingested, normalized, export_converted(normalized, work, code_commit=CODE)
 
 

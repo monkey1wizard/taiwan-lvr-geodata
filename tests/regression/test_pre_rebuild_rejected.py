@@ -23,7 +23,7 @@ from lvr_pipeline.storage.runs import (
 )
 from lvr_pipeline.transactions.inventory import build_raw_manifest
 from lvr_pipeline.transactions.normalize import normalize
-from tests.integration.test_p1_conversion import CODE, ingest, make_source, rules
+from tests.integration.test_p1_conversion import CODE, ingest, make_source, no_char_fixes, rules
 
 
 def _break_key_rule(monkeypatch):
@@ -38,7 +38,7 @@ def current_snapshot(tmp_path):
     raw, manifest = make_source(tmp_path)
     work = tmp_path / "work"
     ingested = ingest(raw, manifest, ["115q1"], work, batch_rows=2, code_commit=CODE)
-    normalized = normalize(ingested, work, cutoff=202610, rules_path=rules(tmp_path), batch_rows=2, code_commit=CODE)
+    normalized = normalize(ingested, work, cutoff=202610, rules_path=rules(tmp_path), char_fixes=no_char_fixes(), batch_rows=2, code_commit=CODE)
     return work, normalized
 
 
@@ -48,7 +48,7 @@ def old_rule_snapshot(tmp_path, monkeypatch):
     work = tmp_path / "work"
     ingested = ingest(raw, manifest, ["115q1"], work, batch_rows=2, code_commit=CODE)
     monkeypatch.setattr(identity, "NORMALIZATION_VERSION", "v2.0-old")
-    old = normalize(ingested, work, cutoff=202610, rules_path=rules(tmp_path), batch_rows=2, code_commit=CODE)
+    old = normalize(ingested, work, cutoff=202610, rules_path=rules(tmp_path), char_fixes=no_char_fixes(), batch_rows=2, code_commit=CODE)
     monkeypatch.undo()
     return work, old
 
@@ -121,7 +121,7 @@ def test_converted_snapshot_records_input_normalization_version(current_snapshot
 
 
 def _run_bindings(**changes):
-    bindings = {"code_commit": CODE, "raw_manifest_sha256": "a" * 64, "address_source_sha256": "b" * 64, "admin_towns_sha256": "f" * 64,
+    bindings = {"code_commit": CODE, "raw_manifest_sha256": "a" * 64, "address_source_sha256": "b" * 64, "admin_towns_sha256": "f" * 64, "char_fixes_sha256": "e" * 64,
                 "rules_sha256": "c" * 64, "contract_version": "1.0", "key_version": "building_key/v2.5",
                 "cutoff_yyyymm": "202610", "scope": "full", "rebuild_epoch": REBUILD_EPOCH}
     bindings.update(changes)

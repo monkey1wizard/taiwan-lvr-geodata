@@ -582,19 +582,19 @@
   }
  ],
  "schema_version": "1.0",
- "source_commit": "cb2ea92a78e34cfacbc6ed3686e45c4618c30021",
+ "source_commit": "8486d2e9ea12bdf245cf00d3691409459bdf4714",
  "source_files": [
   {
    "path": "area_1984.csv",
-   "sha256": "2fa7fbbf8fc1d7b5363f02ab8fb5ee1faa18b92375bed3128168a5156da19a02"
+   "sha256": "72aa662b86ffe86de9f67100bfe7739dea3244a0e771e8ee8490042d88a135bd"
   },
   {
    "path": "area_2010.csv",
-   "sha256": "a0a0f6c4a798b4f6ed075cdbd6845f70fc5bf16358d698eb761220911a5c71f6"
+   "sha256": "ea90896866034d313808dcb7a3badf18cdfe641cf65f247e106b4be363287785"
   },
   {
    "path": "area_2014.csv",
-   "sha256": "23a6767bdb97a64ceb0f6009dca2801208babbf746895e8e1b3d60928ba0ef05"
+   "sha256": "3764fe9031d231395d575a8dae8c5d1a1e088f7c210bd07b4df6b0a16f9cefed"
   },
   {
    "path": "area_2015.csv",
@@ -602,7 +602,7 @@
   },
   {
    "path": "area_custom.csv",
-   "sha256": "065f23c4a9e726418c8b2fd0b21e676922a63db4b2cba04398f5ee64af53d3ac"
+   "sha256": "590c3ba162e54f5d4dd1d5cd39bd5a20021844e9f2c2673b920e7f92603b0f78"
   }
  ],
  "unmapped": []

@@ -12,7 +12,7 @@ from lvr_pipeline.transactions.normalize import normalize, normalize_record
 from lvr_pipeline.storage.parquet import BatchWriter, inspect_parquet, verify_relations
 from lvr_pipeline.storage.runs import load_snapshot
 from lvr_pipeline.storage.runs import SnapshotStore
-from test_p1_conversion import CODE, make_source, pipeline, rules, dataset
+from test_p1_conversion import CODE, make_source, no_char_fixes, pipeline, rules, dataset
 
 
 def test_duplicate_header_is_rejected_as_invalid_input(tmp_path):
@@ -27,7 +27,7 @@ def test_nonexact_or_unsupported_amount_is_not_rounded(tmp_path,value):
     raw,manifest=make_source(tmp_path,[{"amount":value}],categories=("sales",))
     ingested=ingest(raw,manifest,["115q1"],tmp_path/"work",code_commit=CODE)
     record=dataset(ingested,"ingest-record")[0]
-    normalized=normalize_record(record,202610,{},[])
+    normalized=normalize_record(record,202610,{},[],no_char_fixes())
     assert normalized["observation"][0]["amount_minor"] is None
     assert normalized["diagnostic"][0]["code"]=="invalid_amount"
 
@@ -35,7 +35,7 @@ def test_nonexact_or_unsupported_amount_is_not_rounded(tmp_path,value):
 def test_conflicting_money_aliases_do_not_choose_a_column(tmp_path):
     raw,manifest=make_source(tmp_path,[{"extra":["999"]}],extra_header=["房地總價元"],categories=("presale",))
     ingested=ingest(raw,manifest,["115q1"],tmp_path/"work",code_commit=CODE)
-    output=normalize_record(dataset(ingested,"ingest-record")[0],202610,{},[])
+    output=normalize_record(dataset(ingested,"ingest-record")[0],202610,{},[],no_char_fixes())
     assert output["observation"][0]["amount_minor"] is None
     assert output["diagnostic"][0]["code"]=="invalid_amount"
 
@@ -78,11 +78,11 @@ def test_changed_cutoff_and_manual_rules_create_distinct_snapshots(tmp_path):
     work=tmp_path/"work"
     ingested=ingest(raw,manifest,["115q1"],work,code_commit=CODE)
     path=rules(tmp_path)
-    before=normalize(ingested,work,cutoff=202610,rules_path=path,code_commit=CODE)
-    later=normalize(ingested,work,cutoff=202512,rules_path=path,code_commit=CODE)
+    before=normalize(ingested,work,cutoff=202610,rules_path=path, char_fixes=no_char_fixes(),code_commit=CODE)
+    later=normalize(ingested,work,cutoff=202512,rules_path=path, char_fixes=no_char_fixes(),code_commit=CODE)
     assert before!=later and load_snapshot(later,"normalize")[1]["retained_rows"]==0
     path.write_text(path.read_text(encoding="utf-8")+"台,臺,variant,\n",encoding="utf-8")
-    patched=normalize(ingested,work,cutoff=202610,rules_path=path,code_commit=CODE)
+    patched=normalize(ingested,work,cutoff=202610,rules_path=path, char_fixes=no_char_fixes(),code_commit=CODE)
     assert patched not in {before,later}
 
 
@@ -91,9 +91,9 @@ def test_missing_rules_and_bad_cutoff_do_not_create_completed_state(tmp_path):
     work=tmp_path/"work"
     ingested=ingest(raw,manifest,["115q1"],work,code_commit=CODE)
     with pytest.raises(FileNotFoundError):
-        normalize(ingested,work,cutoff=202610,rules_path=tmp_path/"missing.csv",code_commit=CODE)
+        normalize(ingested,work,cutoff=202610,rules_path=tmp_path/"missing.csv", char_fixes=no_char_fixes(),code_commit=CODE)
     with pytest.raises(ValueError,match="cutoff"):
-        normalize(ingested,work,cutoff=202613,rules_path=rules(tmp_path),code_commit=CODE)
+        normalize(ingested,work,cutoff=202613,rules_path=rules(tmp_path), char_fixes=no_char_fixes(),code_commit=CODE)
     assert not (work/"normalized/current.json").exists()
 
 

@@ -93,6 +93,19 @@ def _split_town(text: str):
     return None
 
 
+def split_county_town(text: str):
+    """(county code, town name, remainder) of a normalized address, or None.
+
+    One parser for building_key and the address character fixes (R07-6d): an exactly repeated county
+    is dropped, an old county name is mapped (桃園縣桃園市 is read as 桃園市桃園區), then the town must
+    exist in that county. The town name is the one written after mapping.
+    """
+    text = resolve_old_county(drop_repeated_county(text))
+    if text is None:
+        return None
+    return _split_town(text)
+
+
 def _split_village(rest: str):
     """(valid, village, neighbourhood, remainder) for the address text after the town."""
     match = _NEIGHBORHOOD.match(rest)
@@ -135,11 +148,7 @@ def building_key(address: str) -> str | None:
     if any(c in text for c in "-~～、") or re.search(r"\s", text) or _RANGE_WORD.search(text):
         return None
     # Owner decision (R04-6): an exactly repeated county name is dropped; any other odd start is rejected.
-    text = drop_repeated_county(text)
-    text = resolve_old_county(text)
-    if text is None:
-        return None
-    region = _split_town(text)
+    region = split_county_town(text)
     if region is None:
         return None
     county_code, town, remainder = region

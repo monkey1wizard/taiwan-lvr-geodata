@@ -12,6 +12,7 @@ import pytest
 
 from lvr_pipeline.offline.index import EARTH_RADIUS_M, audit_address_source
 from lvr_pipeline.storage.runs import sha256_file
+from tests.integration.test_p1_conversion import write_char_fixes
 
 ROOT = Path(__file__).resolve().parents[2]
 HEADER = ["FULL_ADDR", "COUNTY", "TOWN", "ROAD", "X", "Y"]
@@ -50,6 +51,7 @@ def source(tmp_path):
             writer.writerow(HEADER)
             writer.writerows(rows)
         roads.append({"path": "roads/" + name, "sha256": sha256_file(path)})
+    char_fixes = write_char_fixes(root)
     subprocess.run(["git", "init", str(root)], check=True, capture_output=True)
     _git(root, "add", ".")
     _git(
@@ -66,6 +68,7 @@ def source(tmp_path):
         "commit": commit,
         "administrative_files": [{"path": area.name, "sha256": sha256_file(area)}],
         "roads": sorted(roads, key=lambda x: x["path"]),
+        "char_fixes": char_fixes,
     }
     return root, descriptor
 

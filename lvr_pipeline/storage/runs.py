@@ -322,8 +322,8 @@ class SnapshotStore:
         return manifest["bindings"] == bindings
 
 
-RUN_BINDING_KEYS = {"code_commit", "raw_manifest_sha256", "address_source_sha256", "admin_towns_sha256", "rules_sha256",
-                    "contract_version", "key_version", "cutoff_yyyymm", "scope", "rebuild_epoch"}
+RUN_BINDING_KEYS = {"code_commit", "raw_manifest_sha256", "address_source_sha256", "admin_towns_sha256", "char_fixes_sha256",
+                    "rules_sha256", "contract_version", "key_version", "cutoff_yyyymm", "scope", "rebuild_epoch"}
 DEFAULT_RUNS_ROOT = Path(__file__).resolve().parents[2] / "data" / "runs"
 
 
@@ -334,7 +334,7 @@ def _check_run_bindings(bindings: dict) -> dict:
         raise ValueError("Incomplete run bindings")
     if not isinstance(bindings["code_commit"], str) or not re.fullmatch(r"[0-9a-f]{40}", bindings["code_commit"]):
         raise ValueError("Invalid code commit")
-    for key in ["raw_manifest_sha256", "address_source_sha256", "admin_towns_sha256", "rules_sha256"]:
+    for key in ["raw_manifest_sha256", "address_source_sha256", "admin_towns_sha256", "char_fixes_sha256", "rules_sha256"]:
         if not isinstance(bindings[key], str) or not re.fullmatch(r"[0-9a-f]{64}", bindings[key]):
             raise ValueError("Invalid binding hash")
     for key in ["contract_version", "key_version", "scope"]:

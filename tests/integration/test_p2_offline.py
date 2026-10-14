@@ -13,7 +13,7 @@ from lvr_pipeline.offline.index import build_index
 from lvr_pipeline.offline.match import AdministrativeNames
 from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.storage.runs import sha256_file
-from test_p1_conversion import pipeline, ADDRESS
+from test_p1_conversion import pipeline, ADDRESS, write_char_fixes
 
 
 def source(tmp_path, coordinates=None):
@@ -36,6 +36,7 @@ def source(tmp_path, coordinates=None):
             (ADDRESS, "63", "6300100", 121.5, 25.0),
         ]:
             writer.writerow([address, county, town, "測試路", lng, lat])
+    char_fixes = write_char_fixes(root)
     subprocess.run(["git", "init", str(root)], check=True, capture_output=True)
     subprocess.run(
         ["git", "-C", str(root), "add", "."], check=True, capture_output=True
@@ -67,6 +68,7 @@ def source(tmp_path, coordinates=None):
             {"path": p.name, "sha256": sha256_file(p)} for p in [area, custom]
         ],
         "roads": [{"path": "roads/" + path.name, "sha256": sha256_file(path)}],
+        "char_fixes": char_fixes,
     }
 
 
