@@ -148,6 +148,8 @@ def _add_offline_and_output_commands(sub):
     p.add_argument("--area-file", type=Path, action="append", required=True)
     p.add_argument("--work-dir", type=Path, default=Path("data/work"))
     p.add_argument("--run-id")
+    p = sub.add_parser("verify-snapshot", help="Full row-by-row re-validation of one committed snapshot (audit)")
+    p.add_argument("--path", type=Path, required=True)
     p = sub.add_parser("verify-address-patch")
     p.add_argument("--input", type=Path, required=True)
 

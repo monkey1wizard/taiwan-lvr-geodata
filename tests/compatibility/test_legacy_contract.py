@@ -43,6 +43,8 @@ SUBCOMMANDS = {
     "run-full",
     # R07-6b adds build-admin-towns (the county to town table).
     "build-admin-towns",
+    # R07-12b adds verify-snapshot (full audit re-validation of a snapshot).
+    "verify-snapshot",
 }
 
 
@@ -67,8 +69,9 @@ def test_retained_symbols_exist(module_name):
 # R07-8b 移除 package-output、verify-output、backfill-output、fetch-output、publish-output、
 # commit-release-pointer、verify-public-snapshot 共 7 個，由 29 改為 22。
 # R07-6b adds build-admin-towns (the county to town table), 22 to 23.
-def test_cli_subcommand_set_is_exactly_23():
-    assert len(SUBCOMMANDS) == 23
+# R07-12b adds verify-snapshot, 23 to 24.
+def test_cli_subcommand_set_is_exactly_24():
+    assert len(SUBCOMMANDS) == 24
     result = subprocess.run([sys.executable, "-m", "lvr_pipeline", "--help"], cwd=ROOT, capture_output=True,
                             text=True, encoding="utf-8", check=True)
     match = re.search(r"\{([a-z0-9,\-]+)\}", result.stdout)

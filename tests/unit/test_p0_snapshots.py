@@ -133,10 +133,7 @@ def test_lock_conflict_fails_closed(tmp_path):
 def test_manifest_row_count_rechecked(tmp_path):
     store=SnapshotStore(tmp_path/"store")
     prepare(store,tmp_path,"first")
-    path=store.root/"staging/first/draft.json"
-    data=json.loads(path.read_text(encoding="utf-8"))
-    data["artifacts"][0]["row_count"]=2
-    path.write_text(json.dumps(data),encoding="utf-8")
+    store._pending["first"][0]["row_count"]=2  # the pending list is the draft until publish writes it
     with pytest.raises(ValueError,match="count"):
         store.publish("first",expected_parent=None)
 

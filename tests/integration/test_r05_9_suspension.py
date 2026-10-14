@@ -194,7 +194,7 @@ def test_counties_outside_the_list_are_unchanged(built):
 
 def test_changed_list_changes_the_binding(built):
     store = SnapshotStore(built["work"] / "offline-state")
-    manifest = store.verify(built["state"])
+    manifest = store.verify_full(built["state"])
     pool, index, work = built["pool"], built["index"], built["work"]
     config = built["config"]
     assert resolve_offline(pool, index, work, suspended_counties=load_suspended_counties(config)) == built["state"]

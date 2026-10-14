@@ -281,6 +281,16 @@ def _run_offline_and_output(args):
         report = verify_address_patch(args.input)
         print(json.dumps({"verified": True, "snapshot_id": report["snapshot_id"], "patch_rows": report["patch_rows"], "quarantine_rows": report["quarantine_rows"]}, ensure_ascii=False))
         return 0
+    elif command == "verify-snapshot":
+        path = Path(args.path).resolve()
+        manifest = SnapshotStore(path.parent.parent).verify_full(path)
+        rows = {}
+        for item in manifest["artifacts"]:
+            if item["schema"]:
+                rows[item["schema"]] = rows.get(item["schema"], 0) + item["row_count"]
+        print(json.dumps({"ok": True, "snapshot_id": manifest["snapshot_id"], "artifacts": len(manifest["artifacts"]),
+                          "row_counts": rows}, ensure_ascii=False, sort_keys=True))
+        return 0
     else:
         raise ValueError("Unknown P2 command")
     print(json.dumps({"path": str(path), "completed": True}, ensure_ascii=False))

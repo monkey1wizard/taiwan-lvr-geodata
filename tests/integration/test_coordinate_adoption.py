@@ -171,7 +171,7 @@ def test_changed_tolerance_makes_the_stage_not_reusable(tmp_path):
     (converted, root, d, index, pool, state), *_ = near_state(tmp_path)
     work = tmp_path / "work"
     store = SnapshotStore(work / "offline-state")
-    manifest = store.verify(state)
+    manifest = store.verify_full(state)
     assert resolve_offline(pool, index, work, coordinate_tolerance_m=TOLERANCE) == state
     strict = resolve_offline(pool, index, work, coordinate_tolerance_m=5.0)
     assert strict != state

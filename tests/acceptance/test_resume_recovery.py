@@ -76,7 +76,7 @@ def test_tampered_file_not_reusable_and_unreadable(tmp_path):
     target.write_bytes(bytes(data))
     assert run.reusable("convert", RUN) is False
     with pytest.raises(ValueError):
-        store.verify(store.root / "snapshots/s1")
+        store.verify_full(store.root / "snapshots/s1")
     with pytest.raises(ValueError):
         store.current()
 
@@ -90,7 +90,7 @@ def test_stale_writer_rejected_and_previous_snapshot_readable(tmp_path):
     with pytest.raises(ValueError, match="Stale"):
         store.publish("stale", expected_parent="s1")
     assert store.current()["snapshot_id"] == "fresh"
-    assert store.verify(store.root / "snapshots/s1")["snapshot_id"] == "s1"
+    assert store.verify_full(store.root / "snapshots/s1")["snapshot_id"] == "s1"
     assert not (store.root / "snapshots/stale").exists()
 
 

@@ -140,6 +140,7 @@ def _check_bindings(bindings: dict) -> None:
 class SnapshotStore:
     def __init__(self, root: Path):
         self.root = Path(root)
+        self._pending: dict[str, list[dict]] = {}
         self.root.mkdir(parents=True, exist_ok=True)
         for directory in ["staging", "snapshots"]:
             (self.root / directory).mkdir(exist_ok=True)
@@ -165,7 +166,7 @@ class SnapshotStore:
         directory = self.root / "snapshots" / identifier
         if sha256_file(directory / "manifest.json") != value["manifest_sha256"]:
             raise ValueError("Committed manifest hash mismatch")
-        self.verify(directory)
+        self.verify_integrity(directory)
         return value
 
     def begin(self, snapshot_id: str, *, expected_parent: str | None, bindings: dict) -> Path:
@@ -179,14 +180,17 @@ class SnapshotStore:
         directory.mkdir()
         _json_write(directory / "draft.json", {"schema_version": "1.0", "snapshot_id": identifier,
                     "parent_snapshot": expected_parent, "bindings": bindings, "artifacts": [], "complete": False})
+        self._pending[identifier] = []
         return directory
 
     def add(self, snapshot_id: str, name: str, source: Path, *, format_name: str,
             row_count: int | None, schema: str | None = None) -> None:
-        directory = self.root / "staging" / _identifier(snapshot_id)
-        draft_path = directory / "draft.json"
-        draft = _read_json(draft_path)
-        if any(item["path"] == name for item in draft["artifacts"]) or name in {"draft.json", "manifest.json"}:
+        identifier = _identifier(snapshot_id)
+        directory = self.root / "staging" / identifier
+        if identifier not in self._pending:
+            raise ValueError("Snapshot was not begun by this store instance")
+        pending = self._pending[identifier]
+        if any(item["path"] == name for item in pending) or name in {"draft.json", "manifest.json"}:
             raise ValueError("Duplicate/reserved artifact name")
         if source.is_symlink():
             raise ValueError("Symlink sources are not supported")
@@ -199,11 +203,8 @@ class SnapshotStore:
         count, _ = _inspect(target, format_name, schema)
         if count != row_count or isinstance(row_count, bool):
             raise ValueError("Artifact row count mismatch")
-        draft["artifacts"].append({"path": name, "format": format_name, "row_count": row_count,
-                                   "schema": schema, "sha256": sha256_file(target), "size_bytes": target.stat().st_size})
-        temporary = directory / f"draft-{uuid.uuid4().hex}.tmp"
-        _json_write(temporary, draft)
-        _replace(temporary, draft_path)
+        pending.append({"path": name, "format": format_name, "row_count": row_count,
+                        "schema": schema, "sha256": sha256_file(target), "size_bytes": target.stat().st_size})
 
     @staticmethod
     def snapshot_normalization_version(directory: Path, manifest: dict) -> str | None:
@@ -229,16 +230,13 @@ class SnapshotStore:
         from ..addresses import identity
         return version is not None and version != identity.NORMALIZATION_VERSION
 
-    def verify(self, directory: Path, *, draft: bool = False) -> dict:
+    def verify_integrity(self, directory: Path, *, draft: bool = False) -> dict:
+        """Structure, bindings and per-file size and SHA-256 against the manifest; no row reading."""
         manifest = _read_json(directory / ("draft.json" if draft else "manifest.json"))
         version = self.snapshot_normalization_version(directory, manifest) if manifest.get("bindings") else None
         if self._is_old_rule(version):
             # R07-6a: a snapshot made under another address rule version is rejected, not tolerated.
             raise ValueError(f"Snapshot was made under address rule {version}; it is never read")
-        return self._verify(directory, draft=draft)
-
-    def _verify(self, directory: Path, *, draft: bool = False) -> dict:
-        manifest = _read_json(directory / ("draft.json" if draft else "manifest.json"))
         if manifest["complete"] is not (not draft) or manifest["schema_version"] != "1.0":
             raise ValueError("Invalid snapshot completion/schema")
         _identifier(manifest["snapshot_id"])
@@ -252,13 +250,30 @@ class SnapshotStore:
         actual_files = {path.relative_to(directory).as_posix() for path in directory.rglob("*") if path.is_file()}
         if actual_files - expected_files:
             raise ValueError("Unindexed or interrupted snapshot artifact")
-        rows_by_schema = {}
-        parquet_groups = {}
         for item in artifacts:
             path = _artifact_path(directory, item["path"])
             if path.stat().st_size != item["size_bytes"] or sha256_file(path) != item["sha256"]:
                 raise ValueError("Snapshot artifact hash/size mismatch")
-            count, rows = _inspect(path, item["format"], item["schema"])
+        return manifest
+
+    def verify_full(self, directory: Path, *, draft: bool = False) -> dict:
+        """verify_integrity plus every row of every artifact and the cross-file relations (audits)."""
+        manifest = self.verify_integrity(directory, draft=draft)
+        self._verify_contents(directory, manifest, inspect_parquet=True)
+        return manifest
+
+    @staticmethod
+    def _verify_contents(directory: Path, manifest: dict, *, inspect_parquet: bool) -> None:
+        """Row counts and cross-file relations. Publish passes inspect_parquet=False because add
+        already validated each Parquet file row by row; its relations are still checked here."""
+        rows_by_schema = {}
+        parquet_groups = {}
+        for item in manifest["artifacts"]:
+            path = _artifact_path(directory, item["path"])
+            if item["format"] == "parquet" and item["schema"] and not inspect_parquet:
+                count, rows = item["row_count"], None
+            else:
+                count, rows = _inspect(path, item["format"], item["schema"])
             if count != item["row_count"] or isinstance(item["row_count"], bool):
                 raise ValueError("Snapshot row count mismatch")
             if item["schema"] and item["format"] == "parquet":
@@ -280,7 +295,22 @@ class SnapshotStore:
                 raise ValueError("Components require observations")
         if "observation" in rows_by_schema:
             validate_relations(rows_by_schema["observation"], rows_by_schema.get("address-component", []), rows_by_schema.get("exclusion", []))
-        return manifest
+
+    def _write_draft(self, directory: Path, snapshot_id: str) -> None:
+        """Write the pending artifact list into draft.json once, atomically."""
+        pending = self._pending.get(snapshot_id)
+        if pending is None:
+            return
+        draft_path = directory / "draft.json"
+        draft = _read_json(draft_path)
+        draft["artifacts"] = list(pending)
+        temporary = directory / f"draft-{uuid.uuid4().hex}.tmp"
+        try:
+            _json_write(temporary, draft)
+            _replace(temporary, draft_path)
+        except BaseException:
+            temporary.unlink(missing_ok=True)
+            raise
 
     def publish(self, snapshot_id: str, *, expected_parent: str | None) -> dict:
         identifier = _identifier(snapshot_id)
@@ -292,7 +322,9 @@ class SnapshotStore:
             staged = self.root / "staging" / identifier
             final = self.root / "snapshots" / identifier
             if staged.exists():
-                manifest = self.verify(staged, draft=True)
+                self._write_draft(staged, identifier)
+                manifest = self.verify_integrity(staged, draft=True)
+                self._verify_contents(staged, manifest, inspect_parquet=False)
                 if manifest["parent_snapshot"] != expected_parent:
                     raise ValueError("Draft parent mismatch")
                 manifest["complete"] = True
@@ -306,9 +338,10 @@ class SnapshotStore:
                 if final.exists():
                     raise FileExistsError("Immutable snapshot collision")
                 os.rename(staged, final)
-            manifest = self.verify(final)
+            manifest = self.verify_integrity(final)
             if manifest["parent_snapshot"] != expected_parent:
                 raise ValueError("Final parent mismatch")
+            self._pending.pop(identifier, None)
             pointer = {"snapshot_id": identifier, "manifest_sha256": sha256_file(final / "manifest.json")}
             temporary = self.root / f"pointer-{uuid.uuid4().hex}.tmp"
             _json_write(temporary, pointer)
@@ -318,7 +351,7 @@ class SnapshotStore:
     def reusable(self, snapshot_id: str, bindings: dict) -> bool:
         _check_bindings(bindings)
         directory = self.root / "snapshots" / _identifier(snapshot_id)
-        manifest = self.verify(directory)
+        manifest = self.verify_integrity(directory)
         return manifest["bindings"] == bindings
 
 
@@ -390,7 +423,7 @@ class RunStore:
         store = self.stage(stage)
         directory = store.root / "snapshots" / _identifier(snapshot_id)
         with self._lock():
-            manifest = store.verify(directory)
+            manifest = store.verify_integrity(directory)
             if manifest["snapshot_id"] != snapshot_id:
                 raise ValueError("Snapshot identity mismatch")
             entry = {"snapshot_id": snapshot_id, "manifest_sha256": sha256_file(directory / "manifest.json")}
@@ -412,7 +445,7 @@ class RunStore:
             directory = store.root / "snapshots" / _identifier(entry["snapshot_id"])
             if sha256_file(directory / "manifest.json") != entry["manifest_sha256"]:
                 return False
-            store.verify(directory)
+            store.verify_integrity(directory)
             return True
         except (ValueError, OSError, KeyError):
             return False
@@ -502,7 +535,7 @@ class Stage:
 
 def load_snapshot(path: Path, expected_stage: str) -> tuple[dict, dict]:
     path = Path(path).resolve()
-    manifest = SnapshotStore(path.parent.parent).verify(path)
+    manifest = SnapshotStore(path.parent.parent).verify_integrity(path)
     report = json.loads((path / "quality.json").read_text(encoding="utf-8"))
     if report["stage"] != expected_stage or report["internal_only"] is not True:
         raise ValueError("Incorrect processing stage")

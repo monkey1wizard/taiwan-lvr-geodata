@@ -328,7 +328,7 @@ def test_arrow_schema_and_cross_partition_relations_are_checked(tmp_path):
     item["size_bytes"]=path.stat().st_size
     (converted/"manifest.json").write_text(json.dumps(manifest),encoding="utf-8")
     with pytest.raises(ValueError):
-        SnapshotStore(converted.parent.parent).verify(converted)
+        SnapshotStore(converted.parent.parent).verify_full(converted)
 
 
 def test_cli_runs_and_verifies_only_internal_output(tmp_path):

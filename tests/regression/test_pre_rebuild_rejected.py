@@ -76,7 +76,7 @@ def test_snapshot_without_epoch_is_rejected_everywhere(current_snapshot):
     bindings = _drop_epoch(normalized)
     store = SnapshotStore(work / "normalized")
     with pytest.raises(ValueError, match="predates the 2026-10-12 rebuild"):
-        store.verify(normalized)
+        store.verify_full(normalized)
     with pytest.raises(ValueError, match="predates the 2026-10-12 rebuild"):
         load_snapshot(normalized, "normalize")
     with pytest.raises(ValueError, match="predates the 2026-10-12 rebuild"):
@@ -89,7 +89,7 @@ def test_old_rule_snapshot_is_rejected_not_tolerated(old_rule_snapshot):
     work, old = old_rule_snapshot
     store = SnapshotStore(work / "normalized")
     with pytest.raises(ValueError, match="address rule v2.0-old"):
-        store.verify(old)
+        store.verify_full(old)
     with pytest.raises(ValueError, match="address rule v2.0-old"):
         load_snapshot(old, "normalize")
     with pytest.raises(ValueError, match="address rule v2.0-old"):
@@ -106,10 +106,10 @@ def test_existing_old_rule_snapshot_blocks_stage_reuse(old_rule_snapshot):
 def test_same_version_with_wrong_key_still_fails(current_snapshot, monkeypatch):
     work, normalized = current_snapshot
     store = SnapshotStore(work / "normalized")
-    store.verify(normalized)
+    store.verify_full(normalized)
     _break_key_rule(monkeypatch)
     with pytest.raises(ValueError, match="Component key does not match v2 rule"):
-        store.verify(normalized)
+        store.verify_full(normalized)
 
 
 def test_converted_snapshot_records_input_normalization_version(current_snapshot):

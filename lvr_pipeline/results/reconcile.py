@@ -296,7 +296,7 @@ def check_suspension(path: Path, manifest: dict, report: dict) -> None:
 
 def load_p2(path: Path, kind: str):
     path = Path(path)
-    manifest = SnapshotStore(path.parent.parent).verify(path)
+    manifest = SnapshotStore(path.parent.parent).verify_integrity(path)
     report = json.loads((path / "quality.json").read_text(encoding="utf-8"))
     if (
         report["stage"] != kind
