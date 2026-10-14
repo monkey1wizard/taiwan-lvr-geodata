@@ -1,7 +1,7 @@
 """R05-9: Penghu and Kinmen addresses are not located (owner decision 2026-10-09, option B).
 
 Synthetic address source with three counties: Taipei (63), Kinmen (09020, suspended
-by the default config) and Lienchiang (09007, not suspended).
+by the fixture config written by _suspension_config) and Lienchiang (09007, not suspended).
 """
 
 import copy
@@ -50,6 +50,24 @@ SOURCE = {
 }
 
 
+SUSPENSION_TOML = """[[suspended_counties]]
+code = "10016"
+name = "澎湖縣"
+reason = "test fixture"
+
+[[suspended_counties]]
+code = "09020"
+name = "金門縣"
+reason = "test fixture"
+"""
+
+
+def _suspension_config(tmp_path):
+    config = tmp_path / "suspension.toml"
+    config.write_text(SUSPENSION_TOML, encoding="utf-8")
+    return config
+
+
 def _source(tmp_path):
     root = tmp_path / "address"
     root.mkdir()
@@ -87,16 +105,17 @@ def _source(tmp_path):
 @pytest.fixture(scope="module")
 def built(tmp_path_factory):
     tmp_path = tmp_path_factory.mktemp("r05-9")
+    config = _suspension_config(tmp_path)
     records = [{"address": a, "extra": [DISTRICT.get(a, "金城鎮")]} for a in ADDRESSES]
     _, _, converted = pipeline(tmp_path, records, extra_header=["鄉鎮市區"])
     root, descriptor = _source(tmp_path)
     work = tmp_path / "work"
     index = build_index(root, descriptor, work, counties=list(SOURCE))
     pool = build_pool(converted, root, descriptor, work, index_path=index)
-    state = resolve_offline(pool, index, work)
+    state = resolve_offline(pool, index, work, suspended_counties=load_suspended_counties(config))
     plain = resolve_offline(pool, index, tmp_path / "plain", suspended_counties=[])
-    return {"tmp": tmp_path, "converted": converted, "descriptor": descriptor, "index": index,
-            "pool": pool, "state": state, "plain": plain, "work": work}
+    return {"tmp": tmp_path, "config": config, "converted": converted, "descriptor": descriptor,
+            "index": index, "pool": pool, "state": state, "plain": plain, "work": work}
 
 
 def _by_address(snapshot):
@@ -107,11 +126,15 @@ def _resolutions(snapshot):
     return {row["building_key"]: row for row in rows(snapshot / "coordinate_resolutions.parquet")}
 
 
-def test_default_config_suspends_penghu_and_kinmen_only():
-    listed = load_suspended_counties()
+def test_fixture_config_suspends_penghu_and_kinmen_only(tmp_path):
+    listed = load_suspended_counties(_suspension_config(tmp_path))
     assert [(item["code"], item["name"]) for item in listed] == [("09020", "金門縣"), ("10016", "澎湖縣")]
     assert all(item["reason"].strip() for item in listed)
     assert "address_source_suspended" in EXCEPTION_REASON_CODES
+
+
+def test_default_config_suspends_no_county():
+    assert load_suspended_counties() == []
 
 
 def test_suspended_county_coordinates_are_not_located_and_evidence_kept(built):
@@ -169,13 +192,14 @@ def test_changed_list_changes_the_binding(built):
     store = SnapshotStore(built["work"] / "offline-state")
     manifest = store.verify(built["state"])
     pool, index, work = built["pool"], built["index"], built["work"]
-    assert resolve_offline(pool, index, work) == built["state"]
-    only_penghu = [item for item in load_suspended_counties() if item["code"] == "10016"]
+    config = built["config"]
+    assert resolve_offline(pool, index, work, suspended_counties=load_suspended_counties(config)) == built["state"]
+    only_penghu = [item for item in load_suspended_counties(config) if item["code"] == "10016"]
     other = resolve_offline(pool, index, work, suspended_counties=only_penghu)
     assert other != built["state"]
     assert not store.reusable(other.name, manifest["bindings"])
     assert _by_address(other)[KINMEN_ONE]["status"] == "located"
-    reworded = [{**item, "reason": item["reason"] + "（改寫）"} for item in load_suspended_counties()]
+    reworded = [{**item, "reason": item["reason"] + "（改寫）"} for item in load_suspended_counties(config)]
     assert resolve_offline(pool, index, work, suspended_counties=reworded) not in {built["state"], other}
     with pytest.raises(ValueError, match="different bindings"):
         resolve_offline(pool, index, work, suspended_counties=[], run_id=built["state"].name)

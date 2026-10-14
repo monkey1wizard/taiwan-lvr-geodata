@@ -71,7 +71,7 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline <command> --help
 
 ## 現有全量命令
 
-`run-full` 是現行全量離線流程入口。它核對來源、執行離線階段、產生待查核資料、輸出及 run report。程式流程包含續跑與階段驗證。它目前不讀取 TGOS 狀態。輸出階段已改用新版 22 欄公開契約，但尚未以真實資料執行與驗收。來源清冊與地址來源描述經 R07-6c 重新掃描之前它會被拒絕；`data/output/` 目前不存在，發布（R08）尚未實作。
+`run-full` 是現行全量離線流程入口。它核對來源、執行離線階段、產生待查核資料、輸出及 run report。程式流程包含續跑與階段驗證。它目前不讀取 TGOS 狀態。輸出階段已改用新版 22 欄公開契約，但尚未以真實資料執行與驗收。`data/output/` 目前不存在，發布（R08）尚未實作。
 
 先核對來源清單與本機原始 ZIP：
 
@@ -81,7 +81,7 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline verify-sources \
   --raw-dir data/raw
 ```
 
-`run-full` 必須提供唯一 run ID、截止年月與地址資料目錄。原始清冊與地址來源描述經 R07-6c 重新掃描之前，以下模板會被拒絕。不可指定舊 run ID、舊工作目錄或舊快照：
+`run-full` 必須提供唯一 run ID、截止年月與地址資料目錄。不可指定舊 run ID、舊工作目錄或舊快照：
 
 ```bash
 uv run --locked --python 3.14.8 python -m lvr_pipeline run-full \
