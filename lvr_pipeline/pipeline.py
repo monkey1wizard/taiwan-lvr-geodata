@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from .addresses.pool import build_pool
-from .offline.index import audit_address_source, pin_address_source, build_index
+from .offline.index import audit_address_source, check_pinned_source, pin_address_source, build_index
 from .addresses.admin import admin_towns_failures, admin_towns_sha256, write_admin_towns
 from .addresses.address_fixes import load_address_char_fixes
 from .addresses.identity import NORMALIZATION_VERSION
@@ -365,6 +365,10 @@ def coverage_failures(manifest: dict, report: dict) -> list[dict]:
 DISK_HEADROOM_RATIO = 0.20
 
 
+class AddressSourceChanged(RuntimeError):
+    """R07-12a: the address checkout is dirty or a pinned data file changed."""
+
+
 class DiskHeadroomError(RuntimeError):
     """Free disk space is below the required share; the stage was not started."""
 
@@ -428,11 +432,33 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
     run = RunStore.open(runs_root, run_id, bindings_)
     result = {"run_id": run_id, "run_dir": str(run.root), "completed": False,
               "started_at": datetime.now(timezone.utc).isoformat(), "bindings": bindings_,
-              "quarantined": [], "steps": [], "failures": []}
+              "quarantined": [], "steps": [], "failures": [], "address_source_head": []}
     current = {"step": None}
+    full_check_head = {"head": None}
+
+    def check_source(name):
+        """R07-12a: before each stage the address checkout must be clean and keep its pinned data files.
+
+        The first entry (and any entry whose HEAD differs from the last full check) hashes every
+        pinned file; other entries only check HEAD and clean status. A HEAD other than the pinned
+        commit passes and is recorded.
+        """
+        try:
+            full = full_check_head["head"] is None
+            if not full:
+                full = check_pinned_source(address_dir, descriptor, hashes=False)["actual_head"] != full_check_head["head"]
+            checked = check_pinned_source(address_dir, descriptor, hashes=full)
+        except (ValueError, subprocess.CalledProcessError, OSError) as exc:
+            raise AddressSourceChanged(str(exc)) from exc
+        if full:
+            full_check_head["head"] = checked["actual_head"]
+        result["address_source_head"].append({
+            "step": name, "actual_head": checked["actual_head"], "head_matches": checked["head_matches"],
+            "full_check": full, "checked_at": checked["checked_at"]})
 
     def stage(name, build):
         current["step"] = name
+        check_source(name)
         start = time.perf_counter()
         reused = run.reusable(name, bindings_)
         if reused:
@@ -467,6 +493,7 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
         directory is never deleted, adopted or overwritten.
         """
         current["step"] = "output"
+        check_source("output")
         start = time.perf_counter()
         input_hashes = [sha256_file(Path(converted) / "manifest.json"), sha256_file(Path(state) / "manifest.json")]
         output_id = "output-" + digest({"converted": input_hashes[0], "state": input_hashes[1],
@@ -609,6 +636,7 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
                            "warnings": released["verification"]["warnings"],
                            "quality": released["verification"]["quality"]},
                 "quarantined": result["quarantined"],
+                "address_source_head": result["address_source_head"],
                 "resources": resources(),
             }
             hashes = [sha256_file(run.stage(name).root / "snapshots" / entry["snapshot_id"] / "manifest.json")
@@ -616,6 +644,8 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
             path = stage("run-report", lambda: write_report(report, hashes))
             result["report"] = str(path / "run_report.json")
             result["completed"] = True
+        except AddressSourceChanged as exc:
+            result["failures"].append({"step": current["step"], "code": "address_source_changed", "detail": str(exc)})
         except Exception as exc:  # any failure leaves the run incomplete; no run-report is written
             result["failures"].append({"step": current["step"], "code": type(exc).__name__, "detail": str(exc)})
         return result

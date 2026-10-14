@@ -17,6 +17,7 @@ from lvr_pipeline.storage.parquet import BatchWriter, inspect_parquet, rows
 from lvr_pipeline.storage.runs import sha256_file
 from lvr_pipeline.tgos import import_tgos, prepare_tgos, transition_batch
 from test_p1_conversion import ADDRESS, pipeline
+from test_p1_conversion import pinned
 from test_p2_offline import source
 
 VARIANT = "臺北市中正區測試路10之1號"  # ADDRESS is 測試路10號之1
@@ -59,7 +60,7 @@ def _two_road_source(tmp_path):
          "-c", "core.hooksPath=/dev/null", "commit", "-m", "second road")
     commit = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
     descriptor = {**descriptor, "commit": commit,
-                  "roads": [*descriptor["roads"], {"path": "roads/" + other.name, "sha256": sha256_file(other)}]}
+                  "roads": [*descriptor["roads"], pinned(root, "roads/" + other.name)]}
     return root, descriptor
 
 

@@ -13,7 +13,7 @@ from lvr_pipeline.offline.index import build_index
 from lvr_pipeline.offline.match import AdministrativeNames
 from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.storage.runs import sha256_file
-from test_p1_conversion import pipeline, ADDRESS, write_char_fixes
+from test_p1_conversion import pipeline, ADDRESS, pinned, write_char_fixes, write_road_index
 
 
 def source(tmp_path, coordinates=None):
@@ -37,6 +37,7 @@ def source(tmp_path, coordinates=None):
         ]:
             writer.writerow([address, county, town, "測試路", lng, lat])
     char_fixes = write_char_fixes(root)
+    road_index = write_road_index(root)
     subprocess.run(["git", "init", str(root)], check=True, capture_output=True)
     subprocess.run(
         ["git", "-C", str(root), "add", "."], check=True, capture_output=True
@@ -64,10 +65,9 @@ def source(tmp_path, coordinates=None):
     ).strip()
     return root, {
         "commit": commit,
-        "administrative_files": [
-            {"path": p.name, "sha256": sha256_file(p)} for p in [area, custom]
-        ],
-        "roads": [{"path": "roads/" + path.name, "sha256": sha256_file(path)}],
+        "administrative_files": [pinned(root, p.name) for p in [area, custom]],
+        "roads": [pinned(root, "roads/" + path.name)],
+        "road_index": road_index,
         "char_fixes": char_fixes,
     }
 
@@ -138,10 +138,11 @@ def test_conflicting_points_never_pick_first_and_invalid_admin_retained(tmp_path
     assert invalid["validity"] == "invalid_admin" and invalid["lng"] is None
 
 
-def test_dirty_or_wrong_address_pin_is_rejected(tmp_path):
+def test_dirty_or_changed_address_pin_is_rejected(tmp_path):
     root, d = source(tmp_path)
-    wrong = {**d, "commit": "0" * 40}
-    with pytest.raises(ValueError, match="pinned"):
+    wrong = copy.deepcopy(d)
+    wrong["roads"][0]["sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="differs from pin: roads/"):
         build_index(root, wrong, tmp_path / "work")
     (root / "extra.txt").write_text("changed")
     with pytest.raises(ValueError, match="clean"):
@@ -180,7 +181,7 @@ def test_changed_source_removal_cannot_reuse_old_coordinate(tmp_path):
     changed["commit"] = subprocess.check_output(
         ["git", "-C", str(root), "rev-parse", "HEAD"], text=True
     ).strip()
-    changed["roads"][0]["sha256"] = sha256_file(path)
+    changed["roads"][0] = pinned(root, d["roads"][0]["path"])
     new_index = build_index(root, changed, tmp_path / "work", counties=["63"])
     new_pool = build_pool(
         converted, root, changed, tmp_path / "work", index_path=new_index

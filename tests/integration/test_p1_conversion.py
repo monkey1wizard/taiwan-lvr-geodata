@@ -38,6 +38,18 @@ def write_char_fixes(root, rows=()):
     return {"path":path.name,"size_bytes":path.stat().st_size,"sha256":sha256_file(path)}
 
 
+def pinned(root, relative):
+    """Address-source descriptor entry (path, size_bytes, sha256) of root/relative."""
+    path=Path(root)/relative
+    return {"path":relative,"size_bytes":path.stat().st_size,"sha256":sha256_file(path)}
+
+
+def write_road_index(root):
+    """Write root/road.csv (header only) and return its descriptor entry (R07-12a checks it at run time)."""
+    (Path(root)/"road.csv").write_text("FULL_ADDR,COUNTY,TOWN,ROAD,X,Y\n",encoding="utf-8")
+    return pinned(root,"road.csv")
+
+
 def no_char_fixes():
     """Loaded fixes without any rule, for tests that are not about address character fixes."""
     return AddressCharFixes((),dict.fromkeys(COUNT_KEYS,0),"c"*64,"d"*64)

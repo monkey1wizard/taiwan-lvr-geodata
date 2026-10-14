@@ -1,5 +1,6 @@
 """Synthetic address-base audit: five report categories, no row selection."""
 
+import copy
 import csv
 import json
 import math
@@ -12,7 +13,7 @@ import pytest
 
 from lvr_pipeline.offline.index import EARTH_RADIUS_M, audit_address_source
 from lvr_pipeline.storage.runs import sha256_file
-from tests.integration.test_p1_conversion import write_char_fixes
+from tests.integration.test_p1_conversion import pinned, write_char_fixes, write_road_index
 
 ROOT = Path(__file__).resolve().parents[2]
 HEADER = ["FULL_ADDR", "COUNTY", "TOWN", "ROAD", "X", "Y"]
@@ -50,8 +51,9 @@ def source(tmp_path):
             writer = csv.writer(stream)
             writer.writerow(HEADER)
             writer.writerows(rows)
-        roads.append({"path": "roads/" + name, "sha256": sha256_file(path)})
+        roads.append(pinned(root, "roads/" + name))
     char_fixes = write_char_fixes(root)
+    road_index = write_road_index(root)
     subprocess.run(["git", "init", str(root)], check=True, capture_output=True)
     _git(root, "add", ".")
     _git(
@@ -66,8 +68,9 @@ def source(tmp_path):
     ).strip()
     descriptor = {
         "commit": commit,
-        "administrative_files": [{"path": area.name, "sha256": sha256_file(area)}],
+        "administrative_files": [pinned(root, area.name)],
         "roads": sorted(roads, key=lambda x: x["path"]),
+        "road_index": road_index,
         "char_fixes": char_fixes,
     }
     return root, descriptor
@@ -131,7 +134,7 @@ def test_audit_reports_five_categories(tmp_path):
     assert written["categories"] == json.loads(json.dumps(categories))
 
 
-def test_audit_refuses_non_empty_output_and_wrong_commit(tmp_path):
+def test_audit_refuses_non_empty_output_and_changed_pin(tmp_path):
     root, descriptor = source(tmp_path)
     out = tmp_path / "audit"
     out.mkdir()
@@ -139,8 +142,10 @@ def test_audit_refuses_non_empty_output_and_wrong_commit(tmp_path):
     with pytest.raises(FileExistsError):
         audit_address_source(root, descriptor, out)
     assert (out / "keep.txt").read_text(encoding="utf-8") == "x"
-    with pytest.raises(ValueError, match="pinned commit"):
-        audit_address_source(root, {**descriptor, "commit": "0" * 40}, tmp_path / "other")
+    changed = copy.deepcopy(descriptor)
+    changed["roads"][0]["sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="differs from pin"):
+        audit_address_source(root, changed, tmp_path / "other")
 
 
 def test_audit_command_writes_report(tmp_path):

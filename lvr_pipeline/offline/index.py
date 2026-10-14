@@ -6,6 +6,7 @@ Also creates a reproducible descriptor for a clean taiwan-address-data checkout.
 from __future__ import annotations
 
 import csv
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
@@ -83,17 +84,44 @@ def pin_address_source(root: Path, output: Path) -> dict:
     return descriptor
 
 
-def load_pinned_source(root: Path, descriptor: dict):
-    head = subprocess.check_output(
-        ["git", "-C", str(root), "rev-parse", "HEAD"], text=True
-    ).strip()
-    if head != descriptor["commit"]:
-        raise ValueError("Address checkout differs from pinned commit")
-    dirty = subprocess.check_output(
-        ["git", "-C", str(root), "status", "--porcelain"], text=True
-    ).strip()
-    if dirty:
+def _checked_entries(descriptor: dict) -> list[dict]:
+    return [
+        *descriptor["roads"],
+        *descriptor["administrative_files"],
+        descriptor["road_index"],
+        descriptor["char_fixes"],
+    ]
+
+
+def check_pinned_source(root: Path, descriptor: dict, *, hashes: bool = True) -> dict:
+    """Run-time check of an address checkout (R07-12a).
+
+    The worktree must be clean and every data file named by the descriptor must keep
+    its pinned size and SHA-256. A HEAD that differs from the pinned commit passes and
+    is recorded. ``hashes=False`` checks only the clean status; the caller uses it
+    for a repeat check while HEAD is unchanged since a full check.
+    """
+    root = Path(root)
+    if _git(root, "status", "--porcelain"):
         raise ValueError("Address checkout must be clean")
+    head = _git(root, "rev-parse", "HEAD")
+    if hashes:
+        for item in _checked_entries(descriptor):
+            path = root / item["path"]
+            if not path.is_file():
+                raise ValueError(f"Address source file missing: {item['path']}")
+            if path.stat().st_size != item["size_bytes"] or sha256_file(path) != item["sha256"]:
+                raise ValueError(f"Address source file differs from pin: {item['path']}")
+    return {
+        "pinned_commit": descriptor["commit"],
+        "actual_head": head,
+        "head_matches": head == descriptor["commit"],
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def load_pinned_source(root: Path, descriptor: dict):
+    check_pinned_source(root, descriptor)
     return AdministrativeNames(root, descriptor["administrative_files"])
 
 

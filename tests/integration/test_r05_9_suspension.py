@@ -27,7 +27,7 @@ from lvr_pipeline.results.review import build_review
 from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.storage.runs import SnapshotStore, sha256_file
 from lvr_pipeline.tgos import import_tgos, load_state, prepare_tgos, transition_batch
-from test_p1_conversion import ADDRESS, pipeline, write_char_fixes
+from test_p1_conversion import ADDRESS, pinned, pipeline, write_char_fixes, write_road_index
 from test_p3_tgos import response
 
 KINMEN_ONE = "金門縣金城鎮測試路1號"  # one coordinate in the source
@@ -87,8 +87,9 @@ def _source(tmp_path):
             writer.writerow(["FULL_ADDR", "COUNTY", "TOWN", "ROAD", "X", "Y"])
             for address, town, lng, lat in values:
                 writer.writerow([address, county, town, "測試路", lng, lat])
-        roads.append({"path": "roads/" + path.name, "sha256": sha256_file(path)})
+        roads.append(pinned(root, "roads/" + path.name))
     char_fixes = write_char_fixes(root)
+    road_index = write_road_index(root)
     git = ["git", "-C", str(root)]
     subprocess.run(["git", "init", str(root)], check=True, capture_output=True)
     subprocess.run([*git, "add", "."], check=True, capture_output=True)
@@ -98,8 +99,9 @@ def _source(tmp_path):
     commit = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
     return root, {
         "commit": commit,
-        "administrative_files": [{"path": p.name, "sha256": sha256_file(p)} for p in [area, custom]],
+        "administrative_files": [pinned(root, p.name) for p in [area, custom]],
         "roads": roads,
+        "road_index": road_index,
         "char_fixes": char_fixes,
     }
 
