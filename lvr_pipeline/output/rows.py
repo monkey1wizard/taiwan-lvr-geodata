@@ -59,14 +59,12 @@ ATTRIBUTE_NAMES = [n for n, _, _ in ATTRIBUTES]
 CSV_COLUMNS = [x for n in COLUMN_NAMES for x in (("longitude", "latitude") if n == "geometry" else (n,))]
 ARROW_SCHEMA = pa.schema([pa.field(n, t, nullable=null) for n, t, null in COLUMNS])
 
-# SQL expressions behind the order_by names; tx_date_raw is a fixed-width ROC date, so it sorts like trade_date.
-_ORDER = {
-    "trade_date": "o.tx_date_raw",
-    "category": "o.category",
-    "transaction_id": "o.src_batch, o.member_path, o.source_row_number",
-    "door_index": "c.ordinal",
-}
-DEFAULT_ORDER = ("trade_date", "category", "transaction_id", "door_index")
+# One global order: trade_date (raw fixed-width ROC date, so it sorts like trade_date), category, transaction_id, door_index.
+_ORDER_BY = "ORDER BY o.tx_date_raw, o.category, o.src_batch, o.member_path, o.source_row_number, c.ordinal"
+# Rows are produced one partition at a time. The partition key is the first five characters of tx_date_raw
+# (ROC year and month). A prefix is monotone in the string order, so sorting by (key, full order) equals
+# sorting by the full order. A missing or malformed date lands in some partition (NULL last) and is yielded.
+_PARTITION_KEY = "left(tx_date_raw, 5)"
 
 
 @lru_cache(maxsize=1)
@@ -228,34 +226,44 @@ def open_sources(db, converted, state):
 def _detail_view(kind):
     return (
         "(SELECT raw_record_id, list(raw_fields_json ORDER BY source_row_number, detail_record_id) j "
-        f"FROM details WHERE detail_kind='{kind}' GROUP BY 1)"
+        f"FROM details WHERE detail_kind='{kind}' AND raw_record_id IN (SELECT raw_record_id FROM ob) GROUP BY 1)"
     )
 
 
-def iter_door_rows(converted, state, *, order_by=DEFAULT_ORDER, batch_rows=1024):
-    """Stream one dict per located door, in `order_by` order (names from trade_date, category, transaction_id, door_index)."""
-    unknown = [x for x in order_by if x not in _ORDER]
-    if unknown:
-        raise ValueError(f"Unknown order_by names: {unknown}")
-    order = " ORDER BY " + ", ".join(_ORDER[x] for x in order_by) if order_by else ""
-    sql = f"""
-        SELECT o.src_batch, o.member_path, o.source_row_number, o.category, o.tx_date_raw, o.raw_address, o.props_json,
-               c.ordinal, c.normalized_address, c.door_count, r.lng, r.lat, b.j, l.j, p.j
-        FROM observations o
-        JOIN (SELECT raw_record_id, ordinal, normalized_address, key_version, building_key,
-                     count(*) OVER (PARTITION BY raw_record_id) door_count FROM components) c USING(raw_record_id)
-        JOIN results r ON r.key_version=c.key_version AND r.building_key=c.building_key
-                      AND r.lng IS NOT NULL AND r.lat IS NOT NULL
-        LEFT JOIN {_detail_view("build")} b USING(raw_record_id)
-        LEFT JOIN {_detail_view("land")} l USING(raw_record_id)
-        LEFT JOIN {_detail_view("park")} p USING(raw_record_id)
-        {order}"""
-    names = ["src_batch", "member_path", "source_row_number", "category", "tx_date_raw", "raw_address", "props_json"]
-    with tempfile.TemporaryDirectory(prefix="rows-") as spill:
+_PARTITION_SQL = f"""
+    WITH ob AS (SELECT * FROM observations WHERE {{match}})
+    SELECT o.src_batch, o.member_path, o.source_row_number, o.category, o.tx_date_raw, o.raw_address, o.props_json,
+           c.ordinal, c.normalized_address, c.door_count, r.lng, r.lat, b.j, l.j, p.j
+    FROM ob o
+    JOIN (SELECT raw_record_id, ordinal, normalized_address, key_version, building_key,
+                 count(*) OVER (PARTITION BY raw_record_id) door_count
+          FROM components WHERE raw_record_id IN (SELECT raw_record_id FROM ob)) c USING(raw_record_id)
+    JOIN results r ON r.key_version=c.key_version AND r.building_key=c.building_key
+                  AND r.lng IS NOT NULL AND r.lat IS NOT NULL
+    LEFT JOIN {_detail_view("build")} b USING(raw_record_id)
+    LEFT JOIN {_detail_view("land")} l USING(raw_record_id)
+    LEFT JOIN {_detail_view("park")} p USING(raw_record_id)
+    {_ORDER_BY}"""
+_NAMES = ["src_batch", "member_path", "source_row_number", "category", "tx_date_raw", "raw_address", "props_json"]
+
+
+def iter_door_rows(converted, state, *, spill_dir, batch_rows=1024):
+    """Stream one dict per located door in the global order trade_date, category, transaction_id, door_index.
+
+    One query per trade month keeps memory bounded by a month. DuckDB spills under spill_dir, which is
+    created here (it may exist) and emptied of this call's files afterwards.
+    """
+    spill_dir = Path(spill_dir)
+    spill_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="rows-", dir=spill_dir) as spill:
         with duckdb.connect(config=duckdb_config(spill)) as db:
             open_sources(db, converted, state)
-            cursor = db.execute(sql)
-            while batch := cursor.fetchmany(batch_rows):
-                for v in batch:
-                    o = dict(zip(names, v[:7]))
-                    yield make_row(o, v[7], v[8], v[9], v[10], v[11], _details(v[12]), _details(v[13]), _details(v[14]))
+            keys = [k for (k,) in db.execute(
+                f"SELECT DISTINCT {_PARTITION_KEY} k FROM observations ORDER BY k NULLS LAST").fetchall()]
+            for key in keys:
+                match = f"{_PARTITION_KEY} IS NULL" if key is None else f"{_PARTITION_KEY} = ?"
+                cursor = db.execute(_PARTITION_SQL.format(match=match), [] if key is None else [key])
+                while batch := cursor.fetchmany(batch_rows):
+                    for v in batch:
+                        o = dict(zip(_NAMES, v[:7]))
+                        yield make_row(o, v[7], v[8], v[9], v[10], v[11], _details(v[12]), _details(v[13]), _details(v[14]))

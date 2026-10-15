@@ -37,7 +37,7 @@ def base(built, tmp_path_factory):
     from lvr_pipeline.output.build import write_output
 
     root = tmp_path_factory.mktemp("r07_9")
-    summary = write_output(built["converted"], built["state"], root / "public", root / "release")
+    summary = write_output(built["converted"], built["state"], root / "public", root / "release", spill_dir=root / "spill")
     _, report = load_snapshot(built["converted"], "converted")
     catalog = write_catalog(root / "public", root / "release", summary, converted_report=report, cutoff_yyyymm=CUTOFF)
     return {"root": root, "summary": summary, "report": report, "catalog": catalog}

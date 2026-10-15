@@ -529,7 +529,14 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
             if output_root.exists():
                 raise RuntimeError(f"output directory {output_root} already exists and cannot be adopted; "
                                    "it was not changed")
-            summary = write_output(converted, state, output_root / "public", output_root / "release")
+            # DuckDB spill of the output query: beside the stage build area, never inside the output
+            # directory (whose files are all recorded) and removed before the snapshot is committed.
+            spill = store.root / "build" / f"spill-{output_id}"
+            try:
+                summary = write_output(converted, state, output_root / "public", output_root / "release",
+                                       spill_dir=spill)
+            finally:
+                shutil.rmtree(spill, ignore_errors=True)
             _, converted_report = load_snapshot(converted, "converted")
             write_catalog(output_root / "public", output_root / "release", summary,
                           converted_report=converted_report, cutoff_yyyymm=bindings_["cutoff_yyyymm"])

@@ -62,9 +62,9 @@ def built(tmp_path_factory):
     pool = build_pool(converted, root, descriptor, tmp / "work", index_path=index)
     state = resolve_offline(pool, index, tmp / "work")
     public, release = tmp / "public", tmp / "release"
-    summary = write_output(converted, state, public, release)
+    summary = write_output(converted, state, public, release, spill_dir=tmp / "spill")
     return {"converted": converted, "state": state, "public": public, "release": release, "summary": summary,
-            "rows": list(iter_door_rows(converted, state))}
+            "rows": list(iter_door_rows(converted, state, spill_dir=tmp / "spill"))}
 
 
 def only(rows, **match):
@@ -149,13 +149,11 @@ def test_details_are_ordered_arrays_identical_on_all_rows(built):
         assert (r["build_json"], r["land_json"], r["park_json"]) == ("[]", "[]", "[]")
 
 
-def test_order_and_unknown_order_name(built):
+def test_order(built):
     rows = built["rows"]
     order = [(r["trade_date"], r["category"], r["transaction_id"], r["door_index"]) for r in rows]
     assert order == sorted(order)
     assert len(rows) == 21
-    with pytest.raises(ValueError, match="order_by"):
-        next(iter_door_rows(built["converted"], built["state"], order_by=("nope",)))
 
 
 def test_geoparquet_and_monthly_csv_hold_the_same_rows(built):
@@ -215,19 +213,19 @@ def test_csv_has_no_bom_by_default_and_bom_on_request(built, tmp_path):
     assert not data.startswith(b"\xef\xbb\xbf") and b"\r" not in data
     rows = csv_rows(path)
     assert len(rows) == 4 and rows[0]["longitude"] == "121.51" and rows[0]["price_twd"] == "3250000"
-    result = write_output(built["converted"], built["state"], tmp_path / "p", tmp_path / "r", bom=True)
+    result = write_output(built["converted"], built["state"], tmp_path / "p", tmp_path / "r", spill_dir=tmp_path / "s", bom=True)
     assert result["total_rows"] == 21
     assert (tmp_path / "p" / "csv" / "2026" / "taiwanlvr_202601_sales.csv").read_bytes().startswith(b"\xef\xbb\xbf")
 
 
 def test_non_empty_target_is_refused_and_never_overwritten(built, tmp_path):
     with pytest.raises(FileExistsError):
-        write_output(built["converted"], built["state"], built["public"], tmp_path / "r")
+        write_output(built["converted"], built["state"], built["public"], tmp_path / "r", spill_dir=tmp_path / "s")
     assert not (tmp_path / "r").exists() or not any((tmp_path / "r").iterdir())
     (tmp_path / "busy").mkdir()
     (tmp_path / "busy" / "keep.txt").write_text("keep")
     with pytest.raises(FileExistsError):
-        write_output(built["converted"], built["state"], tmp_path / "p2", tmp_path / "busy")
+        write_output(built["converted"], built["state"], tmp_path / "p2", tmp_path / "busy", spill_dir=tmp_path / "s")
     assert (tmp_path / "busy" / "keep.txt").read_text() == "keep"
 
 
@@ -253,3 +251,77 @@ def test_county_letter_table_matches_address_codes():
     assert [r["letter"] for r in table] == sorted(letters)
     assert all(_COUNTY_CODE[r["county"]] == r["county_code"] for r in table)
     assert county_of("a_lvr_land_a.csv") == "臺北市"
+
+
+# The single query of the output stage before R07-12g, kept only here as the reference for the monthly partitions.
+REFERENCE_SQL = """
+    SELECT o.src_batch, o.member_path, o.source_row_number, o.category, o.tx_date_raw, o.raw_address, o.props_json,
+           c.ordinal, c.normalized_address, c.door_count, r.lng, r.lat, b.j, l.j, p.j
+    FROM observations o
+    JOIN (SELECT raw_record_id, ordinal, normalized_address, key_version, building_key,
+                 count(*) OVER (PARTITION BY raw_record_id) door_count FROM components) c USING(raw_record_id)
+    JOIN results r ON r.key_version=c.key_version AND r.building_key=c.building_key
+                  AND r.lng IS NOT NULL AND r.lat IS NOT NULL
+    LEFT JOIN (SELECT raw_record_id, list(raw_fields_json ORDER BY source_row_number, detail_record_id) j
+               FROM details WHERE detail_kind='build' GROUP BY 1) b USING(raw_record_id)
+    LEFT JOIN (SELECT raw_record_id, list(raw_fields_json ORDER BY source_row_number, detail_record_id) j
+               FROM details WHERE detail_kind='land' GROUP BY 1) l USING(raw_record_id)
+    LEFT JOIN (SELECT raw_record_id, list(raw_fields_json ORDER BY source_row_number, detail_record_id) j
+               FROM details WHERE detail_kind='park' GROUP BY 1) p USING(raw_record_id)
+    ORDER BY o.tx_date_raw, o.category, o.src_batch, o.member_path, o.source_row_number, c.ordinal"""
+
+
+def reference_rows(converted, state):
+    import duckdb
+
+    names = ["src_batch", "member_path", "source_row_number", "category", "tx_date_raw", "raw_address", "props_json"]
+    with duckdb.connect() as db:
+        rows_module.open_sources(db, converted, state)
+        return [rows_module.make_row(dict(zip(names, v[:7])), v[7], v[8], v[9], v[10], v[11],
+                                     rows_module._details(v[12]), rows_module._details(v[13]), rows_module._details(v[14]))
+                for v in db.execute(REFERENCE_SQL).fetchall()]
+
+
+def test_monthly_partitions_give_the_sequence_of_the_single_query(built, tmp_path):
+    rows = list(iter_door_rows(built["converted"], built["state"], spill_dir=tmp_path / "s", batch_rows=3))
+    assert len(rows) == 21 and len({r["trade_date"][:7] for r in rows}) >= 3
+    assert {r["category"] for r in rows} == set(CATEGORIES) and max(r["door_count"] for r in rows) > 1
+    assert any(r["build_json"] != "[]" for r in rows)
+    assert rows == reference_rows(built["converted"], built["state"])
+
+
+def test_spill_directory_is_created_under_the_given_path_and_emptied(built, tmp_path, monkeypatch):
+    import tempfile
+
+    used = []
+    original = rows_module.duckdb_config
+    monkeypatch.setattr(rows_module, "duckdb_config", lambda spill=None: used.append(Path(spill)) or original(spill))
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: pytest.fail("system temp used"))
+    spill = tmp_path / "new" / "spill"
+    list(iter_door_rows(built["converted"], built["state"], spill_dir=spill))
+    assert len(used) == 1 and used[0].parent == spill
+    assert spill.is_dir() and list(spill.iterdir()) == []
+
+
+@pytest.fixture
+def odd_dates(monkeypatch):
+    """Observations whose tx_date_raw is NULL, empty, malformed or short, as a tampered converted snapshot would hold."""
+    original = rows_module.open_sources
+
+    def patched(db, converted, state):
+        original(db, converted, state)
+        db.execute("CREATE TABLE obs_base AS SELECT * FROM observations")
+        db.execute("CREATE OR REPLACE VIEW observations AS SELECT * REPLACE (CASE source_row_number % 5 "
+                   "WHEN 0 THEN NULL WHEN 1 THEN '' WHEN 2 THEN 'abc' WHEN 3 THEN '11502' ELSE tx_date_raw END "
+                   "AS tx_date_raw) FROM obs_base")
+
+    monkeypatch.setattr(rows_module, "open_sources", patched)
+
+
+def test_rows_without_valid_trade_date_are_yielded_and_write_output_raises(built, odd_dates, tmp_path):
+    converted, state = built["converted"], built["state"]
+    rows = list(iter_door_rows(converted, state, spill_dir=tmp_path / "s", batch_rows=2))
+    assert rows == reference_rows(converted, state)
+    assert len(rows) == 21 and {r["trade_date"] is None for r in rows} == {True, False}
+    with pytest.raises(ValueError, match="no valid trade_date"):
+        write_output(converted, state, tmp_path / "pub", tmp_path / "rel", spill_dir=tmp_path / "s2")

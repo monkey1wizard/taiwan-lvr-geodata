@@ -36,16 +36,15 @@ class _Open:
             self.closed.add(key)
 
 
-def write_output(converted, state, public_root, release_root, *, bom: bool = False, order_by=None) -> dict:
+def write_output(converted, state, public_root, release_root, *, spill_dir, bom: bool = False) -> dict:
     """Create GeoParquet under release_root and monthly CSV files under public_root.
 
     Returns {"files": {relative path: {"format", "year", "month", "category", "rows"}}, "total_rows": n}.
-    The parquet path is relative to release_root, every other path to public_root.
+    DuckDB spills under spill_dir, outside both roots. The parquet path is relative to release_root, every other path to public_root.
     """
     public_root, release_root = Path(public_root), Path(release_root)
     _require_empty(public_root)
     _require_empty(release_root)
-    kwargs = {} if order_by is None else {"order_by": order_by}
     files = {}
 
     def record(path, root, fmt, year, month, category, rows):
@@ -63,7 +62,7 @@ def write_output(converted, state, public_root, release_root, *, bom: bool = Fal
             record(writer.path, public_root, "csv", year, month, category, writer.rows)
 
     try:
-        for row in iter_door_rows(converted, state, **kwargs):
+        for row in iter_door_rows(converted, state, spill_dir=spill_dir):
             date = row["trade_date"]
             if date is None:
                 raise ValueError(f"Row {row['transaction_id']} has no valid trade_date and cannot be placed in a period")
