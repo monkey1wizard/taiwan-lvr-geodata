@@ -223,23 +223,41 @@ def open_sources(db, converted, state):
         raise ValueError("Duplicate address index key")
 
 
+# Materialized once per call, in a DuckDB file under the spill directory, ordered by the partition key k so
+# that the zonemaps of each table prune the per-partition reads to one month.
+_MATERIALIZE = [
+    # k per record; the join below keeps the cardinality of the former filter on the observations view.
+    f"""CREATE TABLE ob AS SELECT raw_record_id, src_batch, member_path, source_row_number, category, tx_date_raw,
+               raw_address, props_json, {_PARTITION_KEY} k FROM observations ORDER BY k""",
+    "CREATE TABLE ob_key AS SELECT DISTINCT raw_record_id, k FROM ob",
+    # door_count counts ALL components of the record, located or not.
+    """CREATE TABLE doors AS
+       SELECT m.k, c.raw_record_id, c.ordinal, c.normalized_address, c.door_count, r.lng, r.lat
+       FROM (SELECT raw_record_id, ordinal, normalized_address, key_version, building_key,
+                    count(*) OVER (PARTITION BY raw_record_id) door_count FROM components) c
+       JOIN ob_key m USING(raw_record_id)
+       JOIN results r ON r.key_version=c.key_version AND r.building_key=c.building_key
+                     AND r.lng IS NOT NULL AND r.lat IS NOT NULL
+       ORDER BY m.k""",
+    *(f"""CREATE TABLE d_{kind} AS
+          SELECT m.k, d.raw_record_id, d.source_row_number, d.detail_record_id, d.raw_fields_json
+          FROM details d JOIN ob_key m USING(raw_record_id) WHERE d.detail_kind='{kind}' ORDER BY m.k"""
+      for kind in ("build", "land", "park")),
+]
+
+
 def _detail_view(kind):
     return (
         "(SELECT raw_record_id, list(raw_fields_json ORDER BY source_row_number, detail_record_id) j "
-        f"FROM details WHERE detail_kind='{kind}' AND raw_record_id IN (SELECT raw_record_id FROM ob) GROUP BY 1)"
+        f"FROM d_{kind} WHERE {{match}} GROUP BY 1)"
     )
 
 
 _PARTITION_SQL = f"""
-    WITH ob AS (SELECT * FROM observations WHERE {{match}})
     SELECT o.src_batch, o.member_path, o.source_row_number, o.category, o.tx_date_raw, o.raw_address, o.props_json,
-           c.ordinal, c.normalized_address, c.door_count, r.lng, r.lat, b.j, l.j, p.j
-    FROM ob o
-    JOIN (SELECT raw_record_id, ordinal, normalized_address, key_version, building_key,
-                 count(*) OVER (PARTITION BY raw_record_id) door_count
-          FROM components WHERE raw_record_id IN (SELECT raw_record_id FROM ob)) c USING(raw_record_id)
-    JOIN results r ON r.key_version=c.key_version AND r.building_key=c.building_key
-                  AND r.lng IS NOT NULL AND r.lat IS NOT NULL
+           c.ordinal, c.normalized_address, c.door_count, c.lng, c.lat, b.j, l.j, p.j
+    FROM (SELECT * FROM ob WHERE {{match}}) o
+    JOIN (SELECT * FROM doors WHERE {{match}}) c USING(raw_record_id)
     LEFT JOIN {_detail_view("build")} b USING(raw_record_id)
     LEFT JOIN {_detail_view("land")} l USING(raw_record_id)
     LEFT JOIN {_detail_view("park")} p USING(raw_record_id)
@@ -250,19 +268,21 @@ _NAMES = ["src_batch", "member_path", "source_row_number", "category", "tx_date_
 def iter_door_rows(converted, state, *, spill_dir, batch_rows=1024):
     """Stream one dict per located door in the global order trade_date, category, transaction_id, door_index.
 
-    One query per trade month keeps memory bounded by a month. DuckDB spills under spill_dir, which is
+    The sources are materialized once into a DuckDB file under spill_dir, then one query per trade month
+    keeps memory bounded by a month. DuckDB spills under spill_dir, which is
     created here (it may exist) and emptied of this call's files afterwards.
     """
     spill_dir = Path(spill_dir)
     spill_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="rows-", dir=spill_dir) as spill:
-        with duckdb.connect(config=duckdb_config(spill)) as db:
+        with duckdb.connect(str(Path(spill) / "rows.duckdb"), config=duckdb_config(spill)) as db:
             open_sources(db, converted, state)
-            keys = [k for (k,) in db.execute(
-                f"SELECT DISTINCT {_PARTITION_KEY} k FROM observations ORDER BY k NULLS LAST").fetchall()]
+            for sql in _MATERIALIZE:
+                db.execute(sql)
+            keys = [k for (k,) in db.execute("SELECT DISTINCT k FROM ob ORDER BY k NULLS LAST").fetchall()]
             for key in keys:
-                match = f"{_PARTITION_KEY} IS NULL" if key is None else f"{_PARTITION_KEY} = ?"
-                cursor = db.execute(_PARTITION_SQL.format(match=match), [] if key is None else [key])
+                match = "k IS NULL" if key is None else "k = ?"
+                cursor = db.execute(_PARTITION_SQL.format(match=match), [] if key is None else [key] * 5)
                 while batch := cursor.fetchmany(batch_rows):
                     for v in batch:
                         o = dict(zip(_NAMES, v[:7]))
