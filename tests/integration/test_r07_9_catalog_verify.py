@@ -4,8 +4,8 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
+import re
 import shutil
-import sqlite3
 import subprocess
 import sys
 
@@ -28,9 +28,6 @@ from test_run_full import checkpoints, setup_inputs  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 MONTH_CSV = "csv/2026/taiwanlvr_202601_sales.csv"
-YEAR_CSV = "csv/2026/taiwanlvr_2026_sales.csv"
-MONTH_JSON = "geojson/2026/taiwanlvr_202601_sales.geojson"
-GPKG = "gpkg/taiwanlvr_2026.gpkg"
 CUTOFF = "202610"
 
 
@@ -101,25 +98,28 @@ def test_catalog_content_and_hashes(base):
     paths = [e["path"] for e in catalog["files"]]
     assert paths == sorted(paths) and "catalog.json" not in paths and len(paths) == len(set(paths))
     for entry in catalog["files"]:
-        assert set(entry) - {"layers"} == {"path", "location", "format", "period", "year", "month", "category", "rows",
-                                           "size_bytes", "sha256"}
+        assert set(entry) == {"path", "location", "format", "period", "year", "month", "category", "rows",
+                              "size_bytes", "sha256"}
         file = base["root"] / ("release" if entry["location"] == "release" else "public") / entry["path"]
         assert entry["size_bytes"] == file.stat().st_size and entry["sha256"] == sha256_file(file)
     by_path = {e["path"]: e for e in catalog["files"]}
     parquet = by_path["taiwanlvr.parquet"]
     assert (parquet["location"], parquet["format"], parquet["period"], parquet["year"], parquet["month"],
             parquet["category"], parquet["rows"]) == ("release", "geoparquet", "all", None, None, None, 21)
-    gpkg = by_path[GPKG]
-    assert (gpkg["location"], gpkg["format"], gpkg["period"], gpkg["year"], gpkg["month"], gpkg["category"]) == (
-        "public", "gpkg", "year", 2026, None, None)
-    db = sqlite3.connect(base["root"] / "public" / GPKG)
-    layers = {c: db.execute(f'SELECT count(*) FROM "{c}"').fetchone()[0] for c in ("sales", "presale", "rent")}
-    db.close()
-    assert gpkg["layers"] == layers and gpkg["rows"] == sum(layers.values()) and layers["sales"] == 6
-    year_csv, month_csv, geojson = by_path[YEAR_CSV], by_path[MONTH_CSV], by_path[MONTH_JSON]
-    assert (year_csv["period"], year_csv["month"], year_csv["category"], year_csv["rows"]) == ("year", None, "sales", 6)
-    assert (month_csv["period"], month_csv["year"], month_csv["month"], month_csv["rows"]) == ("month", 2026, 1, 4)
-    assert (geojson["format"], geojson["period"], geojson["rows"], geojson["location"]) == ("geojson", "month", 4, "public")
+    month_csv = by_path[MONTH_CSV]
+    assert (month_csv["location"], month_csv["format"], month_csv["period"], month_csv["year"], month_csv["month"],
+            month_csv["category"], month_csv["rows"]) == ("public", "csv", "month", 2026, 1, "sales", 4)
+    assert {e["period"] for e in catalog["files"]} == {"all", "month"}
+    assert {e["format"] for e in catalog["files"]} == {"geoparquet", "csv"}
+
+
+def test_output_holds_no_gpkg_geojson_or_yearly_csv(base):
+    public = base["root"] / "public"
+    names = {p.relative_to(public).as_posix() for p in public.rglob("*") if p.is_file()}
+    assert not [n for n in names if n.endswith((".gpkg", ".geojson"))]
+    assert not [n for n in names if re.search(r"taiwanlvr_[0-9]{4}_[a-z]+\.csv$", n)]
+    assert not [e for e in base["catalog"]["files"] if e["period"] == "year"]
+    assert sum(e["rows"] for e in base["catalog"]["files"] if e["format"] == "csv") == base["catalog"]["total_rows"]
 
 
 def test_catalog_requires_source_hashes_and_a_cutoff(base, tmp_path):
@@ -142,7 +142,7 @@ def test_verify_passes_untouched_output_and_reports_resources_and_quality(out):
     assert set(report["checks"].values()) == {"pass"} and report["total_rows"] == 21
     assert report["catalog_sha256"] == sha256_file(public / "catalog.json")
     sizes = report["bytes_by_format"]
-    assert set(sizes) == {"geoparquet", "gpkg", "csv", "geojson"} and all(v > 0 for v in sizes.values())
+    assert set(sizes) == {"geoparquet", "csv"} and all(v > 0 for v in sizes.values())
     assert sizes["geoparquet"] == (release / "taiwanlvr.parquet").stat().st_size
     assert sizes["csv"] == sum(p.stat().st_size for p in public.glob("csv/*/*.csv"))
     assert sum(q["rows"] for q in report["quality"].values()) == 21 and report["quality"]["sales"]["rows"] == 7
@@ -198,35 +198,46 @@ def test_extra_file_in_release_is_found(out):
 
 def test_missing_file_is_found(out):
     public, release = out
-    (public / MONTH_JSON).unlink()
+    (public / MONTH_CSV).unlink()
     failures = failures_of(public, release)
-    named(failures, "catalog", path=MONTH_JSON, text="does not exist")
+    named(failures, "catalog", path=MONTH_CSV, text="does not exist")
+    named(failures, "cross-format", path="2026 sales", text="monthly CSV")
 
 
-def test_changed_geojson_property_with_rehashed_catalog_is_found_across_formats(out):
+@pytest.mark.parametrize("stray", [
+    "gpkg/taiwanlvr_2026.gpkg",
+    "geojson/2026/taiwanlvr_202601_sales.geojson",
+    "csv/2026/taiwanlvr_2026_sales.csv",
+])
+def test_removed_format_file_in_public_is_found(out, stray):
     public, release = out
-    path = public / MONTH_JSON
-    document = json.loads(path.read_text(encoding="utf-8"))
-    document["features"][1]["properties"]["building_type"] = "tampered"
-    path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+    (public / stray).parent.mkdir(parents=True, exist_ok=True)
+    (public / stray).write_bytes(b"x")
+    named(failures_of(public, release), "catalog", path=stray, text="not listed")
+
+
+def test_changed_csv_value_with_rehashed_catalog_is_found_across_formats(out):
+    public, release = out
+
+    def change(rows):
+        rows[2][CSV_COLUMNS.index("building_type")] = "tampered"
+
+    rewrite_csv(public / MONTH_CSV, change)
     rehash(public, release)
     failures = failures_of(public, release)
-    [found] = named(failures, "cross-format", path="2026 sales", text="monthly GeoJSON")
+    [found] = named(failures, "cross-format", path="2026 sales", text="monthly CSV")
     assert "differing 1" in found["detail"] and "differs in ['building_type']" in found["detail"]
     assert "115q1/a_lvr_land_a.csv/3#2" in found["detail"]
-    named(failures, "transaction", path=MONTH_JSON, text="building_type")
+    named(failures, "transaction", path=MONTH_CSV, text="building_type")
 
 
-def test_deleted_gpkg_row_with_rehashed_catalog_is_found(out):
+def test_deleted_csv_row_with_rehashed_catalog_is_found(out):
     public, release = out
-    db = sqlite3.connect(public / GPKG)
-    db.execute('DELETE FROM "sales" WHERE fid = (SELECT min(fid) FROM "sales")')
-    db.commit()
-    db.close()
+    rewrite_csv(public / MONTH_CSV, lambda rows: rows.pop(1))
     rehash(public, release)
     failures = failures_of(public, release)
-    named(failures, "catalog", path=GPKG, text="holds 5 rows in layer sales, catalog says 6")
-    [found] = named(failures, "cross-format", path="2026 sales", text="GeoPackage layer")
+    named(failures, "catalog", path=MONTH_CSV, text="holds 3 rows, catalog says 4")
+    [found] = named(failures, "cross-format", path="2026 sales", text="monthly CSV")
     assert "5 rows, GeoParquet 6" in found["detail"] and "missing 1" in found["detail"]
 
 
@@ -239,40 +250,6 @@ def test_reordered_csv_header_with_rehashed_catalog_is_found(out):
     rewrite_csv(public / MONTH_CSV, swap)
     rehash(public, release)
     named(failures_of(public, release), "columns", path=MONTH_CSV, text="header differs")
-
-
-def test_geojson_property_order_is_checked(out):
-    public, release = out
-    path = public / MONTH_JSON
-    document = json.loads(path.read_text(encoding="utf-8"))
-    for feature in document["features"]:
-        feature["properties"] = dict(reversed(list(feature["properties"].items())))
-    path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
-    rehash(public, release)
-    named(failures_of(public, release), "columns", path=MONTH_JSON, text="property keys or order")
-
-
-def test_geojson_crs_member_is_found(out):
-    public, release = out
-    path = public / MONTH_JSON
-    document = json.loads(path.read_text(encoding="utf-8"))
-    document["crs"] = {"type": "name", "properties": {"name": "EPSG:4326"}}
-    path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
-    rehash(public, release)
-    named(failures_of(public, release), "metadata", path=MONTH_JSON, text="crs")
-
-
-def test_gpkg_metadata_and_column_types_are_checked(out):
-    public, release = out
-    db = sqlite3.connect(public / GPKG)
-    db.execute("PRAGMA user_version = 1")
-    db.execute('ALTER TABLE "rent" ADD COLUMN extra TEXT')
-    db.commit()
-    db.close()
-    rehash(public, release)
-    failures = failures_of(public, release)
-    named(failures, "metadata", path=GPKG, text="user_version")
-    named(failures, "columns", path=f"{GPKG}[rent]", text="declared types")
 
 
 def test_geoparquet_geo_metadata_is_checked(out):
@@ -340,7 +317,7 @@ def test_non_door_column_differing_inside_one_transaction_is_found(out):
 
 def test_all_failures_are_collected_before_raising(out):
     public, release = out
-    (public / MONTH_JSON).unlink()
+    (public / MONTH_CSV).unlink()
     (public / "stray.txt").write_text("x", encoding="utf-8")
     with pytest.raises(OutputVerificationError) as raised:
         verify_output(public, release)
@@ -422,7 +399,7 @@ def test_run_full_failed_verification_leaves_the_report_and_no_committed_output(
     real = verify_output
 
     def damaging(public, release):
-        next(Path(public).glob("geojson/*/*.geojson")).unlink()
+        next(Path(public).glob("csv/*/*.csv")).unlink()
         return real(public, release)
 
     monkeypatch.setattr("lvr_pipeline.pipeline.verify_output", damaging)
@@ -449,5 +426,5 @@ def test_gitignore_keeps_data_ignored_except_data_output():
 
     for path in ("data/raw/x.zip", "data/runs/r/x", "data/tmp/x", "data/cache/x", "data/tgos/x"):
         assert ignored(path), path
-    for path in ("data/output/catalog.json", "data/output/gpkg/taiwanlvr_2026.gpkg", "data/output/csv/2026/a.csv"):
+    for path in ("data/output/catalog.json", "data/output/csv/2026/a.csv"):
         assert not ignored(path), path

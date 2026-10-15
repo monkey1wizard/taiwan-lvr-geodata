@@ -6,7 +6,6 @@ repo commit is shared and cannot differ between the two runs. Only the runs_root
 import hashlib
 import json
 import re
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -39,13 +38,6 @@ JSON_ARTIFACT_SIZE_EXEMPT_SUFFIX = ".json"
 # first_run_id is the review snapshot id. The id depends on timing fields of the upstream stages.
 FIRST_RUN_ID_FILES = {"cross_check_addresses.parquet", "exception_addresses.parquet"}
 FIRST_RUN_ID_COLUMN = "first_run_id"
-
-# GeoPackage columns that hold the wall-clock time of the write, as "table.column".
-# gpkg_contents.last_change is also dropped by the column-name rule below. It is listed for the audit.
-GPKG_VOLATILE = {
-    ("gpkg_contents", "last_change"),  # written from GpkgOutput.timestamp (gpkg.py, _now()).
-    ("layer_styles", "update_time"),  # written from GpkgOutput.timestamp (gpkg.py, _now()).
-}
 
 # Workers for the first and second run. R07-12d will pass N for the second run.
 # run_full has no worker option yet, so both runs are serial.
@@ -133,49 +125,6 @@ def _parquet_diff(a, b):
     return None
 
 
-def _gpkg_tables(path):
-    uri = path.resolve().as_uri() + "?mode=ro"
-    db = sqlite3.connect(uri, uri=True)
-    try:
-        names = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
-        dumped = {}
-        dropped = set()
-        for table in names:
-            columns = [r[1] for r in db.execute(f'PRAGMA table_info("{table}")')]
-            keep = []
-            for column in columns:
-                if column == "last_change" or "timestamp" in column or (table, column) in GPKG_VOLATILE:
-                    dropped.add((table, column))
-                else:
-                    keep.append(column)
-            select = ", ".join(f'"{c}"' for c in keep)
-            dumped[table] = (keep, db.execute(f'SELECT {select} FROM "{table}" ORDER BY rowid').fetchall())
-        return dumped, dropped
-    finally:
-        db.close()
-
-
-def _gpkg_diff(a, b):
-    tables_a, dropped_a = _gpkg_tables(a)
-    tables_b, dropped_b = _gpkg_tables(b)
-    if dropped_a != GPKG_VOLATILE or dropped_b != GPKG_VOLATILE:
-        return f"dropped columns {sorted(dropped_a)} / {sorted(dropped_b)} != GPKG_VOLATILE"
-    if list(tables_a) != list(tables_b):
-        return f"tables {list(tables_a)} != {list(tables_b)}"
-    for table in tables_a:
-        cols_a, rows_a = tables_a[table]
-        cols_b, rows_b = tables_b[table]
-        if cols_a != cols_b:
-            return f"{table}: columns {cols_a} != {cols_b}"
-        if len(rows_a) != len(rows_b):
-            return f"{table}: row count {len(rows_a)} != {len(rows_b)}"
-        for i, (x, y) in enumerate(zip(rows_a, rows_b)):
-            if x != y:
-                column = next(c for c, p, q in zip(cols_a, x, y) if p != q)
-                return f"{table} row {i} column {column}: {x[cols_a.index(column)]!r} != {y[cols_a.index(column)]!r}"
-    return None
-
-
 def _collect(run_dir):
     """Map each normalized key to the files that have it. attempts/ is excluded: it holds per-attempt timing."""
     groups = {}
@@ -197,13 +146,11 @@ def _compare(key, a, b, roots):
         if a.name in FIRST_RUN_ID_FILES:
             return ext, _parquet_diff(a, b)
         return ext, None if _sha256(a) == _sha256(b) else "raw SHA-256 differs"
-    if ext in {".csv", ".geojson", ".jsonl"}:
+    if ext in {".csv", ".jsonl"}:
         return ext, None if _sha256(a) == _sha256(b) else "raw SHA-256 differs"
     if ext == ".json":
         found = _first_json_diff(_normalize_json(_read_json(a), roots), _normalize_json(_read_json(b), roots))
         return ext, found
-    if ext == ".gpkg":
-        return ext, _gpkg_diff(a, b)
     return ext, None if _sha256(a) == _sha256(b) else "raw SHA-256 differs"
 
 

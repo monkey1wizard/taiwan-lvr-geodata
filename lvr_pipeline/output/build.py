@@ -1,12 +1,10 @@
-"""Write all four public formats from the door rows in one ordered pass."""
+"""Write GeoParquet and monthly CSV from the door rows in one ordered pass."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from .csv import CsvOutput
-from .geojson import GeoJsonOutput
-from .gpkg import GpkgOutput
 from .parquet import ParquetOutput
 from .rows import iter_door_rows
 
@@ -39,7 +37,7 @@ class _Open:
 
 
 def write_output(converted, state, public_root, release_root, *, bom: bool = False, order_by=None) -> dict:
-    """Create GeoParquet under release_root and GPKG, CSV and GeoJSON under public_root.
+    """Create GeoParquet under release_root and monthly CSV files under public_root.
 
     Returns {"files": {relative path: {"format", "year", "month", "category", "rows"}}, "total_rows": n}.
     The parquet path is relative to release_root, every other path to public_root.
@@ -56,27 +54,13 @@ def write_output(converted, state, public_root, release_root, *, bom: bool = Fal
         }
 
     parquet = ParquetOutput(release_root / "taiwanlvr.parquet")
-    gpkg = _Open()       # key (year,)
-    yearly = _Open()     # key (year, category)
-    monthly = _Open()    # key (year, month, category), shared by csv and geojson
+    monthly = _Open()    # key (year, month, category)
     total = 0
 
-    def finish_gpkg(items):
-        for (year,), writer in items:
-            writer.close()
-            record(writer.path, public_root, "gpkg", year, None, None, sum(writer.rows.values()))
-            files[writer.path.relative_to(public_root).as_posix()]["layers"] = dict(writer.rows)
-
-    def finish_yearly(items):
-        for (year, category), writer in items:
-            writer.close()
-            record(writer.path, public_root, "csv", year, None, category, writer.rows)
-
     def finish_monthly(items):
-        for (year, month, category), (csv_writer, json_writer) in items:
-            for writer, fmt in ((csv_writer, "csv"), (json_writer, "geojson")):
-                writer.close()
-                record(writer.path, public_root, fmt, year, month, category, writer.rows)
+        for (year, month, category), writer in items:
+            writer.close()
+            record(writer.path, public_root, "csv", year, month, category, writer.rows)
 
     try:
         for row in iter_door_rows(converted, state, **kwargs):
@@ -85,28 +69,15 @@ def write_output(converted, state, public_root, release_root, *, bom: bool = Fal
                 raise ValueError(f"Row {row['transaction_id']} has no valid trade_date and cannot be placed in a period")
             year, month, category = int(date[:4]), int(date[5:7]), row["category"]
             yy, ym = f"{year:04d}", f"{year:04d}{month:02d}"
-            finish_gpkg(gpkg.close_except(lambda k: k == (year,)))
-            finish_yearly(yearly.close_except(lambda k: k[0] == year))
             finish_monthly(monthly.close_except(lambda k: k[:2] == (year, month)))
-            gpkg.get((year,), lambda: GpkgOutput(public_root / "gpkg" / f"taiwanlvr_{yy}.gpkg", year)).add(row)
-            yearly.get(
-                (year, category), lambda: CsvOutput(public_root / "csv" / yy / f"taiwanlvr_{yy}_{category}.csv", bom=bom)
-            ).add(row)
-            pair = monthly.get(
+            monthly.get(
                 (year, month, category),
-                lambda: (
-                    CsvOutput(public_root / "csv" / yy / f"taiwanlvr_{ym}_{category}.csv", bom=bom),
-                    GeoJsonOutput(public_root / "geojson" / yy / f"taiwanlvr_{ym}_{category}.geojson"),
-                ),
-            )
-            pair[0].add(row)
-            pair[1].add(row)
+                lambda: CsvOutput(public_root / "csv" / yy / f"taiwanlvr_{ym}_{category}.csv", bom=bom),
+            ).add(row)
             parquet.add(row)
             total += 1
     finally:
         parquet.close()
-        finish_gpkg(gpkg.close_except(lambda k: False))
-        finish_yearly(yearly.close_except(lambda k: False))
         finish_monthly(monthly.close_except(lambda k: False))
     record(parquet.path, release_root, "geoparquet", None, None, None, parquet.rows)
     return {"files": files, "total_rows": total}

@@ -1,14 +1,12 @@
-"""R07-8a: door-row output in GeoParquet, GeoPackage, CSV and GeoJSON. Synthetic data only."""
+"""R07-8a: door-row output in GeoParquet and monthly CSV. Synthetic data only."""
 from __future__ import annotations
 
 import csv
 import json
 from pathlib import Path
 import re
-import sqlite3
 import struct
 import sys
-import xml.etree.ElementTree as ET
 
 import pyarrow.parquet as pq
 import pytest
@@ -81,15 +79,6 @@ def read_parquet(built):
     return pq.read_table(built["release"] / "taiwanlvr.parquet")
 
 
-def gpkg_rows(path, layer):
-    db = sqlite3.connect(path)
-    try:
-        db.row_factory = sqlite3.Row
-        return [dict(r) for r in db.execute(f'SELECT * FROM "{layer}" ORDER BY fid')]
-    finally:
-        db.close()
-
-
 def csv_rows(path):
     with path.open(encoding="utf-8", newline="") as stream:
         return list(csv.DictReader(stream))
@@ -102,23 +91,11 @@ def test_column_names_order_and_types_follow_contract(built):
     table = read_parquet(built)
     assert table.schema.names == names
     assert [str(f.type) for f in table.schema] == [kinds[k] for _, k in columns]
-    # GeoPackage: fid, geom, then the attributes in contract order
-    gpkg = next(built["public"].glob("gpkg/*.gpkg"))
-    db = sqlite3.connect(gpkg)
-    info = db.execute('PRAGMA table_info("sales")').fetchall()
-    db.close()
-    attributes = [(n, k) for n, k in columns if n != "geometry"]
-    assert [r[1] for r in info] == ["fid", "geom"] + [n for n, _ in attributes]
-    sql = {"string": "TEXT", "int64": "INTEGER", "double": "REAL"}
-    assert [r[2] for r in info][2:] == [sql[k] for _, k in attributes]
     # CSV: geometry becomes longitude and latitude at the same position
     csv_names = [x for n in names for x in (["longitude", "latitude"] if n == "geometry" else [n])]
-    first = next(built["public"].glob("csv/*/taiwanlvr_????_sales.csv"))
+    first = next(built["public"].glob("csv/*/taiwanlvr_??????_sales.csv"))
     assert first.read_text(encoding="utf-8").split("\n", 1)[0] == ",".join(csv_names)
     assert len(csv_names) == len(names) + 1
-    # GeoJSON: properties are the non-geometry attributes
-    feature = json.loads(next(built["public"].glob("geojson/*/*sales.geojson")).read_text(encoding="utf-8"))["features"][0]
-    assert list(feature["properties"]) == [n for n, _ in attributes]
     # dict rows carry the same names plus longitude and latitude
     assert set(built["rows"][0]) == set(names) - {"geometry"} | {"longitude", "latitude"}
 
@@ -181,38 +158,37 @@ def test_order_and_unknown_order_name(built):
         next(iter_door_rows(built["converted"], built["state"], order_by=("nope",)))
 
 
-def test_all_formats_hold_the_same_rows(built):
+def test_geoparquet_and_monthly_csv_hold_the_same_rows(built):
     expected = keys(built["rows"])
     assert len(expected) == 21
     table = read_parquet(built)
     assert table.num_rows == 21
     assert {(a, b) for a, b in zip(table["transaction_id"].to_pylist(), table["door_index"].to_pylist())} == expected
-    gpkg_keys, yearly_keys, monthly_csv, monthly_json = set(), set(), set(), set()
-    for path in built["public"].glob("gpkg/*.gpkg"):
-        for layer in CATEGORIES:
-            gpkg_keys |= keys(gpkg_rows(path, layer))
-    for path in built["public"].glob("csv/*/taiwanlvr_????_*.csv"):
-        yearly_keys |= {(r["transaction_id"], int(r["door_index"])) for r in csv_rows(path)}
+    monthly_csv = set()
     for path in built["public"].glob("csv/*/taiwanlvr_??????_*.csv"):
         monthly_csv |= {(r["transaction_id"], int(r["door_index"])) for r in csv_rows(path)}
-    for path in built["public"].glob("geojson/*/*.geojson"):
-        for f in json.loads(path.read_text(encoding="utf-8"))["features"]:
-            monthly_json.add((f["properties"]["transaction_id"], f["properties"]["door_index"]))
-    assert gpkg_keys == yearly_keys == monthly_csv == monthly_json == expected
+    assert monthly_csv == expected
     summary = built["summary"]
     assert summary["total_rows"] == 21
     by_format = {}
     for info in summary["files"].values():
         by_format[info["format"]] = by_format.get(info["format"], 0) + info["rows"]
-    assert by_format == {"geoparquet": 21, "gpkg": 21, "geojson": 21, "csv": 42}
-    assert "taiwanlvr.parquet" in summary["files"] and "gpkg/taiwanlvr_2026.gpkg" in summary["files"]
+    assert by_format == {"geoparquet": 21, "csv": 21}
+    assert "taiwanlvr.parquet" in summary["files"]
     month = summary["files"]["csv/2026/taiwanlvr_202601_sales.csv"]
     assert (month["year"], month["month"], month["category"], month["rows"]) == (2026, 1, "sales", 4)
     # no file for a month and category without rows, and file names use two-digit months
     assert not list(built["public"].glob("*/*/taiwanlvr_202603_*"))
-    assert sorted(p.name for p in built["public"].glob("csv/2025/*")) == sorted(
-        [f"taiwanlvr_2025_{c}.csv" for c in CATEGORIES] + [f"taiwanlvr_202512_{c}.csv" for c in CATEGORIES]
-    )
+    assert sorted(p.name for p in built["public"].glob("csv/2025/*")) == sorted(f"taiwanlvr_202512_{c}.csv" for c in CATEGORIES)
+
+
+def test_only_geoparquet_and_monthly_csv_are_written(built):
+    files = {p.relative_to(built["public"]).as_posix() for p in built["public"].rglob("*") if p.is_file()}
+    assert not [f for f in files if f.endswith((".gpkg", ".geojson"))]
+    assert not (built["public"] / "gpkg").exists() and not (built["public"] / "geojson").exists()
+    assert not [f for f in files if re.search(r"taiwanlvr_[0-9]{4}_[a-z]+\.csv$", f)]
+    assert all(re.fullmatch(r"csv/[0-9]{4}/taiwanlvr_[0-9]{6}_(sales|presale|rent)\.csv", f) for f in files)
+    assert {i["format"] for i in built["summary"]["files"].values()} == {"geoparquet", "csv"}
 
 
 def test_geoparquet_metadata_and_sort_order(built):
@@ -233,64 +209,15 @@ def test_geoparquet_metadata_and_sort_order(built):
     assert pq.ParquetFile(built["release"] / "taiwanlvr.parquet").metadata.row_group(0).column(0).compression == "ZSTD"
 
 
-def test_gpkg_structure_geometry_and_default_style(built):
-    path = built["public"] / "gpkg" / "taiwanlvr_2026.gpkg"
-    db = sqlite3.connect(path)
-    assert db.execute("PRAGMA application_id").fetchone()[0] == 0x47504B47
-    assert db.execute("PRAGMA user_version").fetchone()[0] == 10400
-    assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
-    assert {r[0] for r in db.execute("SELECT srs_id FROM gpkg_spatial_ref_sys")} == {-1, 0, 4326}
-    assert "WGS 84" in db.execute("SELECT definition FROM gpkg_spatial_ref_sys WHERE srs_id=4326").fetchone()[0]
-    contents = {r[0]: r for r in db.execute("SELECT table_name,data_type,srs_id,min_x,min_y,max_x,max_y FROM gpkg_contents")}
-    assert set(contents) == set(CATEGORIES) and all(r[1] == "features" and r[2] == 4326 for r in contents.values())
-    assert {tuple(r) for r in db.execute("SELECT table_name,column_name,geometry_type_name,srs_id,z,m FROM gpkg_geometry_columns")} == {
-        (c, "geom", "POINT", 4326, 0, 0) for c in CATEGORIES
-    }
-    sales = [r for r in built["rows"] if r["category"] == "sales" and r["trade_date"].startswith("2026")]
-    assert contents["sales"][3:] == (min(r["longitude"] for r in sales), min(r["latitude"] for r in sales),
-                                     max(r["longitude"] for r in sales), max(r["latitude"] for r in sales))
-    blob = db.execute('SELECT geom FROM "sales" ORDER BY fid LIMIT 1').fetchone()[0]
-    assert blob[:2] == b"GP" and blob[2] == 0 and blob[3] == 0x01 and struct.unpack("<i", blob[4:8])[0] == 4326
-    lng, lat = struct.unpack("<dd", blob[8 + 5:])
-    assert blob[8:13] == struct.pack("<BI", 1, 1)
-    first = gpkg_rows(path, "sales")[0]
-    assert first["transaction_id"] == sales[0]["transaction_id"] and (lng, lat) == (sales[0]["longitude"], sales[0]["latitude"])
-    styles = db.execute("SELECT f_table_name,f_geometry_column,styleName,styleQML,useAsDefault FROM layer_styles").fetchall()
-    assert sorted(s[0] for s in styles) == sorted(CATEGORIES)
-    columns = [r[1] for r in db.execute("PRAGMA table_info(layer_styles)")]
-    assert columns == ["id", "f_table_catalog", "f_table_schema", "f_table_name", "f_geometry_column", "styleName",
-                       "styleQML", "styleSLD", "useAsDefault", "description", "owner", "ui", "update_time"]
-    for _, geometry, _, qml, default in styles:
-        assert geometry == "geom" and default == 1
-        root = ET.fromstring(qml.split("\n", 1)[1])
-        assert root.tag == "qgis" and root.get("version") == "3.34"
-        filters = [r.get("filter") for r in root.iter("rule")]
-        assert filters == ['"door_count" > 1', "ELSE", '"door_count" > 1']
-        text = root.find("labeling").find("rules").find("rule").find("settings").find("text-style")
-        assert text.get("fieldName") == "\"door_index\" || '/' || \"door_count\""
-    db.close()
-
-
-def test_geojson_has_no_crs_and_feature_ids(built):
-    path = built["public"] / "geojson" / "2026" / "taiwanlvr_202601_sales.geojson"
-    collection = json.loads(path.read_text(encoding="utf-8"))
-    assert collection["type"] == "FeatureCollection" and "crs" not in collection
-    assert [f["id"] for f in collection["features"]] == [f"115q1/a_lvr_land_a.csv/3#{n}" for n in (1, 2, 3, 4)]
-    feature = collection["features"][1]
-    assert feature["geometry"] == {"type": "Point", "coordinates": [121.52, 25.02]}
-    assert "id" not in feature["properties"] and feature["properties"]["door_index"] == 2
-    assert path.read_bytes().endswith(b"\n")
-
-
 def test_csv_has_no_bom_by_default_and_bom_on_request(built, tmp_path):
-    path = built["public"] / "csv" / "2026" / "taiwanlvr_2026_sales.csv"
+    path = built["public"] / "csv" / "2026" / "taiwanlvr_202601_sales.csv"
     data = path.read_bytes()
     assert not data.startswith(b"\xef\xbb\xbf") and b"\r" not in data
     rows = csv_rows(path)
-    assert len(rows) == 6 and rows[0]["longitude"] == "121.51" and rows[0]["price_twd"] == "3250000"
+    assert len(rows) == 4 and rows[0]["longitude"] == "121.51" and rows[0]["price_twd"] == "3250000"
     result = write_output(built["converted"], built["state"], tmp_path / "p", tmp_path / "r", bom=True)
     assert result["total_rows"] == 21
-    assert (tmp_path / "p" / "csv" / "2026" / "taiwanlvr_2026_sales.csv").read_bytes().startswith(b"\xef\xbb\xbf")
+    assert (tmp_path / "p" / "csv" / "2026" / "taiwanlvr_202601_sales.csv").read_bytes().startswith(b"\xef\xbb\xbf")
 
 
 def test_non_empty_target_is_refused_and_never_overwritten(built, tmp_path):

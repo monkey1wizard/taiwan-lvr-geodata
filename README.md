@@ -1,6 +1,6 @@
 # taiwan-lvr-geodata
 
-本專案把內政部實價登錄交易資料與地址定位證據整理成可追溯的地理資料。新版公開契約是一個有座標的門牌一列，提供 GeoParquet、GeoPackage、CSV 與 GeoJSON。新版輸出程式已實作，尚未以真實資料執行與驗收，本機目前沒有 `data/output/`。
+本專案把內政部實價登錄交易資料與地址定位證據整理成可追溯的地理資料。新版公開契約是一個有座標的門牌一列，提供 GeoParquet 與每月 CSV。GeoPackage、GeoJSON 與年度檔因檔案過大先不做。新版輸出程式已實作，尚未以真實資料執行與驗收，本機目前沒有 `data/output/`。
 
 本文件是唯一使用入口，包含下載、安裝、來源準備、現有命令、TGOS、回補、發布與常見問題。模組責任見[架構](docs/architecture.md)，新版資料處理階段見[資料處理流程](docs/資料處理流程.md)，地址判定見[地址規則](docs/地址規則.md)，內部資料關聯見[資料契約](docs/資料契約.md)，公開欄位與目錄見[輸出欄位](docs/輸出欄位.md)。工作依賴與驗收狀態以[重建企劃](docs/plans/重建企劃.md)為準。
 
@@ -17,9 +17,7 @@
 | 格式 | 位置 | 用途 |
 | --- | --- | --- |
 | GeoParquet | GitHub release 的 `taiwanlvr.parquet` | 程式與資料庫 |
-| GeoPackage | `data/output/gpkg/taiwanlvr_YYYY.gpkg` | QGIS、ArcGIS |
-| CSV | `data/output/csv/YYYY/` | 試算表、BI、Kepler.gl 與 AI |
-| GeoJSON | `data/output/geojson/YYYY/` | 網頁地圖 |
+| CSV | `data/output/csv/YYYY/taiwanlvr_YYYYMM_<類別>.csv`，每月每類別一檔 | 試算表、BI、QGIS、Kepler.gl 與 AI |
 
 `data/output/catalog.json` 預定列出各檔案格式、年、月、類別、期間、筆數、大小、SHA-256 與路徑。完整契約見[輸出欄位](docs/輸出欄位.md)。上述目錄與欄位的產生、`catalog.json` 與格式間驗證已實作，全量驗收與發布尚未完成。
 

@@ -1,7 +1,7 @@
 """Verify a written output against docs/輸出欄位.md and its catalog.json.
 
 verify_output collects every failure before it raises OutputVerificationError. GeoParquet is the
-reference: every other format must hold the same rows with the same values, year by year and
+reference: the monthly CSV files must hold the same rows with the same values, year by year and
 category by category. Large state lives in DuckDB (GeoParquet) or in digest sets (one year at a time).
 """
 
@@ -12,7 +12,6 @@ import hashlib
 import json
 from pathlib import Path
 import re
-import sqlite3
 import struct
 import tempfile
 
@@ -25,7 +24,6 @@ from ..addresses.identity import NORMALIZATION_VERSION
 from ..storage.parquet import duckdb_config
 from ..storage.runs import sha256_file
 from .catalog import CATALOG_NAME, CONTRACT_VERSION, CURRENCY, FORMATS, PARQUET_NAME, cutoff_text
-from .gpkg import GEOMETRY_COLUMN, SRS_ID, _sqlite_type
 from .rows import ATTRIBUTE_NAMES, ATTRIBUTES, CATEGORIES, COLUMNS, CSV_COLUMNS
 
 FILE_LIMIT_BYTES = 100 * 1024 * 1024  # GitHub hard limit for a file in a repository
@@ -49,8 +47,6 @@ INDEX = {n: i for i, n in enumerate(ATTRIBUTE_NAMES)}
 NONDOOR = [i for n, i in INDEX.items() if n not in ("door_index", "address")]
 NONDOOR_NAMES = [n for n in ATTRIBUTE_NAMES if n not in ("door_index", "address")]
 CSV_POSITION = {n: i for i, n in enumerate(CSV_COLUMNS)}
-GPKG_TABLES = [("fid", "INTEGER"), (GEOMETRY_COLUMN, "POINT")] + [(n, _sqlite_type(t)) for n, t, _ in ATTRIBUTES]
-GPKG_BLOB_HEAD = b"GP\x00\x01" + struct.pack("<i", SRS_ID)
 WKB_POINT = struct.pack("<BI", 1, 1)
 
 
@@ -100,7 +96,7 @@ class _Notes:
 
 
 class _Acc:
-    """Digest set of the rows of one source (GeoParquet subset, or all files of one format group)."""
+    """Digest set of the rows of one source (GeoParquet subset, or all monthly CSV files of one year and category)."""
 
     def __init__(self):
         self.digests, self.keys, self.count, self.unreadable = set(), set(), 0, False
@@ -148,12 +144,6 @@ def _wkb_point(blob):
     return _bad(blob), _bad(blob)
 
 
-def _gpkg_point(blob):
-    if isinstance(blob, (bytes, bytearray)) and len(blob) == 29 and blob[:8] == GPKG_BLOB_HEAD:
-        return _wkb_point(bytes(blob[8:]))
-    return _bad(blob), _bad(blob)
-
-
 # --- readers: each yields tuples of the 21 attribute values followed by longitude and latitude ---
 
 def _read_parquet(con, year):
@@ -166,20 +156,6 @@ def _read_parquet(con, year):
         for row in batch:
             x, y = _wkb_point(row[-1])
             yield tuple(None if v == "" else v for v in row[:-1]) + (x, y)
-
-
-def _read_gpkg(path, category):
-    def reader(note):
-        db = sqlite3.connect(f"{Path(path).resolve().as_uri()}?mode=ro", uri=True)
-        try:
-            cols = ", ".join(f'"{n}"' for n in ATTRIBUTE_NAMES)
-            for row in db.execute(f'SELECT {GEOMETRY_COLUMN}, {cols} FROM "{category}" ORDER BY fid'):
-                x, y = _gpkg_point(row[0])
-                yield tuple(_norm(k, v) for k, v in zip(KINDS, row[1:])) + (x, y)
-        finally:
-            db.close()
-
-    return reader
 
 
 def _read_csv(path):
@@ -204,45 +180,10 @@ def _read_csv(path):
     return reader
 
 
-def _read_geojson(path):
-    def reader(note):
-        document = json.loads(Path(path).read_text(encoding="utf-8"))
-        if not isinstance(document, dict) or document.get("type") != "FeatureCollection" or not isinstance(
-            document.get("features"), list
-        ):
-            note("columns", "not a FeatureCollection with a features array")
-            raise _Unreadable
-        if "crs" in document:
-            note("metadata", "GeoJSON has a crs member (RFC 7946 forbids it)")
-        for number, feature in enumerate(document["features"], 1):
-            props = feature.get("properties") if isinstance(feature, dict) else None
-            if not isinstance(props, dict) or feature.get("type") != "Feature":
-                note("columns", f"feature {number} is not a Feature with properties")
-                continue
-            if set(feature) != {"type", "id", "geometry", "properties"}:
-                note("columns", f"feature {number} members are {list(feature)}")
-            if list(props) != ATTRIBUTE_NAMES:
-                note("columns", f"feature {number} property keys or order differ from the contract: {list(props)}")
-            if feature.get("id") != f"{props.get('transaction_id')}#{props.get('door_index')}":
-                note("keys", f"feature {number} id {feature.get('id')!r} is not transaction_id#door_index")
-            geometry = feature.get("geometry")
-            coords = geometry.get("coordinates") if isinstance(geometry, dict) else None
-            if (
-                geometry.get("type") != "Point" if isinstance(geometry, dict) else True
-            ) or not isinstance(coords, list) or len(coords) != 2:
-                note("columns", f"feature {number} geometry is not a Point with two coordinates")
-                x = y = _bad(geometry)
-            else:
-                x, y = (_norm("float", c) for c in coords)
-            yield tuple(_norm(k, props.get(n)) for k, n in zip(KINDS, ATTRIBUTE_NAMES)) + (x, y)
-
-    return reader
-
-
 # --- scanning ---
 
-def _scan(report, label, reader, acc, *, year=None, month=None, category=None):
-    """Read one file (or layer) into acc, apply the per-row checks and return its row count or None."""
+def _scan(report, label, reader, acc, *, year, month, category):
+    """Read one file into acc, apply the per-row checks and return its row count or None."""
     notes = _Notes(report, label)
     count, last_tid, last_nd, seen = 0, None, None, {}
     date_i, cat_i = INDEX["trade_date"], INDEX["category"]
@@ -268,19 +209,18 @@ def _scan(report, label, reader, acc, *, year=None, month=None, category=None):
                 if seen.setdefault(tid, digest) != digest:
                     notes.note("transaction", f"{tid} differs between non-adjacent rows")
             last_tid, last_nd = tid, nd
-            if year is not None:
-                date, row_category = v[date_i], v[cat_i]
-                prefix = f"{year:04d}" if month is None else f"{year:04d}-{month:02d}"
-                if not isinstance(date, str) or not date.startswith(prefix):
-                    notes.note("month", f"{tid}#{door} has trade_date {date!r}, outside {prefix}")
-                if category is not None and row_category != category:
-                    notes.note("month", f"{tid}#{door} has category {row_category!r}, file holds {category}")
+            date, row_category = v[date_i], v[cat_i]
+            prefix = f"{year:04d}-{month:02d}"
+            if not isinstance(date, str) or not date.startswith(prefix):
+                notes.note("month", f"{tid}#{door} has trade_date {date!r}, outside {prefix}")
+            if row_category != category:
+                notes.note("month", f"{tid}#{door} has category {row_category!r}, file holds {category}")
             acc.digests.add(_digest(repr(v)))
             acc.count += 1
     except _Unreadable:
         acc.unreadable = True
         return None
-    except (OSError, ValueError, UnicodeError, sqlite3.Error, csv.Error, AttributeError, TypeError) as exc:
+    except (OSError, ValueError, UnicodeError, csv.Error, AttributeError, TypeError) as exc:
         acc.unreadable = True
         report.fail("columns", label, f"unreadable: {type(exc).__name__}: {exc}")
         return None
@@ -332,15 +272,10 @@ def _explain(expected, actual):
 # --- entry validation ---
 
 def _expected_path(e):
-    fmt, y, m, c = e["format"], e["year"], e["month"], e["category"]
-    if fmt == "geoparquet":
+    if e["format"] == "geoparquet":
         return PARQUET_NAME
-    if fmt == "gpkg":
-        return f"gpkg/taiwanlvr_{y:04d}.gpkg"
-    if fmt == "csv":
-        stem = f"{y:04d}" if m is None else f"{y:04d}{m:02d}"
-        return f"csv/{y:04d}/taiwanlvr_{stem}_{c}.csv"
-    return f"geojson/{y:04d}/taiwanlvr_{y:04d}{m:02d}_{c}.geojson"
+    y, m, c = e["year"], e["month"], e["category"]
+    return f"csv/{y:04d}/taiwanlvr_{y:04d}{m:02d}_{c}.csv"
 
 
 def _entry_problem(e):
@@ -354,35 +289,20 @@ def _entry_problem(e):
             return f"{name} is not a non-negative integer"
     if not isinstance(e.get("sha256"), str) or not SHA256.fullmatch(e["sha256"]):
         return "sha256 is not 64 lowercase hex digits"
-    if fmt == "geoparquet":
-        want = ("all", "release", None, None, None)
-    elif fmt == "gpkg":
-        want = ("year", "public", y, None, None)
-    elif fmt == "csv":
-        want = ("year" if m is None else "month", "public", y, m, c)
-    else:
-        want = ("month", "public", y, m, c)
-    if (e.get("period"), e.get("location")) != want[:2]:
+    want = ("all", "release") if fmt == "geoparquet" else ("month", "public")
+    if (e.get("period"), e.get("location")) != want:
         return f"period/location {(e.get('period'), e.get('location'))} does not fit format {fmt}"
-    if fmt != "geoparquet":
+    if fmt == "csv":
         if not _is_int(y) or not 1 <= y <= 9998:
             return f"year {y!r} is invalid"
-        if m is not None and not (_is_int(m) and 1 <= m <= 12):
+        if not (_is_int(m) and 1 <= m <= 12):
             return f"month {m!r} is invalid"
-        if fmt != "gpkg" and c not in CATEGORIES:
+        if c not in CATEGORIES:
             return f"category {c!r} is invalid"
     elif (y, m, c) != (None, None, None):
         return "GeoParquet entry must have null year, month and category"
-    if fmt == "gpkg":
-        layers = e.get("layers")
-        if c is not None or not isinstance(layers, dict) or set(layers) != set(CATEGORIES) or not all(
-            _is_int(n) and n >= 0 for n in layers.values()
-        ):
-            return "GeoPackage entry needs a null category and layers for every category"
-        if sum(layers.values()) != e["rows"]:
-            return "GeoPackage layers do not add up to rows"
-    elif "layers" in e:
-        return "only a GeoPackage entry has layers"
+    if "layers" in e:
+        return "catalog entries have no layers"
     if e.get("path") != _expected_path(e):
         return f"path {e.get('path')!r} does not match its format, year, month and category"
     return None
@@ -422,47 +342,6 @@ def _parquet_geo(report, path, label, bbox):
             report.fail("metadata", label, f"geo metadata: {problem}")
     except (KeyError, TypeError, ValueError, OSError) as exc:
         report.fail("metadata", label, f"geo metadata is missing or invalid: {type(exc).__name__}: {exc}")
-
-
-def _check_gpkg_structure(report, path, label):
-    try:
-        db = sqlite3.connect(f"{Path(path).resolve().as_uri()}?mode=ro", uri=True)
-    except sqlite3.Error as exc:
-        report.fail("columns", label, f"unreadable GeoPackage: {exc}")
-        return
-    try:
-        if db.execute("PRAGMA application_id").fetchone()[0] != 0x47504B47:
-            report.fail("metadata", label, "application_id is not GPKG")
-        if db.execute("PRAGMA user_version").fetchone()[0] != 10400:
-            report.fail("metadata", label, "user_version is not 10400")
-        if db.execute("PRAGMA quick_check").fetchone()[0] != "ok":
-            report.fail("metadata", label, "SQLite quick_check failed")
-        srs = db.execute("SELECT organization, organization_coordsys_id FROM gpkg_spatial_ref_sys WHERE srs_id=?", (SRS_ID,)).fetchall()
-        if srs != [("EPSG", SRS_ID)]:
-            report.fail("metadata", label, "gpkg_spatial_ref_sys has no EPSG:4326 row with srs_id 4326")
-        contents = {r[0]: r[1:] for r in db.execute("SELECT table_name, data_type, srs_id FROM gpkg_contents")}
-        if contents != {c: ("features", SRS_ID) for c in CATEGORIES}:
-            report.fail("metadata", label, f"gpkg_contents is {contents}, expected one features layer per category in 4326")
-        geometry = {tuple(r) for r in db.execute("SELECT table_name, column_name, geometry_type_name, srs_id, z, m FROM gpkg_geometry_columns")}
-        if geometry != {(c, GEOMETRY_COLUMN, "POINT", SRS_ID, 0, 0) for c in CATEGORIES}:
-            report.fail("metadata", label, "gpkg_geometry_columns is not POINT/4326/no Z/no M for every category")
-        for category in CATEGORIES:
-            info = db.execute(f'PRAGMA table_info("{category}")').fetchall()
-            if [(r[1], r[2]) for r in info] != GPKG_TABLES:
-                report.fail("columns", f"{label}[{category}]", f"columns or declared types differ from the contract: {[(r[1], r[2]) for r in info]}")
-                continue
-            bad = db.execute(
-                f'SELECT count(*) FROM "{category}" WHERE {GEOMETRY_COLUMN} IS NULL '
-                f"OR typeof({GEOMETRY_COLUMN}) != 'blob' OR length({GEOMETRY_COLUMN}) != 29 "
-                f"OR hex(substr({GEOMETRY_COLUMN}, 1, 8)) != ? OR hex(substr({GEOMETRY_COLUMN}, 9, 5)) != ?",
-                (GPKG_BLOB_HEAD.hex().upper(), WKB_POINT.hex().upper()),
-            ).fetchone()[0]
-            if bad:
-                report.fail("metadata", f"{label}[{category}]", f"{bad} geometry blobs lack the GP header with srs 4326 and a WKB point")
-    except sqlite3.Error as exc:
-        report.fail("columns", label, f"GeoPackage structure unreadable: {exc}")
-    finally:
-        db.close()
 
 
 # --- GeoParquet checks in DuckDB ---
@@ -629,12 +508,6 @@ def verify_output(public_root, release_root) -> dict:
     if parquet_entries and catalog.get("total_rows") != parquet_entries[0]["rows"]:
         report.fail("catalog", catalog_path, f"total_rows {catalog.get('total_rows')!r} differs from the GeoParquet rows {parquet_entries[0]['rows']}")
 
-    # structure of the GeoPackages
-    for entry in entries:
-        path = present.get(entry["path"])
-        if path is not None and entry["format"] == "gpkg":
-            _check_gpkg_structure(report, path, entry["path"])
-
     # GeoParquet: set-based checks in DuckDB, then the reference rows year by year
     parquet_path = present.get(PARQUET_NAME)
     con, years, bbox, tracked = None, set(), None, 0
@@ -689,47 +562,31 @@ def verify_output(public_root, release_root) -> dict:
 
 
 def _compare_group(report, entries, present, con, year, category, expected):
-    """Scan every file of one year and category and compare each format with the GeoParquet rows."""
-    groups = {"GeoPackage layer": [], "yearly CSV": [], "monthly CSV": [], "monthly GeoJSON": []}
-    for e in entries:
-        if e["year"] != year or e["path"] not in present or e["format"] == "geoparquet":
-            continue
-        path = present[e["path"]]
-        if e["format"] == "gpkg":
-            groups["GeoPackage layer"].append((e, _read_gpkg(path, category)))
-        elif e["category"] == category:
-            if e["format"] == "geojson":
-                groups["monthly GeoJSON"].append((e, _read_geojson(path)))
-            else:
-                groups["yearly CSV" if e["month"] is None else "monthly CSV"].append((e, _read_csv(path)))
+    """Scan every monthly CSV of one year and category and compare it with the GeoParquet rows."""
+    items = [
+        (e, _read_csv(present[e["path"]]))
+        for e in entries
+        if e["format"] == "csv" and e["year"] == year and e["category"] == category and e["path"] in present
+    ]
     label = f"{year:04d} {category}"
-    for name, items in groups.items():
-        if not items:
-            if expected is not None and expected.count:
-                report.fail("cross-format", label, f"{name} has no file although GeoParquet holds {expected.count} rows")
-            continue
-        acc = _Acc()
-        for entry, reader in items:
-            gpkg = entry["format"] == "gpkg"
-            counted = _scan(
-                report, entry["path"] + (f"[{category}]" if gpkg else ""), reader, acc,
-                year=year, month=entry["month"], category=None if gpkg else category,
-            )
-            if counted is None:
-                continue
-            want = entry["layers"][category] if gpkg else entry["rows"]
-            if counted != want:
-                where = f" in layer {category}" if gpkg else ""
-                report.fail("catalog", entry["path"], f"holds {counted} rows{where}, catalog says {want}")
-        if acc.unreadable or expected is None:
-            continue
-        if acc.count != expected.count or acc.digests != expected.digests:
-            reference = [lambda note: _only(_read_parquet(con, year), category)]
-            report.fail(
-                "cross-format", label,
-                f"{name} has {acc.count} rows, GeoParquet {expected.count}: "
-                + _explain(reference, [reader for _, reader in items]),
-            )
+    if not items:
+        if expected is not None and expected.count:
+            report.fail("cross-format", label, f"monthly CSV has no file although GeoParquet holds {expected.count} rows")
+        return
+    acc = _Acc()
+    for entry, reader in items:
+        counted = _scan(report, entry["path"], reader, acc, year=year, month=entry["month"], category=category)
+        if counted is not None and counted != entry["rows"]:
+            report.fail("catalog", entry["path"], f"holds {counted} rows, catalog says {entry['rows']}")
+    if acc.unreadable or expected is None:
+        return
+    if acc.count != expected.count or acc.digests != expected.digests:
+        reference = [lambda note: _only(_read_parquet(con, year), category)]
+        report.fail(
+            "cross-format", label,
+            f"monthly CSV has {acc.count} rows, GeoParquet {expected.count}: "
+            + _explain(reference, [reader for _, reader in items]),
+        )
 
 
 def _only(rows, category):

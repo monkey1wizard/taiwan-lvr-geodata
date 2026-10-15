@@ -52,7 +52,7 @@ COLUMNS = [
     ("park_json", pa.string(), False),
 ]
 COLUMN_NAMES = [name for name, _, _ in COLUMNS]
-# Attribute columns carried in a row dict (no geometry); GeoJSON properties and GPKG attributes.
+# Attribute columns carried in a row dict (no geometry); CSV and GeoParquet attributes.
 ATTRIBUTES = [(n, t, null) for n, t, null in COLUMNS if n != "geometry"]
 ATTRIBUTE_NAMES = [n for n, _, _ in ATTRIBUTES]
 # CSV: geometry becomes longitude and latitude at the same position.

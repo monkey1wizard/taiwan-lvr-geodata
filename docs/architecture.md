@@ -27,7 +27,7 @@
 | `addresses/pool.py`、`offline/` | 地址成員池、離線索引、候選比對與定位解析 |
 | `results/` | 例外、待查核、交叉比對與座標 reconcile 結果 |
 | `tgos/` | 批次狀態、交換檔及回傳驗證；TGOS 目前由個別命令執行 |
-| `output/` | 新版 22 欄逐門牌輸出：`rows.py` 建立資料列，`parquet.py`、`gpkg.py`、`csv.py`、`geojson.py` 寫出四種格式，`build.py` 串接。舊契約模組已於 R07-8b 刪除 |
+| `output/` | 新版 22 欄逐門牌輸出：`rows.py` 建立資料列，`parquet.py`、`csv.py` 寫出 GeoParquet 與每月 CSV，GeoPackage 與 GeoJSON 已於 R07-12f 移除，`build.py` 串接。舊契約模組已於 R07-8b 刪除 |
 | `results/address_patch.py` | 地址補充候選入口；新版完整契約尚待實作。`results/backfill.py` 已於 R07-8b 刪除，回補由 R10-1 重新實作 |
 | `converted.py`、`source_ref.py`、`tx_date.py` | 轉換快照、來源參照及相容日期入口 |
 | `0_parse_raw.py`、`1_normalize.py` | 現行程式保留的舊入口 |
@@ -47,7 +47,7 @@
 | `addresses/pool.py`、`offline/` | `addresses/`、`contracts/`、`storage/` | 地址鍵及定位使用共用地址規則 |
 | `tgos/batches.py` | `tgos/exchange.py` 及狀態儲存能力 | 建立批次與交換檔 |
 | `tgos/validate.py` | `tgos/batches.py`、`tgos/exchange.py` | 驗證回傳並更新 TGOS 結果 |
-| `output/build.py` | `output/rows.py`、`parquet.py`、`gpkg.py`、`csv.py`、`geojson.py` | 一次走訪資料列寫出四種格式 |
+| `output/build.py` | `output/rows.py`、`parquet.py`、`csv.py` | 一次走訪資料列寫出兩種格式 |
 | `output/rows.py` | `storage/`、`results/reconcile.py` | 讀取 converted 與定位狀態快照 |
 
 新版目標模組拆分與刪除項目見[重建企劃](plans/重建企劃.md)。規劃中的目錄尚未全部落地，表中現行模組不代表目標模組已建立。

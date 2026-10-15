@@ -41,7 +41,7 @@ def test_full_run_writes_public_files_release_parquet_and_report_section(tmp_pat
     assert public == run_dir / "output" / record["output_id"] / "public"
     assert release == run_dir / "output" / record["output_id"] / "release"
     formats = {item["format"] for item in record["summary"]["files"].values()}
-    assert formats == {"geoparquet", "gpkg", "csv", "geojson"}
+    assert formats == {"geoparquet", "csv"}
     parquet = release / "taiwanlvr.parquet"
     assert parquet.is_file()
     table = pq.read_table(parquet)

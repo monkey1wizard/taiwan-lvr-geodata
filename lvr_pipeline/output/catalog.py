@@ -14,7 +14,7 @@ CATALOG_NAME = "catalog.json"
 CURRENCY = "TWD"
 CONTRACT_VERSION = "2026-10-12-22col"
 PARQUET_NAME = "taiwanlvr.parquet"
-FORMATS = ("geoparquet", "gpkg", "csv", "geojson")
+FORMATS = ("geoparquet", "csv")
 CUTOFF = re.compile(r"[0-9]{6}")
 
 
@@ -38,7 +38,7 @@ def _entry(relative, info, public_root: Path, release_root: Path) -> dict:
         "path": relative,
         "location": "release" if release else "public",
         "format": fmt,
-        "period": "all" if year is None else "year" if month is None else "month",
+        "period": "all" if year is None else "month",
         "year": year,
         "month": month,
         "category": info["category"],
@@ -46,8 +46,6 @@ def _entry(relative, info, public_root: Path, release_root: Path) -> dict:
         "size_bytes": path.stat().st_size,
         "sha256": sha256_file(path),
     }
-    if fmt == "gpkg":
-        entry["layers"] = dict(info["layers"])
     return entry
 
 
