@@ -221,6 +221,9 @@ def import_tgos(
     response_hash = sha256_file(response)
     if batch["status"] == "completed" and batch["response_sha256"] == response_hash:
         return Path(source)
+    # R09-3: a completed batch never takes a second, different response.
+    if batch["status"] == "completed":
+        raise ValueError(f"TGOS batch {batch_id} was already imported with response {batch['response_sha256']}; refusing response {response_hash}")
     submitted = {row["address"]: row for row in queries if row["batch_id"] == batch_id}
     if len(submitted) != batch["address_count"]:
         raise ValueError("TGOS submitted Address values are not one-to-one")
