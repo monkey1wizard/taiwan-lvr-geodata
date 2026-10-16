@@ -202,6 +202,7 @@ def _run_offline_and_output(args):
             args.state,
             work_dir,
             args.exchange_dir,
+            index=args.index,
             limit=args.limit,
             retry_fingerprints=args.retry_query_fingerprint,
             retry_reason=args.retry_reason,

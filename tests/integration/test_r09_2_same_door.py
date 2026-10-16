@@ -6,7 +6,7 @@ from lvr_pipeline.results.review import TGOS_REJECTION_CODES
 from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.tgos import import_tgos, prepare_tgos, transition_batch
 from test_p1_conversion import ADDRESS
-from test_p2_offline import run
+from test_p2_offline import run, index_of
 from test_p3_tgos import response
 
 GOOD = ("121.51", "25.01")
@@ -17,7 +17,7 @@ def _import(tmp_path, query, pool=(), answer=None, coordinate=GOOD, extra_rows=(
     records = [{"address": ADDRESS, "date": "1141102"}]
     records += [{"address": value, "date": "1150102"} for value in [query, *pool]]
     *_, state = run(tmp_path, coordinates=[(ADDRESS, "63", "6300100", 121.5, 25.0)], records=records)
-    prepared, _ = prepare_tgos(state, tmp_path / "work", tmp_path / "exchange", exchange_date="2026-10-17")
+    prepared, _ = prepare_tgos(state, tmp_path / "work", tmp_path / "exchange", exchange_date="2026-10-17", index=index_of(state))
     queries = list(rows(prepared / "tgos_queries.parquet"))
     batch_id = queries[0]["batch_id"]
     submitted = transition_batch(prepared, tmp_path / "work", batch_id, "submitted")

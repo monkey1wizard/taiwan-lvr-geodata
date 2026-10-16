@@ -87,6 +87,7 @@ def _add_offline_and_output_commands(sub):
     p.add_argument("--input", type=Path, required=True)
     p = sub.add_parser("prepare-tgos")
     p.add_argument("--state", type=Path, required=True)
+    p.add_argument("--index", type=Path, required=True, help="Offline index snapshot the state was built from")
     p.add_argument(
         "--date-file",
         type=Path,

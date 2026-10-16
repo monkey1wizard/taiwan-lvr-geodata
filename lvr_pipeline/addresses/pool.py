@@ -100,10 +100,13 @@ ORDER BY p.i
 """
 
 
+def lane_free_road(locality_road):
+    return re.split(r"(?=[0-9一二三四五六七八九十百]+巷)", locality_road)[0]
+
+
 def family(key):
     value = json.loads(key[3:])
-    road = re.split(r"(?=[0-9一二三四五六七八九十百]+巷)", value["locality_road"])[0]
-    return digest([value["county"], value["town"], road])
+    return digest([value["county"], value["town"], lane_free_road(value["locality_road"])])
 
 
 def build_pool(

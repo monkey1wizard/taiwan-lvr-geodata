@@ -6,6 +6,7 @@ from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.storage.runs import digest
 from lvr_pipeline.tgos import import_tgos, prepare_tgos, transition_batch
 from test_p3_tgos import fixture_two_unmatched, response
+from test_p2_offline import index_of
 
 ONE = ("121.51", "25.01")
 OTHER = ("121.52", "25.02")
@@ -45,7 +46,7 @@ def _queries(snapshot, batch_id):
 def _prepare(tmp_path, limit=10_000):
     _, state, addresses = fixture_two_unmatched(tmp_path)
     work = tmp_path / "work"
-    prepared, _ = prepare_tgos(state, work, tmp_path / "exchange", limit=limit)
+    prepared, _ = prepare_tgos(state, work, tmp_path / "exchange", limit=limit, index=index_of(state))
     batch_id = list(rows(prepared / "tgos_batches.parquet"))[0]["batch_id"]
     return state, work, prepared, batch_id, addresses
 
@@ -76,7 +77,7 @@ def test_submission_unknown_batch_addresses_are_not_selected_again(tmp_path):
     _, work, prepared, batch_id, _ = _prepare(tmp_path, limit=1)
     sent = _queries(prepared, batch_id)[0]["address"]
     unknown = transition_batch(prepared, work, batch_id, "submission_unknown")
-    second, _ = prepare_tgos(unknown, work, tmp_path / "exchange")
+    second, _ = prepare_tgos(unknown, work, tmp_path / "exchange", index=index_of(unknown))
     new_batch = [row for row in rows(second / "tgos_batches.parquet") if row["batch_id"] != batch_id][0]
     new_addresses = [row["address"] for row in _queries(second, new_batch["batch_id"])]
     assert sent not in new_addresses
@@ -87,7 +88,7 @@ def test_submission_unknown_with_no_other_candidates_produces_no_batch(tmp_path)
     _, work, prepared, batch_id, _ = _prepare(tmp_path)
     unknown = transition_batch(prepared, work, batch_id, "submission_unknown")
     with pytest.raises(ValueError, match="No eligible TGOS candidates"):
-        prepare_tgos(unknown, work, tmp_path / "exchange")
+        prepare_tgos(unknown, work, tmp_path / "exchange", index=index_of(unknown))
     assert len(list(rows(unknown / "tgos_batches.parquet"))) == 1
 
 
@@ -101,8 +102,7 @@ def test_retry_of_submission_unknown_query_is_refused(tmp_path):
             work,
             tmp_path / "exchange",
             retry_fingerprints=[query["query_fingerprint"]],
-            retry_reason="x",
-        )
+            retry_reason="x", index=index_of(unknown))
 
 
 def test_import_of_submission_unknown_batch_completes_it(tmp_path):
@@ -124,8 +124,7 @@ def test_cancelled_unknown_batch_is_selected_again_with_approved_retry(tmp_path)
         tmp_path / "exchange",
         ledger=cancelled,
         retry_fingerprints=[query["query_fingerprint"]],
-        retry_reason="regenerated after cancellation",
-    )
+        retry_reason="regenerated after cancellation", index=index_of(state))
     new_batch = [row for row in rows(seeded / "tgos_batches.parquet") if row["batch_id"] != batch_id][-1]
     selected = [row["address"] for row in _queries(seeded, new_batch["batch_id"])]
     assert query["address"] in selected

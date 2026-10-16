@@ -21,7 +21,7 @@ from lvr_pipeline.storage.parquet import rows, verify_relations
 from lvr_pipeline.storage.runs import SnapshotStore
 from lvr_pipeline.tgos import import_tgos, load_state, prepare_tgos, transition_batch
 from test_p1_conversion import ADDRESS
-from test_p2_offline import run
+from test_p2_offline import run, index_of
 from test_p3_tgos import response
 
 TOLERANCE = 30.0
@@ -222,7 +222,7 @@ def test_tgos_import_keeps_the_tolerance_rule(tmp_path):
     (_, _, _, _, _, state), a, b = near_state(
         tmp_path, records=[{"address": ADDRESS}, {"address": other}]
     )
-    prepared, _ = prepare_tgos(state, tmp_path / "work", tmp_path / "exchange", limit=1)
+    prepared, _ = prepare_tgos(state, tmp_path / "work", tmp_path / "exchange", limit=1, index=index_of(state))
     batch_id = list(rows(prepared / "tgos_batches.parquet"))[0]["batch_id"]
     submitted = transition_batch(prepared, tmp_path / "work", batch_id, "submitted")
     result = tmp_path / "result.csv"

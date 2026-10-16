@@ -4,6 +4,7 @@ from lvr_pipeline.results.address_patch import _split_legacy, export_address_pat
 from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.tgos import import_tgos, prepare_tgos, transition_batch
 from test_p3_tgos import fixture_state, response
+from test_p2_offline import index_of
 
 
 def imported_state(tmp_path, response_address):
@@ -12,8 +13,7 @@ def imported_state(tmp_path, response_address):
         state,
         tmp_path / "work",
         tmp_path / "exchange",
-        limit=1,
-    )
+        limit=1, index=index_of(state))
     query = list(rows(prepared / "tgos_queries.parquet"))[0]
     submitted = transition_batch(
         prepared, tmp_path / "work", query["batch_id"], "submitted"

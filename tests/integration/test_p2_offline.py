@@ -2,6 +2,7 @@
 
 import copy
 import csv
+import json
 import subprocess
 
 import pytest
@@ -14,6 +15,21 @@ from lvr_pipeline.offline.match import AdministrativeNames
 from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.storage.runs import sha256_file
 from test_p1_conversion import pipeline, ADDRESS, pinned, write_char_fixes, write_road_index
+
+
+INDEXES = {}
+
+
+def register_index(index):
+    """Remember an offline-index snapshot so index_of() can find it from a state (R09-6)."""
+    INDEXES[sha256_file(index / "manifest.json")] = index
+    return index
+
+
+def index_of(state):
+    """The offline-index snapshot an offline or TGOS state was built from."""
+    report = json.loads((state / "quality.json").read_text(encoding="utf-8"))
+    return INDEXES[report["index_manifest_sha256"]]
 
 
 def source(tmp_path, coordinates=None):
@@ -86,7 +102,7 @@ def use_synthetic_admin_towns(tmp_path, root, descriptor):
 def run(tmp_path, coordinates=None, records=None, **kwargs):
     _, _, converted = pipeline(tmp_path, records, **kwargs)
     root, descriptor = source(tmp_path, coordinates)
-    index = build_index(root, descriptor, tmp_path / "work", counties=["63"])
+    index = register_index(build_index(root, descriptor, tmp_path / "work", counties=["63"]))
     pool = build_pool(converted, root, descriptor, tmp_path / "work", index_path=index)
     state = resolve_offline(pool, index, tmp_path / "work")
     return converted, root, descriptor, index, pool, state

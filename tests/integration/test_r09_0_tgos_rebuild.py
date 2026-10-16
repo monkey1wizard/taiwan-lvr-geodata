@@ -17,7 +17,7 @@ from lvr_pipeline.tgos import (
     transition_batch,
 )
 from test_p1_conversion import ADDRESS
-from test_p2_offline import run
+from test_p2_offline import run, index_of
 from test_r05_9_suspension import KINMEN_NONE, TAIPEI_TGOS, built  # noqa: F401  built is a fixture
 
 UNKEYED = "臺北市中正區測試路7鄰鄰21號"  # county and town parse, the door text yields no key
@@ -35,7 +35,7 @@ def ledger(tmp_path_factory):
         records=[{"address": a, "date": "1150102"} for a in [ADDRESS, *OTHERS, UNKEYED]],
     )
     old = tmp_path / "old"
-    prepared, _ = prepare_tgos(state, old, tmp_path / "exchange", limit=1)
+    prepared, _ = prepare_tgos(state, old, tmp_path / "exchange", limit=1, index=index_of(state))
     manifest, _, _ = load_state(prepared)
     paths = _artifact_paths(prepared, manifest)
     batches = list(rows(paths["tgos-batch"]))
@@ -56,12 +56,12 @@ def ledger(tmp_path_factory):
 def test_ledger_query_without_a_key_makes_prepare_fail(ledger):
     with pytest.raises(ValueError, match="Carried TGOS query has no building key under the current rules"):
         prepare_tgos(ledger["state"], ledger["tmp"] / "new", ledger["tmp"] / "exchange",
-                     ledger=ledger["ledger"], limit=1)
+                     ledger=ledger["ledger"], limit=1, index=index_of(ledger["state"]))
 
 
 def test_suspended_county_keys_are_not_selected(built):  # noqa: F811
     tmp_path = built["tmp"]
-    prepared, _ = prepare_tgos(built["state"], tmp_path / "r09-suspended", tmp_path / "r09-exchange", limit=10)
+    prepared, _ = prepare_tgos(built["state"], tmp_path / "r09-suspended", tmp_path / "r09-exchange", limit=10, index=index_of(built["state"]))
     assert {q["address"] for q in rows(prepared / "tgos_queries.parquet")} == {TAIPEI_TGOS}
     _, report, _ = load_state(prepared)
     assert report["tgos_suspended_candidates_excluded"] == {"09020": 1, "10016": 0}
@@ -69,7 +69,7 @@ def test_suspended_county_keys_are_not_selected(built):  # noqa: F811
 
 def test_counties_outside_the_list_are_still_selected(built):  # noqa: F811
     tmp_path = built["tmp"]
-    prepared, _ = prepare_tgos(built["plain"], tmp_path / "r09-plain", tmp_path / "r09-exchange", limit=10)
+    prepared, _ = prepare_tgos(built["plain"], tmp_path / "r09-plain", tmp_path / "r09-exchange", limit=10, index=index_of(built["plain"]))
     assert {q["address"] for q in rows(prepared / "tgos_queries.parquet")} == {KINMEN_NONE, TAIPEI_TGOS}
     _, report, _ = load_state(prepared)
     assert report.get("tgos_suspended_candidates_excluded", {}) == {}
@@ -78,9 +78,9 @@ def test_counties_outside_the_list_are_still_selected(built):  # noqa: F811
 def test_approved_retry_of_a_suspended_key_is_refused(built):  # noqa: F811
     tmp_path = built["tmp"]
     old = tmp_path / "r09-retry-old"
-    prepared, _ = prepare_tgos(built["plain"], old, tmp_path / "r09-retry-exchange", limit=10)
+    prepared, _ = prepare_tgos(built["plain"], old, tmp_path / "r09-retry-exchange", limit=10, index=index_of(built["plain"]))
     kinmen = next(q for q in rows(prepared / "tgos_queries.parquet") if q["address"] == KINMEN_NONE)
     cancelled = transition_batch(prepared, old, kinmen["batch_id"], "cancelled", reason="x")
     with pytest.raises(ValueError, match="no longer an eligible candidate"):
         prepare_tgos(built["state"], tmp_path / "r09-retry-new", tmp_path / "r09-retry-exchange",
-                     ledger=cancelled, retry_fingerprints=[kinmen["query_fingerprint"]], retry_reason="x")
+                     ledger=cancelled, retry_fingerprints=[kinmen["query_fingerprint"]], retry_reason="x", index=index_of(built["state"]))

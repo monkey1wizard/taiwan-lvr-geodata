@@ -18,7 +18,7 @@ from lvr_pipeline.storage.runs import SnapshotStore, sha256_file
 from lvr_pipeline.tgos import import_tgos, prepare_tgos, transition_batch
 from test_p1_conversion import ADDRESS, pipeline
 from test_p1_conversion import pinned
-from test_p2_offline import source
+from test_p2_offline import source, index_of, register_index
 
 VARIANT = "臺北市中正區測試路10之1號"  # ADDRESS is 測試路10號之1
 CONFLICT = "臺北市中正區測試路30號"
@@ -81,10 +81,10 @@ def built(tmp_path_factory):
     _, _, converted = pipeline(tmp_path, records, extra_header=["鄉鎮市區"])
     root, descriptor = _two_road_source(tmp_path)
     work = tmp_path / "work"
-    index = build_index(root, descriptor, work, counties=["63"])
+    index = register_index(build_index(root, descriptor, work, counties=["63"]))
     pool = build_pool(converted, root, descriptor, work, index_path=index)
     state = resolve_offline(pool, index, work)
-    prepared, _ = prepare_tgos(state, work, tmp_path / "exchange", limit=20, exchange_date="2026-10-08")
+    prepared, _ = prepare_tgos(state, work, tmp_path / "exchange", limit=20, exchange_date="2026-10-08", index=index_of(state))
     queries = list(rows(prepared / "tgos_queries.parquet"))
     batch_id = queries[0]["batch_id"]
     submitted = transition_batch(prepared, work, batch_id, "submitted")

@@ -6,7 +6,10 @@ import hashlib
 import json
 from pathlib import Path
 
+import duckdb
+
 from ..addresses.identity import building_key
+from ..addresses.pool import district_query, lane_free_road
 from ..results.reconcile import check_suspended_counties, load_p2
 from ..storage.parquet import BatchWriter, rows
 from ..storage.runs import SnapshotStore, Stage, bindings, digest, sha256_file
@@ -71,6 +74,7 @@ def _write_state(
     unmatched_rows: list[dict] | None = None,
     resolution_rows: list[dict] | None = None,
     extra_report: dict | None = None,
+    extra_inputs: list[str] | None = None,
     run_id: str | None = None,
 ):
     manifest, report, source_stage = load_state(source)
@@ -79,7 +83,7 @@ def _write_state(
     binding = bindings(
         "tgos-state",
         {"action": action, "daily_limit": DAILY_LIMIT},
-        [source_hash, digest(batches), digest(queries), digest(results), digest(alias_events)],
+        [source_hash, digest(batches), digest(queries), digest(results), digest(alias_events), *(extra_inputs or [])],
     )
     stage = Stage(Path(work_dir) / "tgos-state", "tgos-state", binding, run_id)
     if stage.reused:
@@ -214,7 +218,9 @@ def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict], int]:
     fingerprints recomputed, so a rule change cannot hide an address already
     sent or leave a key the address pool no longer contains. The old snapshot
     is not modified. The third value is how many queries changed key.
-    A carried query with no key under the current rules is refused.
+    A carried query with no key under the current rules is refused. R09-6: a
+    district_missing query has no key; its fingerprint is recomputed from the
+    county and address.
     """
     manifest, ledger_report, stage_name = load_state(ledger)
     if stage_name != "tgos-state":
@@ -235,6 +241,12 @@ def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict], int]:
     rekeyed = 0
     carried = []
     for query in queries:
+        if query["query_kind"] == "district_missing":
+            fingerprint = digest(["district_missing", query["county_code"], query["address"]])
+            carried.append(query)
+            rekeyed += fingerprint != query["query_fingerprint"]
+            query["query_fingerprint"] = fingerprint
+            continue
         key = building_key(query["address"])
         if key is None:
             raise ValueError("Carried TGOS query has no building key under the current rules")
@@ -277,11 +289,81 @@ def select_unmatched_candidates(
     return candidates
 
 
+def select_district_candidates(
+    occurrences: Path,
+    offline_rows: Path,
+    *,
+    retry_fingerprints: set[str] = frozenset(),
+    prior: set[str] = frozenset(),
+    sent_text: set[str] = frozenset(),
+    suspended_codes: set[str] = frozenset(),
+    suspended_excluded: dict[str, int] | None = None,
+) -> tuple[list[dict], int]:
+    """R09-6: district_missing addresses not yet sent, with their candidate towns.
+
+    A candidate town is a town of the offline index, in the same county, that has a valid
+    key on the same road (locality road before its lane). An address with no candidate
+    town is left out and counted in the second value. Rows are sorted by county and address.
+    """
+    with duckdb.connect() as db:
+        pending = db.execute(
+            "SELECT DISTINCT county_code, normalized_address FROM read_parquet(?) "
+            "WHERE reason = 'district_missing' AND county_code <> '' ORDER BY 1, 2",
+            [str(occurrences)],
+        ).fetchall()
+        eligible = []
+        for county, address in pending:
+            fingerprint = digest(["district_missing", county, address])
+            if not (
+                fingerprint in retry_fingerprints
+                or (fingerprint not in prior and address not in sent_text)
+            ):
+                continue
+            if county in suspended_codes:
+                if suspended_excluded is not None:
+                    suspended_excluded[county] += 1
+                continue
+            parsed = district_query(address)
+            eligible.append((county, address, fingerprint, lane_free_road(parsed[2]) if parsed else None))
+        towns: dict[tuple[str, str], set[str]] = {}
+        counties = sorted({county for county, *_ in eligible})
+        if counties:
+            found = db.execute(
+                "SELECT DISTINCT county_code, json_extract_string(substr(building_key, 4), '$.town'), "
+                "json_extract_string(substr(building_key, 4), '$.locality_road') FROM read_parquet(?) "
+                "WHERE validity = 'valid' AND building_key IS NOT NULL AND county_code IN ("
+                + ", ".join("?" * len(counties))
+                + ")",
+                [str(offline_rows), *counties],
+            ).fetchall()
+            for county, town, locality_road in found:
+                towns.setdefault((county, lane_free_road(locality_road)), set()).add(town)
+    candidates, without_candidates = [], 0
+    for county, address, fingerprint, road in eligible:
+        candidate_towns = sorted(towns.get((county, road), ())) if road else []
+        if not candidate_towns:
+            without_candidates += 1
+            continue
+        candidates.append(
+            {
+                "building_key": None,
+                "canonical_address": address,
+                "county_code": county,
+                "address_family": digest([county, "", road]),
+                "query_kind": "district_missing",
+                "candidate_towns": json.dumps(candidate_towns, ensure_ascii=False),
+                "query_fingerprint": fingerprint,
+            }
+        )
+    return candidates, without_candidates
+
+
 def prepare_tgos(
     source: Path,
     work_dir: Path,
     exchange_dir: Path,
     *,
+    index: Path,
     limit: int = DAILY_LIMIT,
     retry_fingerprints: list[str] | None = None,
     retry_reason: str | None = None,
@@ -296,6 +378,14 @@ def prepare_tgos(
     if stage_name == "offline-state" and SnapshotStore(Path(work_dir) / "tgos-state").current():
         raise ValueError("TGOS work directory already has state; use its latest snapshot")
     paths = _artifact_paths(source, manifest)
+    # R09-6: the index must be the one this state was built from (same address source commit and manifest).
+    index_manifest, index_report = load_p2(index, "offline-index")
+    index_hash = sha256_file(Path(index) / "manifest.json")
+    if (
+        index_report["address_source_commit"] != report["address_source_commit"]
+        or index_hash != report["index_manifest_sha256"]
+    ):
+        raise ValueError("Offline index is not the one this state was built from")
     batches = _table(paths.get("tgos-batch"))
     queries = _table(paths.get("tgos-query"))
     results = _table(paths.get("tgos-result"))
@@ -341,6 +431,18 @@ def prepare_tgos(
         suspended_codes=suspended_codes,
         suspended_excluded=suspended_excluded,
     )
+    district, without_candidates = select_district_candidates(
+        paths["address-occurrence"],
+        _artifact_paths(index, index_manifest)["offline-row"],
+        retry_fingerprints=retry_fingerprints,
+        prior=prior,
+        sent_text=sent_text,
+        suspended_codes=suspended_codes,
+        suspended_excluded=suspended_excluded,
+    )
+    candidates = [
+        {**row, "query_kind": "building_key", "candidate_towns": None} for row in candidates
+    ] + district
     retry_candidates = [
         row for row in candidates if row["query_fingerprint"] in retry_fingerprints
     ]
@@ -351,7 +453,14 @@ def prepare_tgos(
     new_candidates = [
         row for row in candidates if row["query_fingerprint"] not in retry_fingerprints
     ]
-    selected = _round_robin(retry_candidates) + _round_robin(new_candidates)[
+    # R09-6: district_missing candidates follow the key candidates, sorted by county and address;
+    # they take no part in the family round-robin.
+    def ordered(values):
+        return _round_robin([r for r in values if r["building_key"] is not None]) + [
+            r for r in values if r["building_key"] is None
+        ]
+
+    selected = ordered(retry_candidates) + ordered(new_candidates)[
         : available - len(retry_candidates)
     ]
     if not selected:
@@ -364,7 +473,9 @@ def prepare_tgos(
             "ordinal": ordinal,
             "query_fingerprint": row["query_fingerprint"],
             "key_version": "v2",
+            "query_kind": row["query_kind"],
             "building_key": row["building_key"],
+            "candidate_towns": row["candidate_towns"],
             "address": row["canonical_address"],
             "county_code": row["county_code"],
             "address_family": row["address_family"],
@@ -404,12 +515,14 @@ def prepare_tgos(
         extra_report={
             "last_tgos_batch_id": batch_id,
             "carried_query_keys_recomputed": rekeyed,
+            "tgos_district_missing_without_candidates": without_candidates,
             **(
                 {"tgos_suspended_candidates_excluded": suspended_excluded}
                 if suspension is not None
                 else {}
             ),
         },
+        extra_inputs=[index_hash],
         run_id=run_id,
     )
     exchange = _write_exchange(

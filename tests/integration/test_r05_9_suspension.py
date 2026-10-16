@@ -29,6 +29,7 @@ from lvr_pipeline.storage.runs import SnapshotStore, sha256_file
 from lvr_pipeline.tgos import import_tgos, load_state, prepare_tgos, transition_batch
 from test_p1_conversion import ADDRESS, pinned, pipeline, write_char_fixes, write_road_index
 from test_p3_tgos import response
+from test_p2_offline import index_of, register_index
 
 KINMEN_ONE = "金門縣金城鎮測試路1號"  # one coordinate in the source
 KINMEN_TWO = "金門縣金城鎮測試路2號"  # two coordinates 10 m apart (within the tolerance)
@@ -114,7 +115,7 @@ def built(tmp_path_factory):
     _, _, converted = pipeline(tmp_path, records, extra_header=["鄉鎮市區"])
     root, descriptor = _source(tmp_path)
     work = tmp_path / "work"
-    index = build_index(root, descriptor, work, counties=list(SOURCE))
+    index = register_index(build_index(root, descriptor, work, counties=list(SOURCE)))
     pool = build_pool(converted, root, descriptor, work, index_path=index)
     state = resolve_offline(pool, index, work, suspended_counties=load_suspended_counties(config))
     plain = resolve_offline(pool, index, tmp_path / "plain", suspended_counties=[])
@@ -271,7 +272,7 @@ def _with_earlier_kinmen_query(built, prepared, work):
 def tgos(built):
     tmp_path, work = built["tmp"], built["tmp"] / "tgos-work"
     prepared, _ = prepare_tgos(built["state"], work, tmp_path / "exchange", limit=10,
-                               exchange_date="2026-10-09")
+                               exchange_date="2026-10-09", index=index_of(built["state"]))
     queries = list(rows(prepared / "tgos_queries.parquet"))
     # R09-0: the suspended county is no longer selected; the Kinmen query stands for one sent before R09-0.
     assert {q["address"] for q in queries} == {TAIPEI_TGOS}

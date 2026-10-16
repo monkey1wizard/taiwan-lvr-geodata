@@ -7,6 +7,7 @@ import pytest
 
 from lvr_pipeline.cli import build_parser, main
 from lvr_pipeline.storage.runs import SnapshotStore
+from test_p2_offline import index_of
 from test_p3_tgos import fixture_state, fixture_two_unmatched
 
 COMMANDS = ["prepare-tgos", "repair-tgos-exchange", "set-tgos-status", "import-tgos", "build-review"]
@@ -19,7 +20,7 @@ def _date_file(tmp_path):
 
 
 def _prepare_argv(state, tmp_path, run_id, *extra):
-    return ["prepare-tgos", "--state", str(state), "--date-file", str(_date_file(tmp_path)),
+    return ["prepare-tgos", "--state", str(state), "--index", str(index_of(state)), "--date-file", str(_date_file(tmp_path)),
             "--exchange-dir", str(tmp_path / "exchange"), "--runs-root", str(tmp_path / "runs"),
             "--run-id", run_id, *extra]
 
@@ -28,7 +29,7 @@ def _argv(command, tmp_path, converted, state, run_id):
     common = ["--runs-root", str(tmp_path / "runs"), "--run-id", run_id]
     date = ["--date-file", str(_date_file(tmp_path)), "--exchange-dir", str(tmp_path / "exchange")]
     return {
-        "prepare-tgos": ["prepare-tgos", "--state", str(state), *date, *common],
+        "prepare-tgos": ["prepare-tgos", "--state", str(state), "--index", str(tmp_path / "index"), *date, *common],
         "repair-tgos-exchange": ["repair-tgos-exchange", "--state", str(state), "--batch", "batch", *date, *common],
         "set-tgos-status": ["set-tgos-status", "--state", str(state), "--batch", "batch",
                             "--status", "cancelled", *common],

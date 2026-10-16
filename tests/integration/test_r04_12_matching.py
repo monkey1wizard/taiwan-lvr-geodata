@@ -27,7 +27,7 @@ from lvr_pipeline.results.reconcile import (
 from lvr_pipeline.results.review import CROSS_CHECK_CODES, R04_12_CODES, build_review
 from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.tgos import _rebuild_resolution, import_tgos, prepare_tgos, transition_batch
-from test_p2_offline import run
+from test_p2_offline import run, index_of
 
 T = "臺北市中正區"
 LAT_DEGREE_PER_M = 180 / (math.pi * EARTH_RADIUS_M)
@@ -204,7 +204,7 @@ def test_rebuild_resolution_door_rule_and_legacy_states():
 def reviewed(built):
     tmp_path = built["tmp"]
     prepared, _ = prepare_tgos(built["state"], tmp_path / "work", tmp_path / "exchange", limit=100,
-                               exchange_date="2026-10-09")
+                               exchange_date="2026-10-09", index=index_of(built["state"]))
     queries = list(rows(prepared / "tgos_queries.parquet"))
     batch_id = queries[0]["batch_id"]
     submitted = transition_batch(prepared, tmp_path / "work", batch_id, "submitted")

@@ -17,7 +17,7 @@ from lvr_pipeline.tgos import (
     transition_batch,
 )
 from test_p1_conversion import ADDRESS
-from test_p2_offline import run
+from test_p2_offline import run, index_of
 
 
 def test_tgos_date_file_is_log_only(tmp_path):
@@ -75,8 +75,7 @@ def test_quota_is_reserved_before_utf8_sig_handoff(tmp_path):
         state,
         tmp_path / "work",
         tmp_path / "exchange",
-        exchange_date="2026-10-07",
-    )
+        exchange_date="2026-10-07", index=index_of(state))
     batch_id = list(rows(prepared / "tgos_batches.parquet"))[0]["batch_id"]
     assert exchange.name == f"20261007-{batch_id.removeprefix('tgos-')[:8]}"
     assert (exchange / "addresses.csv").read_bytes().startswith(b"\xef\xbb\xbf")
@@ -114,8 +113,7 @@ def test_quota_is_reserved_before_utf8_sig_handoff(tmp_path):
         prepare_tgos(
             state,
             tmp_path / "work",
-            tmp_path / "exchange",
-        )
+            tmp_path / "exchange", index=index_of(state))
 
 
 def test_prepared_exchange_can_be_repaired_without_new_reservation(tmp_path):
@@ -124,8 +122,7 @@ def test_prepared_exchange_can_be_repaired_without_new_reservation(tmp_path):
         state,
         tmp_path / "work",
         tmp_path / "exchange",
-        limit=1,
-    )
+        limit=1, index=index_of(state))
     batch_id = list(rows(prepared / "tgos_batches.parquet"))[0]["batch_id"]
     (exchange / "addresses.csv").write_text(
         f"Address\r\n{address}\r\n", encoding="utf-8-sig", newline=""
@@ -156,8 +153,7 @@ def test_invalid_batch_limit_fails(tmp_path):
             state,
             tmp_path / "quota-work",
             tmp_path / "exchange",
-            limit=0,
-        )
+            limit=0, index=index_of(state))
 
 
 def test_ten_thousand_cap_fairness_and_cancellation_state(tmp_path):
@@ -175,8 +171,7 @@ def test_ten_thousand_cap_fairness_and_cancellation_state(tmp_path):
         state,
         tmp_path / "work",
         tmp_path / "exchange",
-        limit=1,
-    )
+        limit=1, index=index_of(state))
     batch_id = list(rows(prepared / "tgos_batches.parquet"))[0]["batch_id"]
     cancelled = transition_batch(
         prepared, tmp_path / "work", batch_id, "cancelled", reason="not uploaded"
@@ -188,8 +183,7 @@ def test_ten_thousand_cap_fairness_and_cancellation_state(tmp_path):
         prepare_tgos(
             cancelled,
             tmp_path / "work",
-            tmp_path / "exchange",
-        )
+            tmp_path / "exchange", index=index_of(cancelled))
 
     fingerprint = query["query_fingerprint"]
     retried, _ = prepare_tgos(
@@ -197,8 +191,7 @@ def test_ten_thousand_cap_fairness_and_cancellation_state(tmp_path):
         tmp_path / "work",
         tmp_path / "exchange",
         retry_fingerprints=[fingerprint],
-        retry_reason="operator approved corrected retry",
-    )
+        retry_reason="operator approved corrected retry", index=index_of(cancelled))
     batches = list(rows(retried / "tgos_batches.parquet"))
     assert batches[-1]["predecessor_batch_id"] == batch_id
     assert batches[-1]["reason"] == "operator approved corrected retry"
@@ -210,8 +203,7 @@ def test_strict_import_is_idempotent_and_rejects_axis_guessing(tmp_path):
         state,
         tmp_path / "work",
         tmp_path / "exchange",
-        limit=1,
-    )
+        limit=1, index=index_of(state))
     batch_id = list(rows(prepared / "tgos_batches.parquet"))[0]["batch_id"]
     submitted = transition_batch(
         prepared, tmp_path / "work", batch_id, "submitted"
@@ -240,8 +232,7 @@ def test_strict_import_is_idempotent_and_rejects_axis_guessing(tmp_path):
         state,
         other / "work",
         other / "exchange",
-        limit=1,
-    )
+        limit=1, index=index_of(state))
     batch_id = list(rows(prepared / "tgos_batches.parquet"))[0]["batch_id"]
     unknown = transition_batch(
         prepared, other / "work", batch_id, "submission_unknown"
@@ -261,8 +252,7 @@ def _submit_first(tmp_path, state, work):
         state,
         work,
         tmp_path / "exchange",
-        limit=1,
-    )
+        limit=1, index=index_of(state))
     query = list(rows(prepared / "tgos_queries.parquet"))[0]
     submitted = transition_batch(prepared, work, query["batch_id"], "submitted")
     return submitted, query
@@ -301,8 +291,7 @@ def test_ledger_prevents_resend_and_reopens_results_for_revalidation(tmp_path):
         state,
         tmp_path / "new",
         tmp_path / "exchange",
-        ledger=old,
-    )
+        ledger=old, index=index_of(state))
     batches = list(rows(seeded / "tgos_batches.parquet"))
     queries = list(rows(seeded / "tgos_queries.parquet"))
     assert [row["status"] for row in batches] == ["submitted", "prepared"]
@@ -389,7 +378,7 @@ def test_carried_queries_are_rekeyed_and_old_snapshot_is_untouched(tmp_path):
     stale = _stale_ledger(tmp_path, submitted, tmp_path / "old")
     before = list(rows(stale / "tgos_queries.parquet"))
 
-    seeded, _ = prepare_tgos(state, tmp_path / "new", tmp_path / "exchange", ledger=stale)
+    seeded, _ = prepare_tgos(state, tmp_path / "new", tmp_path / "exchange", ledger=stale, index=index_of(state))
     carried = [r for r in rows(seeded / "tgos_queries.parquet") if r["batch_id"] == first["batch_id"]]
     assert len(carried) == 1
     assert carried[0]["building_key"] == building_key(first["address"])
@@ -411,7 +400,7 @@ def test_import_of_carried_batch_with_changed_keys_succeeds(tmp_path):
         result,
         [{"Address": first["address"], "Response_Address": first["address"], "Response_X": "121.51", "Response_Y": "25.01"}],
     )
-    seeded, _ = prepare_tgos(state, tmp_path / "new", tmp_path / "exchange", ledger=stale)
+    seeded, _ = prepare_tgos(state, tmp_path / "new", tmp_path / "exchange", ledger=stale, index=index_of(state))
     imported = import_tgos(seeded, tmp_path / "new", first["batch_id"], result)
     assert load_state(imported)[1]["status_counts"]["located"] == 2
     assert [r["status"] for r in rows(imported / "tgos_imports.parquet")] == ["succeeded"]
@@ -427,7 +416,7 @@ def test_same_address_text_already_sent_is_not_selected_again(tmp_path, monkeypa
         "lvr_pipeline.tgos.batches.building_key",
         lambda address: real(address).replace('"door":"', '"door":"9'),
     )
-    seeded, _ = prepare_tgos(state, tmp_path / "new", tmp_path / "exchange", ledger=submitted)
+    seeded, _ = prepare_tgos(state, tmp_path / "new", tmp_path / "exchange", ledger=submitted, index=index_of(state))
     carried = [r for r in rows(seeded / "tgos_queries.parquet") if r["batch_id"] == first["batch_id"]]
     # R09-2: the patch must take effect (the carried query is re-keyed), so only the text can block it.
     assert [r["address"] for r in carried] == [first["address"]]
@@ -441,7 +430,7 @@ def test_cancelled_batch_addresses_are_eligible_again_with_approved_retry(tmp_pa
     from lvr_pipeline.storage.runs import digest
 
     _, state, _ = fixture_two_unmatched(tmp_path)
-    prepared, _ = prepare_tgos(state, tmp_path / "old", tmp_path / "exchange", limit=1)
+    prepared, _ = prepare_tgos(state, tmp_path / "old", tmp_path / "exchange", limit=1, index=index_of(state))
     query = list(rows(prepared / "tgos_queries.parquet"))[0]
     cancelled = transition_batch(prepared, tmp_path / "old", query["batch_id"], "cancelled", reason="x")
     seeded, _ = prepare_tgos(
@@ -450,7 +439,6 @@ def test_cancelled_batch_addresses_are_eligible_again_with_approved_retry(tmp_pa
         tmp_path / "exchange",
         ledger=cancelled,
         retry_fingerprints=[digest([query["building_key"], query["address"]])],
-        retry_reason="regenerated",
-    )
+        retry_reason="regenerated", index=index_of(state))
     new_batch = [r for r in rows(seeded / "tgos_queries.parquet") if r["batch_id"] != query["batch_id"]]
     assert query["address"] in [r["address"] for r in new_batch]

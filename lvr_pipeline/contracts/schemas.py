@@ -159,7 +159,10 @@ OFFLINE_SCHEMAS = {
             ("ordinal", I, False),
             ("query_fingerprint", S, False),
             ("key_version", S, False),
-            ("building_key", S, False),
+            # R09-6: a district_missing query has no key; query_kind and building_key agree.
+            ("query_kind", S, False),
+            ("building_key", S, True),
+            ("candidate_towns", S, True),
             ("address", S, False),
             ("county_code", S, False),
             ("address_family", S, False),
@@ -181,6 +184,8 @@ OFFLINE_SCHEMAS = {
             ("response_sha256", S, False),
             ("source_row_number", I, False),
             ("reason", S, True),
+            # R09-6: the building key of a district fill response.
+            ("response_building_key", S, True),
         ],
     ),
     "alias-event": _schema(

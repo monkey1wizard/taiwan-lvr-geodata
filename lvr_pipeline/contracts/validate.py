@@ -207,6 +207,13 @@ def validate_dataset_rows(values, dataset):
                 raise ValueError("Invalid TGOS batch status")
             if not 1 <= row["address_count"] <= 10_000:
                 raise ValueError("Invalid TGOS batch size")
+        if dataset == "tgos-query":
+            if row["query_kind"] not in {"building_key", "district_missing"}:
+                raise ValueError("Invalid TGOS query kind")
+            if (row["query_kind"] == "building_key") != (row["building_key"] is not None):
+                raise ValueError("TGOS query kind and building key disagree")
+            if (row["query_kind"] == "district_missing") != (row["candidate_towns"] is not None):
+                raise ValueError("TGOS query kind and candidate towns disagree")
         if dataset == "tgos-query" and row["status"] not in {
             "prepared",
             "submission_unknown",

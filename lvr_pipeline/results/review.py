@@ -92,6 +92,8 @@ TGOS_REJECTION_CODES = {
     "TGOS coordinate is not numeric": "tgos_coordinate_invalid",
     "Successful TGOS row lacks Response_Address": "tgos_response_incomplete",
     "TGOS response village or neighbourhood is ambiguous": "tgos_village_ambiguous",
+    # R09-6
+    "TGOS response district is not a candidate district": "tgos_isolated",
 }
 PRODUCED_CODES = (
     "invalid_admin",
@@ -267,7 +269,7 @@ _TGOS_SQL = r"""
   FROM tgos_result r JOIN rejection_codes m ON r.reason = m.reason
   JOIN tgos_query q USING (batch_id, query_fingerprint)
   JOIN base b ON b.building_key = q.building_key
-  WHERE r.status = 'rejected'
+  WHERE r.status = 'rejected' AND q.query_kind = 'building_key'
 """
 
 

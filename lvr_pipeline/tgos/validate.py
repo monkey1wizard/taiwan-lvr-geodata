@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from ..addresses.identity import building_key, door_parts, same_door
+from ..addresses.pool import district_query
 from ..contracts.validate import within_taiwan_bounds
 from ..results.reconcile import (
     DOOR_CROSS_CHECK,
@@ -60,6 +61,28 @@ def _layer_is_ambiguous(query_key: str, door_layers: dict) -> bool:
     if village is None and len({v for v, _ in compatible if v is not None}) >= 2:
         return True
     return neighborhood is None and len({n for _, n in compatible if n is not None}) >= 2
+
+
+DISTRICT_FILL_REASON = "tgos_district_fill"
+
+
+def _check_district_fill(query: dict, target_key: str) -> None:
+    """R09-6: a response to a district_missing query is adopted only inside its candidate towns
+    and only for the queried road and door, with any village or neighbourhood the query writes."""
+    value = json.loads(target_key[3:])
+    if value["county"] != query["county_code"] or value["town"] not in json.loads(query["candidate_towns"]):
+        raise ValueError("TGOS response district is not a candidate district")
+    asked = district_query(query["address"])
+    if asked is None:
+        raise ValueError("TGOS response address differs from submitted address")
+    _, _, locality_road, door, village, neighborhood = asked
+    if (
+        value["locality_road"] != locality_road
+        or value["door"] != door
+        or (village is not None and value.get("village") != village)
+        or (neighborhood is not None and value.get("neighborhood") != neighborhood)
+    ):
+        raise ValueError("TGOS response address differs from submitted address")
 
 
 def _rebuild_resolution(
@@ -252,6 +275,8 @@ def import_tgos(
     for line, row in enumerate(returned, 2):
         query = submitted[row["Address"]]
         reason = None
+        response_key = None
+        district = query["query_kind"] == "district_missing"
         try:
             coordinate = _tgos_coordinate(row["Response_X"], row["Response_Y"])
             status = "succeeded" if coordinate else "failed"
@@ -262,18 +287,24 @@ def import_tgos(
                 target_key = building_key(response_address)
                 if not target_key:
                     raise ValueError("TGOS response is not a complete address")
-                # A success flag or a shared district does not prove the same
-                # door number; only the same door is adopted. R04-12: a village or
-                # neighbourhood the query writes must not differ in the response.
-                if not same_door(query["building_key"], target_key):
-                    raise ValueError("TGOS response address differs from submitted address")
-                # R09-2: the same door under two villages or neighbourhoods is not decided here.
-                if _layer_is_ambiguous(query["building_key"], door_layers):
-                    raise ValueError("TGOS response village or neighbourhood is ambiguous")
+                if district:
+                    _check_district_fill(query, target_key)
+                    response_key = target_key
+                    reason = DISTRICT_FILL_REASON
+                else:
+                    # A success flag or a shared district does not prove the same
+                    # door number; only the same door is adopted. R04-12: a village or
+                    # neighbourhood the query writes must not differ in the response.
+                    if not same_door(query["building_key"], target_key):
+                        raise ValueError("TGOS response address differs from submitted address")
+                    # R09-2: the same door under two villages or neighbourhoods is not decided here.
+                    if _layer_is_ambiguous(query["building_key"], door_layers):
+                        raise ValueError("TGOS response village or neighbourhood is ambiguous")
         except (TypeError, ValueError) as exc:
             coordinate = None
             status = "rejected"
             reason = str(exc)
+            response_key = None
         result_id = digest([batch_id, query["query_fingerprint"], response_hash, line])
         result = {
             "result_id": result_id,
@@ -287,10 +318,12 @@ def import_tgos(
             "response_sha256": response_hash,
             "source_row_number": line,
             "reason": reason,
+            "response_building_key": response_key,
         }
         new_results.append(result)
         result_by_query[query["query_fingerprint"]] = result
-        if status == "succeeded":
+        # R09-6: a district fill adds no offline evidence; R09-8 brings it into the pool.
+        if status == "succeeded" and not district:
             evidence_id = digest(["tgos", result_id])
             evidence.append(
                 {

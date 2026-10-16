@@ -99,7 +99,7 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline run-full \
 
 ## TGOS 回補
 
-TGOS 由個別命令處理，未接入 `run-full`。預定順序為 `prepare-tgos`、人工交換、`set-tgos-status`、`import-tgos`、`build-review`，之後新版回補由 R-10 定義。`prepare-tgos` 可從本次離線狀態建立初始 TGOS state，後續每個狀態更新都須使用前一命令輸出的新快照路徑。`build-review` 用 `--state` 接收離線狀態。該路徑須來自同一次 run。這五個命令都必須給 `--run-id`，狀態寫入 `data/runs/<run-id>/`；`--run-id` 是 run 目錄名，不是快照 ID。指向 `run-full` 的 run 目錄時命令拒絕執行。
+TGOS 由個別命令處理，未接入 `run-full`。預定順序為 `prepare-tgos`、人工交換、`set-tgos-status`、`import-tgos`、`build-review`，之後新版回補由 R-10 定義。`prepare-tgos` 可從本次離線狀態建立初始 TGOS state，後續每個狀態更新都須使用前一命令輸出的新快照路徑。`build-review` 用 `--state` 接收離線狀態。該路徑須來自同一次 run。`prepare-tgos` 必須以 `--index` 指定同一 run 的 offline-index 快照，用於缺區地址的候選區。這五個命令都必須給 `--run-id`，狀態寫入 `data/runs/<run-id>/`；`--run-id` 是 run 目錄名，不是快照 ID。指向 `run-full` 的 run 目錄時命令拒絕執行。
 
 舊 TGOS 帳本與舊回傳在本機已不存在，不轉接、不擋重送；新重建以新帳本從零開始，離線定位不到的門牌全部重新送查。`prepare-tgos --ledger` 只帶入本次重建紀元的帳本，舊紀元帳本一律拒絕；帳本中有現行規則算不出門牌鍵的查詢時也拒絕。新帳本在重建期間不得清空或繞過，`submission_unknown` 不得自動重送。
 
