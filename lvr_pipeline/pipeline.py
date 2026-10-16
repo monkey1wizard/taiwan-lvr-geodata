@@ -34,6 +34,7 @@ from .converted import export_converted
 from .transactions.inventory import verify_inventory, write_raw_manifest
 from .transactions.read import ingest
 from .transactions.normalize import normalize
+from .storage.spill import DEFAULT_INTERVAL_SECONDS, peak_bytes, reset_peak
 from .storage.runs import (
     REBUILD_EPOCH,
     ROOT,
@@ -470,6 +471,7 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
         current["step"] = name
         check_source(name)
         start = time.perf_counter()
+        reset_peak("step")
         reused = run.reusable(name, bindings_)
         if reused:
             path = run.stage(name).root / "snapshots" / run.checkpoints()[name]["snapshot_id"]
@@ -485,6 +487,8 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
                                 # Process peak so far (ru_maxrss is monotonic), not a per-stage peak.
                                 "process_peak_rss_bytes": peak_rss_bytes(),
                                 "snapshot_bytes": _tree_bytes(path),
+                                # R07-12i: largest sampled DuckDB spill in this step, publish checks included.
+                                "spill_peak_bytes": peak_bytes("step"),
                                 "disk_free_bytes": shutil.disk_usage(run.root).free})
         return path
 
@@ -492,7 +496,11 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
         return {"disk_headroom_start": headroom_start, "disk_headroom_end": disk_headroom(run.root),
                 "run_dir_bytes": _tree_bytes(run.root),
                 "duckdb_memory_limit": os.environ.get("LVR_DUCKDB_MEMORY_LIMIT"),
-                "steps": [{k: step[k] for k in ["step", "elapsed_seconds", "process_peak_rss_bytes", "snapshot_bytes"]}
+                "spill_peak_bytes": max([step["spill_peak_bytes"] for step in result["steps"] if "snapshot_bytes" in step],
+                                        default=0),
+                "spill_sample_interval_seconds": DEFAULT_INTERVAL_SECONDS,
+                "steps": [{k: step[k] for k in ["step", "elapsed_seconds", "process_peak_rss_bytes", "snapshot_bytes",
+                                                "spill_peak_bytes"]}
                           for step in result["steps"] if "snapshot_bytes" in step]}
 
     def output_stage(converted, state):
@@ -505,6 +513,7 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
         current["step"] = "output"
         check_source("output")
         start = time.perf_counter()
+        reset_peak("step")
         input_hashes = [sha256_file(Path(converted) / "manifest.json"), sha256_file(Path(state) / "manifest.json")]
         output_id = "output-" + digest({"converted": input_hashes[0], "state": input_hashes[1],
                                         "contract": "22-column"})[:24]
@@ -541,10 +550,12 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
             write_catalog(output_root / "public", output_root / "release", summary,
                           converted_report=converted_report, cutoff_yyyymm=bindings_["cutoff_yyyymm"])
             try:
-                verification = verify_output(output_root / "public", output_root / "release")
+                verification = verify_output(output_root / "public", output_root / "release", spill)
             except OutputVerificationError as exc:
                 _json_write(output_root / "verify_report.json", exc.report)
                 raise
+            finally:
+                shutil.rmtree(spill, ignore_errors=True)
             files_sha256 = {item.relative_to(run.root).as_posix(): sha256_file(item)
                             for item in sorted(output_root.rglob("*")) if item.is_file()}
             record = {"output_id": output_id, "public_dir": (output_root / "public").relative_to(run.root).as_posix(),
@@ -565,6 +576,7 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
                                 "elapsed_seconds": round(time.perf_counter() - start, 3),
                                 "process_peak_rss_bytes": peak_rss_bytes(),
                                 "snapshot_bytes": _tree_bytes(final),
+                                "spill_peak_bytes": peak_bytes("step"),
                                 "disk_free_bytes": shutil.disk_usage(run.root).free})
         return final
 

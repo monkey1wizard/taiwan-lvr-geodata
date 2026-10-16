@@ -34,13 +34,15 @@ def test_result_and_report_carry_resource_fields(tmp_path):
     report = json.loads(Path(result["report"]).read_text(encoding="utf-8"))
     for resources in (result["resources"], report["resources"]):
         assert set(resources) == {"disk_headroom_start", "disk_headroom_end", "run_dir_bytes",
-                                  "duckdb_memory_limit", "steps"}
+                                  "duckdb_memory_limit", "steps", "spill_peak_bytes",
+                                  "spill_sample_interval_seconds"}
         for key in ("disk_headroom_start", "disk_headroom_end"):
             assert set(resources[key]) == {"path", "free_bytes", "total_bytes", "free_ratio", "required_ratio", "ok"}
             assert resources[key]["required_ratio"] == DISK_HEADROOM_RATIO
         assert resources["run_dir_bytes"] > 0
         assert resources["steps"] and all(
-            set(step) == {"step", "elapsed_seconds", "process_peak_rss_bytes", "snapshot_bytes"}
+            set(step) == {"step", "elapsed_seconds", "process_peak_rss_bytes", "snapshot_bytes",
+                          "spill_peak_bytes"}
             for step in resources["steps"])
     assert result["resources"]["run_dir_bytes"] >= report["resources"]["run_dir_bytes"]
     print(json.dumps(report["resources"], ensure_ascii=False, indent=2))

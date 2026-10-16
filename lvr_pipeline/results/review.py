@@ -78,7 +78,6 @@ import hashlib
 import json
 from pathlib import Path
 import re
-import tempfile
 
 import duckdb
 
@@ -86,6 +85,7 @@ from ..contracts.schemas import EXCEPTION_REASON_CODES, dataset_schema
 from ..offline.resolve import _find_candidates
 from ..addresses.parse import parse
 from ..storage.parquet import BatchWriter, duckdb_config
+from ..storage.spill import measured_spill
 from ..storage.runs import Stage, bindings, digest, load_snapshot, sha256_file
 from ..addresses.identity import cjk_number
 from ..offline.index import _haversine_sql
@@ -347,8 +347,8 @@ def build_review(
     cross_csv_path = stage.build / "cross_check_addresses.csv"
     reason_rows = {code: 0 for code in EXCEPTION_REASON_CODES}
     candidate_cache: dict[tuple[str, str], list[str]] = {}
-    with tempfile.TemporaryDirectory(prefix="review-", dir=stage.build) as spill:
-        with duckdb.connect(config=duckdb_config(spill)) as db, csv_path.open(
+    with measured_spill(stage.build, "review") as spill:
+        with duckdb.connect(config=duckdb_config(spill.path)) as db, csv_path.open(
             "w", encoding="utf-8-sig", newline=""
         ) as stream, cross_csv_path.open("w", encoding="utf-8-sig", newline="") as cross_stream:
             db.read_parquet(_paths(state, state_manifest, "address-occurrence")).create_view("occurrence")

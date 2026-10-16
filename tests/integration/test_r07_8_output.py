@@ -295,7 +295,7 @@ def test_spill_directory_is_created_under_the_given_path_and_emptied(built, tmp_
 
     used = []
     original = rows_module.duckdb_config
-    monkeypatch.setattr(rows_module, "duckdb_config", lambda spill=None: used.append(Path(spill)) or original(spill))
+    monkeypatch.setattr(rows_module, "duckdb_config", lambda spill: used.append(Path(spill)) or original(spill))
     monkeypatch.setattr(tempfile, "gettempdir", lambda: pytest.fail("system temp used"))
     spill = tmp_path / "new" / "spill"
     list(iter_door_rows(built["converted"], built["state"], spill_dir=spill))

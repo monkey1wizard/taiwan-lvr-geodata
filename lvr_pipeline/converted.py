@@ -25,7 +25,7 @@ def export_converted(normalized_snapshot: Path, work_dir: Path, *, run_id=None, 
             path = normalized_snapshot / item["path"]
             groups.setdefault(item["schema"], []).append(path)
             artifacts.append((item["path"], path, item["schema"], item["row_count"]))
-    counts = verify_relations(groups)
+    counts = verify_relations(groups, spill_parent=stage.build)
     if counts.get("disposition") != previous["input_rows"] or counts.get("observation") != previous["retained_rows"]:
         raise ValueError("Converted counts do not match declared scope")
     report = {**previous, "input_snapshot_sha256": binding["input_sha256"][0], "dataset_counts": counts,

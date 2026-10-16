@@ -63,7 +63,7 @@ def rehash(public, release):
 
 def failures_of(public, release):
     with pytest.raises(OutputVerificationError) as raised:
-        verify_output(public, release)
+        verify_output(public, release, Path(public).parent / "spill")
     assert isinstance(raised.value, ValueError) and raised.value.report["passed"] is False
     return raised.value.report["failures"]
 
@@ -137,7 +137,7 @@ def test_catalog_requires_source_hashes_and_a_cutoff(base, tmp_path):
 
 def test_verify_passes_untouched_output_and_reports_resources_and_quality(out):
     public, release = out
-    report = verify_output(public, release)
+    report = verify_output(public, release, Path(public).parent / "spill")
     assert report["passed"] is True and report["failures"] == [] and report["warnings"] == []
     assert set(report["checks"].values()) == {"pass"} and report["total_rows"] == 21
     assert report["catalog_sha256"] == sha256_file(public / "catalog.json")
@@ -320,7 +320,7 @@ def test_all_failures_are_collected_before_raising(out):
     (public / MONTH_CSV).unlink()
     (public / "stray.txt").write_text("x", encoding="utf-8")
     with pytest.raises(OutputVerificationError) as raised:
-        verify_output(public, release)
+        verify_output(public, release, Path(public).parent / "spill")
     report = raised.value.report
     assert report["checks"]["catalog"] == "fail" and len([f for f in report["failures"] if f["check"] == "catalog"]) >= 2
     assert "output verification failed" in str(raised.value)
@@ -335,7 +335,7 @@ def test_files_over_the_limit_fail_and_large_files_warn(out, monkeypatch):
     assert {f["check"] for f in failures} == {"resources"}
     monkeypatch.setattr(verify_module, "FILE_LIMIT_BYTES", biggest.stat().st_size + 1)
     monkeypatch.setattr(verify_module, "WARN_BYTES", biggest.stat().st_size)
-    report = verify_output(public, release)
+    report = verify_output(public, release, Path(public).parent / "spill")
     assert [w["path"] for w in report["warnings"]] == [biggest.relative_to(public).as_posix()]
     assert report["passed"] is True
 
@@ -365,7 +365,7 @@ def test_quality_counters_count_nulls_per_category(out):
 
 def failures_report(public, release):
     with pytest.raises(OutputVerificationError) as raised:
-        verify_output(public, release)
+        verify_output(public, release, Path(public).parent / "spill")
     return raised.value.report
 
 
@@ -398,9 +398,9 @@ def test_run_full_failed_verification_leaves_the_report_and_no_committed_output(
     inputs = setup_inputs(tmp_path)
     real = verify_output
 
-    def damaging(public, release):
+    def damaging(public, release, spill):
         next(Path(public).glob("csv/*/*.csv")).unlink()
-        return real(public, release)
+        return real(public, release, spill)
 
     monkeypatch.setattr("lvr_pipeline.pipeline.verify_output", damaging)
     result = run_full(run_id="cat2", **inputs)

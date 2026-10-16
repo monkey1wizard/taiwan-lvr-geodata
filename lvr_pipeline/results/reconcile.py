@@ -37,7 +37,6 @@ without coordinates keep their status. The list is part of the stage bindings.
 from pathlib import Path
 import json
 import math
-import tempfile
 import tomllib
 
 import duckdb
@@ -46,6 +45,7 @@ from ..addresses.identity import door_signature_sql, sub_identity_sql
 from ..contracts.schemas import dataset_schema
 from ..offline.index import EARTH_RADIUS_M
 from ..storage.parquet import BatchWriter, duckdb_config
+from ..storage.spill import measured_spill
 from ..storage.runs import ROOT, Stage, bindings, digest
 from ..storage.runs import SnapshotStore
 from ..storage.runs import sha256_file
@@ -274,7 +274,10 @@ def check_suspension(path: Path, manifest: dict, report: dict) -> None:
             files.setdefault(item["schema"], []).append(str(Path(path) / item["path"]))
     if "address-result" not in files:
         return
-    with duckdb.connect() as db:
+    # R07-12i: spills under the snapshot store that holds the checked snapshot (<store>/spill).
+    with measured_spill(Path(path).parent.parent / "spill", "suspension") as spill, duckdb.connect(
+        config=duckdb_config(spill.path)
+    ) as db:
         db.read_parquet(files["address-result"]).create_view("result")
         if "coordinate-resolution" in files:
             db.read_parquet(files["coordinate-resolution"]).create_view("resolution")
@@ -383,9 +386,9 @@ def resolve_offline(
     basis_counts = {WITHIN_TOLERANCE: 0, EXCEEDS_TOLERANCE: 0}
     cross_check = 0
     suspension_counts = new_suspension_counts(suspended)
-    with tempfile.TemporaryDirectory(prefix="state-", dir=stage.build) as spill:
+    with measured_spill(stage.build, "state") as spill:
         with duckdb.connect(
-            config=duckdb_config(spill)
+            config=duckdb_config(spill.path)
         ) as db:
             db.read_parquet(
                 str(Path(pool_path) / "unique_addresses.parquet")

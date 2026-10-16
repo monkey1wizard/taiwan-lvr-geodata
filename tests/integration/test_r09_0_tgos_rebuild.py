@@ -99,15 +99,15 @@ def test_relations_check_the_uncarried_queries(seeded):
         if item["schema"] and item["path"].endswith(".parquet"):
             groups.setdefault(item["schema"], []).append(seeded / item["path"])
     listed = report[UNCARRIED]
-    verify_relations(groups, uncarried_queries=listed)
+    verify_relations(groups, spill_parent=seeded.parent / "spill", uncarried_queries=listed)
     with pytest.raises(ValueError, match="TGOS batch count differs from queries"):
-        verify_relations(groups, uncarried_queries=[])
+        verify_relations(groups, spill_parent=seeded.parent / "spill", uncarried_queries=[])
     with pytest.raises(ValueError, match="TGOS batch Address is ambiguous"):
-        verify_relations(groups, uncarried_queries=listed * 2)
+        verify_relations(groups, spill_parent=seeded.parent / "spill", uncarried_queries=listed * 2)
     with pytest.raises(ValueError, match="TGOS query lacks batch"):
-        verify_relations(groups, uncarried_queries=[{**listed[0], "batch_id": "tgos-unknown"}])
+        verify_relations(groups, spill_parent=seeded.parent / "spill", uncarried_queries=[{**listed[0], "batch_id": "tgos-unknown"}])
     with pytest.raises(ValueError, match="Invalid uncarried TGOS queries"):
-        verify_relations(groups, uncarried_queries=[{**listed[0], "ordinal": "2"}])
+        verify_relations(groups, spill_parent=seeded.parent / "spill", uncarried_queries=[{**listed[0], "ordinal": "2"}])
 
 
 def test_import_accepts_the_unkeyed_row_without_using_it(ledger, seeded):

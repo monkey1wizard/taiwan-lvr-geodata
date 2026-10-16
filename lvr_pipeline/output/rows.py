@@ -10,13 +10,13 @@ from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from pathlib import Path
 import re
-import tempfile
 
 import duckdb
 import pyarrow as pa
 
 from ..results.reconcile import load_p2
 from ..storage.parquet import duckdb_config
+from ..storage.spill import measured_spill
 from ..storage.runs import canonical_json, load_snapshot, sha256_file
 
 
@@ -274,8 +274,8 @@ def iter_door_rows(converted, state, *, spill_dir, batch_rows=1024):
     """
     spill_dir = Path(spill_dir)
     spill_dir.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="rows-", dir=spill_dir) as spill:
-        with duckdb.connect(str(Path(spill) / "rows.duckdb"), config=duckdb_config(spill)) as db:
+    with measured_spill(spill_dir, "rows") as spill:
+        with duckdb.connect(str(spill.path / "rows.duckdb"), config=duckdb_config(spill.path)) as db:
             open_sources(db, converted, state)
             for sql in _MATERIALIZE:
                 db.execute(sql)

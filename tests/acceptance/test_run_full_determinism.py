@@ -27,6 +27,8 @@ SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 JSON_VOLATILE_KEYS = {
     "build_elapsed_seconds", "build_process_peak_rss_bytes", "elapsed_seconds", "process_peak_rss_bytes",
     "disk_free_bytes", "disk_headroom_start", "disk_headroom_end", "run_dir_bytes", "snapshot_bytes",
+    # R07-12i: the sampled DuckDB spill peak varies with timing and thread scheduling.
+    "build_spill_peak_bytes", "spill_peak_bytes", "spill_sample_interval_seconds",
 }
 # Resource preflight records sample the disk and memory of the machine when the run starts.
 JSON_VOLATILE_KEY_PREFIX = "resource_preflight"

@@ -17,6 +17,7 @@ from ..addresses.identity import building_key
 from ..transactions.normalize import normalize_address
 from ..storage.parquet import BatchWriter
 from ..contracts.validate import TAIWAN_BOUNDS, TAIWAN_BOUNDS_RULE, within_taiwan_bounds
+from ..storage.spill import measured_spill
 from ..storage.runs import REBUILD_EPOCH, Stage, bindings, digest, scanned_at
 from ..storage.runs import sha256_file
 from .match import COUNTY_NAMES, AdministrativeNames
@@ -391,7 +392,6 @@ def audit_address_source(
     Distances use the haversine formula on a sphere of radius 6,371,008.8 m
     with X as longitude and Y as latitude, the axis order ``build_index`` uses.
     """
-    import tempfile
 
     import duckdb
     import pyarrow as pa
@@ -425,7 +425,9 @@ def audit_address_source(
         ]
     )
     output_dir.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="lvr-address-audit-") as temp:
+    # R07-12i: the audit's work files and DuckDB spill live in its own output directory.
+    with measured_spill(output_dir, "audit-work") as work:
+        temp = work.path
         rows_path = Path(temp) / "rows.parquet"
         writer = pq.ParquetWriter(rows_path, schema, compression="zstd")
         buffer = []

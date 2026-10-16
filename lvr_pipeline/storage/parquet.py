@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-import tempfile
 
 import duckdb
 import pyarrow as pa
@@ -13,6 +12,7 @@ import pyarrow.parquet as pq
 from ..contracts import observation_id, validate_rows
 from ..contracts.schemas import P1_DATASETS, PRIMARY, SCHEMAS as ALL_SCHEMAS, dataset_schema
 from ..contracts.validate import validate_dataset_rows
+from .spill import measured_spill
 
 # Retained symbol: the transaction (P1) datasets only; all datasets live in contracts.schemas.
 SCHEMAS = {name: ALL_SCHEMAS[name] for name in P1_DATASETS}
@@ -127,14 +127,12 @@ def inspect_parquet(path: Path, dataset: str) -> int:
     return count
 
 
-def duckdb_config(spill=None) -> dict:
-    """DuckDB limits; defaults stay small, full-history runs may raise them."""
-    config = {"threads": os.environ.get("LVR_DUCKDB_THREADS", "2"),
-              "memory_limit": os.environ.get("LVR_DUCKDB_MEMORY_LIMIT", "256MB")}
-    if spill is not None:
-        config["temp_directory"] = str(spill)
-        config["max_temp_directory_size"] = os.environ.get("LVR_DUCKDB_TEMP_LIMIT", "1GiB")
-    return config
+def duckdb_config(spill) -> dict:
+    """DuckDB limits; defaults stay small, full-history runs may raise them. spill is required (R07-12i)."""
+    return {"threads": os.environ.get("LVR_DUCKDB_THREADS", "2"),
+            "memory_limit": os.environ.get("LVR_DUCKDB_MEMORY_LIMIT", "256MB"),
+            "temp_directory": str(spill),
+            "max_temp_directory_size": os.environ.get("LVR_DUCKDB_TEMP_LIMIT", "1GiB")}
 
 
 def _uncarried_table(values) -> pa.Table:
@@ -153,12 +151,12 @@ def _uncarried_table(values) -> pa.Table:
                      "address": pa.array([row["address"] for row in values], pa.string())})
 
 
-def verify_relations(groups: dict[str, list[Path]], *, source_scope: dict | None = None, cutoff: int | None = None,
+def verify_relations(groups: dict[str, list[Path]], *, spill_parent: Path, source_scope: dict | None = None, cutoff: int | None = None,
                      uncarried_queries: list | None = None) -> dict:
     """Validate across all partitions without collecting IDs or rows in Python."""
     counts = {}
-    with tempfile.TemporaryDirectory(prefix="lvr-relations-") as spill:
-        with duckdb.connect(config=duckdb_config(spill)) as db:
+    with measured_spill(spill_parent, "relations") as spill:
+        with duckdb.connect(config=duckdb_config(spill.path)) as db:
             for dataset, paths in groups.items():
                 name = dataset.replace("-", "_")
                 db.read_parquet([str(path) for path in paths]).create_view(name)

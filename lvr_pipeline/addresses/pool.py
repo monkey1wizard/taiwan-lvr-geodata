@@ -23,7 +23,6 @@ the county starts like an administrative name (市東區…, 桃園縣…) and h
 from pathlib import Path
 import csv
 import json
-import tempfile
 import re
 
 import duckdb
@@ -34,6 +33,7 @@ from .identity import building_key, door_parts, door_signature_sql, sub_identity
 from .parse import _COUNTY_CODE
 from ..offline.index import load_pinned_source
 from ..storage.parquet import BatchWriter, duckdb_config, rows
+from ..storage.spill import measured_spill
 from ..storage.runs import Stage, bindings, digest, load_snapshot
 from ..storage.runs import ROOT, sha256_file
 
@@ -128,18 +128,6 @@ def build_pool(
         if index_report["address_source_commit"] != descriptor["commit"]:
             raise ValueError("Candidate evidence pin mismatch")
         input_hashes.append(sha256_file(Path(index_path) / "manifest.json"))
-        probe_db = duckdb.connect(config=duckdb_config())
-        probe_db.read_parquet(
-            str(Path(index_path) / "offline_rows.parquet")
-        ).create_view("evidence")
-        # R04-12: candidates are matched by door signature and the written village and
-        # neighbourhood, as in resolve_offline.
-        probe_db.execute(
-            f"""CREATE TEMP TABLE doors AS SELECT {door_signature_sql('building_key')} sig,
-                   {sub_identity_sql('building_key', 'village')} v,
-                   {sub_identity_sql('building_key', 'neighborhood')} n, lng, lat
-               FROM evidence WHERE validity='valid' AND building_key IS NOT NULL ORDER BY sig"""
-        )
         for item in descriptor["roads"]:
             county, road = item["path"].split("/")[1][:-4].split("-", 1)
             roads.setdefault(county, set()).add(road)
@@ -158,6 +146,22 @@ def build_pool(
     stage = Stage(Path(work_dir) / "address-pool", "address-pool", binding, run_id)
     if stage.reused:
         return stage.path
+    probe_spill = None
+    if index_path:
+        # R07-12i: the candidate probe database spills inside the stage build area.
+        probe_spill = measured_spill(stage.build, "probe")
+        probe_db = duckdb.connect(config=duckdb_config(probe_spill.__enter__().path))
+        probe_db.read_parquet(
+            str(Path(index_path) / "offline_rows.parquet")
+        ).create_view("evidence")
+        # R04-12: candidates are matched by door signature and the written village and
+        # neighbourhood, as in resolve_offline.
+        probe_db.execute(
+            f"""CREATE TEMP TABLE doors AS SELECT {door_signature_sql('building_key')} sig,
+                   {sub_identity_sql('building_key', 'village')} v,
+                   {sub_identity_sql('building_key', 'neighborhood')} n, lng, lat
+               FROM evidence WHERE validity='valid' AND building_key IS NOT NULL ORDER BY sig"""
+        )
     occurrence = BatchWriter(
         stage.build / "address_occurrences.parquet", "address-occurrence"
     )
@@ -242,10 +246,12 @@ def build_pool(
         candidates.close()
         if probe_db:
             probe_db.close()
+        if probe_spill:
+            probe_spill.__exit__(None, None, None)
     pool = BatchWriter(stage.build / "unique_addresses.parquet", "address-pool")
-    with tempfile.TemporaryDirectory(prefix="pool-", dir=stage.build) as spill:
+    with measured_spill(stage.build, "pool") as spill:
         with duckdb.connect(
-            config=duckdb_config(spill)
+            config=duckdb_config(spill.path)
         ) as db:
             db.read_parquet(str(occurrence.path)).create_view("occurrence")
             db.read_parquet(observation_paths).create_view("observations")

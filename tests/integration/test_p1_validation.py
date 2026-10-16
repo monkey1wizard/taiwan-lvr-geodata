@@ -55,7 +55,7 @@ def test_duplicate_ids_across_partitions_rejected(tmp_path):
     ingested,_,_=pipeline(tmp_path,categories=("sales",))
     path=ingested/"records/115q1/sales.parquet"
     with pytest.raises(ValueError,match="Duplicate"):
-        verify_relations({"ingest-record":[path,path]})
+        verify_relations({"ingest-record":[path,path]},spill_parent=tmp_path/"spill")
 
 
 def test_dispositions_cannot_reclassify_retained_observations(tmp_path):
@@ -70,7 +70,7 @@ def test_dispositions_cannot_reclassify_retained_observations(tmp_path):
     table=table.set_column(table.schema.get_field_index("outcome"),table.schema.field("outcome"),pa.array(["excluded"]))
     pq.write_table(table,path)
     with pytest.raises(ValueError,match="outcome"):
-        verify_relations(groups)
+        verify_relations(groups,spill_parent=tmp_path/"spill")
 
 
 def test_changed_cutoff_and_manual_rules_create_distinct_snapshots(tmp_path):
@@ -139,6 +139,6 @@ def test_declared_input_scope_and_cutoff_cannot_disagree_with_rows(tmp_path):
         if item["schema"]:
             groups.setdefault(item["schema"],[]).append(converted/item["path"])
     with pytest.raises(ValueError,match="source scope"):
-        verify_relations(groups,source_scope={"115q1":"f"*64})
+        verify_relations(groups,spill_parent=tmp_path/"spill",source_scope={"115q1":"f"*64})
     with pytest.raises(ValueError,match="cutoff"):
-        verify_relations(groups,cutoff=202512)
+        verify_relations(groups,spill_parent=tmp_path/"spill",cutoff=202512)

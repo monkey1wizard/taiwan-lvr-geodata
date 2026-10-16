@@ -13,7 +13,6 @@ import json
 from pathlib import Path
 import re
 import struct
-import tempfile
 
 import duckdb
 import pyarrow as pa
@@ -22,6 +21,7 @@ import pyarrow.parquet as pq
 from ..addresses.admin import admin_towns_sha256
 from ..addresses.identity import NORMALIZATION_VERSION
 from ..storage.parquet import duckdb_config
+from ..storage.spill import measured_spill
 from ..storage.runs import sha256_file
 from .catalog import CATALOG_NAME, CONTRACT_VERSION, CURRENCY, FORMATS, PARQUET_NAME, cutoff_text
 from .rows import ATTRIBUTE_NAMES, ATTRIBUTES, CATEGORIES, COLUMNS, CSV_COLUMNS
@@ -396,7 +396,7 @@ def _parquet_years(con):
 
 # --- main ---
 
-def verify_output(public_root, release_root) -> dict:
+def verify_output(public_root, release_root, spill_parent) -> dict:
     """Check the written output. Return the report, or raise OutputVerificationError(report)."""
     public_root, release_root = Path(public_root), Path(release_root)
     csv.field_size_limit(2**30)
@@ -511,10 +511,10 @@ def verify_output(public_root, release_root) -> dict:
     # GeoParquet: set-based checks in DuckDB, then the reference rows year by year
     parquet_path = present.get(PARQUET_NAME)
     con, years, bbox, tracked = None, set(), None, 0
-    with tempfile.TemporaryDirectory(prefix="verify-") as spill:
+    with measured_spill(spill_parent, "verify") as spill:
         try:
             if parquet_path is not None and _parquet_columns(report, parquet_path, PARQUET_NAME):
-                con = duckdb.connect(config=duckdb_config(spill))
+                con = duckdb.connect(config=duckdb_config(spill.path))
                 con.read_parquet(str(parquet_path)).create_view("p")
                 rows = pq.ParquetFile(parquet_path).metadata.num_rows
                 if rows != parquet_entries[0]["rows"]:

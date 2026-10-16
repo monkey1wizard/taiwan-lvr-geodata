@@ -206,9 +206,10 @@ def test_tampered_or_legacy_resolution_fails_validation(tmp_path):
         validate_dataset_rows([{**detail, "tolerance_m": 1.0}], "coordinate-resolution")
     # Without adoption rows (a state before R05-4) several coordinates cannot be located.
     with pytest.raises(ValueError, match="needs coordinate resolution"):
-        verify_relations({"address-result": [state / "address_index.parquet"]})
+        verify_relations({"address-result": [state / "address_index.parquet"]}, spill_parent=state.parent / "spill")
     verify_relations(
-        {
+        spill_parent=state.parent / "spill",
+        groups={
             "address-result": [state / "address_index.parquet"],
             "coordinate-resolution": [state / "coordinate_resolutions.parquet"],
             "offline-row": [state / "address_observations.parquet"],

@@ -16,6 +16,7 @@ import time
 import uuid
 
 from ..contracts import validate_relations, validate_rows
+from .spill import peak_bytes, reset_peak, sample_interval
 
 
 def sha256_file(path: Path) -> str:
@@ -262,8 +263,7 @@ class SnapshotStore:
         self._verify_contents(directory, manifest, inspect_parquet=True)
         return manifest
 
-    @staticmethod
-    def _verify_contents(directory: Path, manifest: dict, *, inspect_parquet: bool) -> None:
+    def _verify_contents(self, directory: Path, manifest: dict, *, inspect_parquet: bool) -> None:
         """Row counts and cross-file relations. Publish passes inspect_parquet=False because add
         already validated each Parquet file row by row; its relations are still checked here."""
         rows_by_schema = {}
@@ -286,7 +286,8 @@ class SnapshotStore:
             from .parquet import verify_relations
             report_path = directory / "quality.json"
             report = _read_json(report_path) if report_path.exists() else {}
-            verify_relations(parquet_groups, source_scope=report.get("source_sha256"), cutoff=report.get("cutoff"),
+            # R07-12i: the relation checks spill under this store's own directory.
+            verify_relations(parquet_groups, spill_parent=self.root / "spill", source_scope=report.get("source_sha256"), cutoff=report.get("cutoff"),
                              uncarried_queries=report.get("tgos_uncarried_queries"))
         for name, rows in rows_by_schema.items():
             validate_rows(rows, name)
@@ -513,6 +514,8 @@ class Stage:
         self.store.begin(self.id, expected_parent=self.parent, bindings=binding)
         self.build = self.store.root / "build" / self.id
         self.build.mkdir(parents=True)
+        # R07-12i: spills measured from here to finish() are this stage's build spills.
+        reset_peak("build")
 
     def finish(self, artifacts: list[tuple[str, Path, str, int]], report: dict):
         if self.reused:
@@ -523,7 +526,11 @@ class Stage:
                   "build_process_peak_rss_bytes": peak_rss_bytes(),
                   "artifact_bytes": sum(path.stat().st_size for _, path, _, _ in artifacts),
                   "validation_duckdb_memory_limit": os.environ.get("LVR_DUCKDB_MEMORY_LIMIT", "256MB"),
-                  "validation_duckdb_temp_limit": os.environ.get("LVR_DUCKDB_TEMP_LIMIT", "1GiB")}
+                  "validation_duckdb_temp_limit": os.environ.get("LVR_DUCKDB_TEMP_LIMIT", "1GiB"),
+                  # Largest sampled DuckDB spill while building (publish-time relation checks run
+                  # after this file is written; run_full records them in the step entry instead).
+                  "build_spill_peak_bytes": peak_bytes("build"),
+                  "spill_sample_interval_seconds": sample_interval("build")}
         report_path = self.build / "quality.json"
         report_path.write_text(canonical_json(report) + "\n", encoding="utf-8")
         for name, path, dataset, count in artifacts:
