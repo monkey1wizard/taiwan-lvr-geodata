@@ -262,11 +262,30 @@ def rebuild_from_maintenance(package: Path, out: Path) -> dict:
     if _identifier(document["run_id"]) != run_manifest["run_id"]:
         raise ValueError("Package run_id differs from the packaged run manifest")
     phase("verify_package_files", begin)
-    converted = _snapshot_dir(package, "converted", document["baseline"]["converted"]["snapshot_id"])
-    state = _snapshot_dir(package, "offline-state", document["baseline"]["offline-state"]["snapshot_id"])
+    # The package is read-only input: verify_full creates a spill directory beside the store, so every
+    # snapshot is copied into a store under out/store and proven identical to package.json before use.
+    out.mkdir(parents=True, exist_ok=True)
+    listed = {item["path"]: item for item in document["files"]}
+    begin = time.perf_counter()
+    copies, copied_bytes = {}, 0
+    for stage in SNAPSHOT_STAGES:
+        snapshot_id = document["baseline"][stage]["snapshot_id"]
+        source = _snapshot_dir(package, stage, snapshot_id)
+        copies[stage] = _snapshot_dir(out / "store", stage, snapshot_id)
+        (out / "store" / stage / "staging").mkdir(parents=True)
+        for file in sorted(item for item in source.rglob("*") if item.is_file()):
+            relative = file.relative_to(package).as_posix()
+            target = copies[stage] / file.relative_to(source)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(file, target)
+            if sha256_file(target) != listed[relative]["sha256"] or target.stat().st_size != listed[relative]["size_bytes"]:
+                raise ValueError(f"Copied file {relative} does not match package.json")
+            copied_bytes += target.stat().st_size
+    timings["copy_snapshots"] = round(time.perf_counter() - begin, 3)
+    converted, state = copies["converted"], copies["offline-state"]
     begin = time.perf_counter()
     for stage, directory in (("converted", converted), ("offline-state", state)):
-        SnapshotStore(package / "snapshots" / stage).verify_full(directory)
+        SnapshotStore(out / "store" / stage).verify_full(directory)
     phase("verify_full", begin)
     # Rule 2: the running program's producer files equal those recorded in each packaged snapshot.
     current = producer_file_hashes()
@@ -285,12 +304,12 @@ def rebuild_from_maintenance(package: Path, out: Path) -> dict:
 
     import duckdb
     import pyarrow
-    out.mkdir(parents=True, exist_ok=True)
     report = {"package": str(package), "run_id": document["run_id"], "output_id": output_id,
               "started_at": datetime.now(timezone.utc).isoformat(), "platform": platform.platform(),
               "python": sys.version, "python_executable": sys.executable, "duckdb_version": duckdb.__version__,
               "pyarrow_version": pyarrow.__version__, "package_config_sha256": document["config_sha256"],
-              "package_code_commit": document["code_commit"]}
+              "package_code_commit": document["code_commit"],
+              "copied_snapshot_bytes": copied_bytes}
     output_root = out / "output" / output_id
     reset_peak("step")
     begin = time.perf_counter()

@@ -3,6 +3,7 @@ import importlib.util
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -217,3 +218,26 @@ def test_rebuild_reads_only_the_package_and_out(package, tmp_path, monkeypatch):
     assert report["pass"] is True and opened
     resolved = [item.resolve() for item in opened]
     assert not [item for item in resolved if any(item.is_relative_to(root) for root in forbidden)]
+
+
+def _listing(root):
+    return sorted((item.relative_to(root).as_posix(), item.is_dir(), item.stat().st_size, item.stat().st_mtime_ns)
+                  for item in root.rglob("*"))
+
+
+def test_rebuild_treats_the_package_as_read_only(package, tmp_path):
+    for item in package.rglob("*"):
+        if item.is_file():
+            os.chmod(item, stat.S_IREAD)
+    before = _listing(package)
+    try:
+        report = maintenance.rebuild_from_maintenance(package, tmp_path / "out")
+    finally:
+        for item in package.rglob("*"):
+            if item.is_file():
+                os.chmod(item, stat.S_IREAD | stat.S_IWRITE)
+    assert report["pass"] is True, report
+    assert _listing(package) == before
+    assert not list(package.rglob("spill"))
+    assert report["timings_seconds"]["copy_snapshots"] >= 0 and report["copied_snapshot_bytes"] > 0
+    assert (tmp_path / "out" / "store" / "converted" / "snapshots").is_dir()
