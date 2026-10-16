@@ -342,8 +342,8 @@ EXCEPTION_REASON_CODES = (
     "door_cross_check",
     # R05-9
     "address_source_suspended",
-    # R09-0
-    "tgos_query_unkeyed",
+    # R09-2
+    "tgos_village_ambiguous",
 )
 OFFLINE_SCHEMAS["exception-address"] = _schema(
     "exception-address",

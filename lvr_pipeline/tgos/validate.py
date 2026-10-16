@@ -21,7 +21,6 @@ from ..storage.parquet import rows
 from ..storage.runs import digest, sha256_file
 from ..transactions.normalize import normalize_address
 from .batches import (
-    UNCARRIED,
     _artifact_paths,
     _require_latest,
     _table,
@@ -35,10 +34,32 @@ def _tgos_coordinate(x: str, y: str):
         return None
     if not x.strip() or not y.strip():
         raise ValueError("Partial TGOS coordinate pair")
-    lng, lat = float(x), float(y)
+    try:
+        lng, lat = float(x), float(y)
+    except ValueError:
+        # R09-2: every rejection reason has a review code.
+        raise ValueError("TGOS coordinate is not numeric") from None
     if not within_taiwan_bounds(lng, lat):
         raise ValueError("TGOS coordinate is outside declared WGS84 Taiwan bounds")
     return lng, lat
+
+
+def _layer_is_ambiguous(query_key: str, door_layers: dict) -> bool:
+    """R09-2: the pool holds the same door under two villages (or neighbourhoods) the query leaves open.
+
+    Only pool keys compatible with every layer the query writes count.
+    """
+    signature, village, neighborhood = door_parts(query_key)
+    compatible = [
+        (key_village, key_neighborhood)
+        for key, key_village, key_neighborhood in door_layers.get(signature, ())
+        if key != query_key
+        and (village is None or key_village is None or key_village == village)
+        and (neighborhood is None or key_neighborhood is None or key_neighborhood == neighborhood)
+    ]
+    if village is None and len({v for v, _ in compatible if v is not None}) >= 2:
+        return True
+    return neighborhood is None and len({n for _, n in compatible if n is not None}) >= 2
 
 
 def _rebuild_resolution(
@@ -201,11 +222,7 @@ def import_tgos(
     if batch["status"] == "completed" and batch["response_sha256"] == response_hash:
         return Path(source)
     submitted = {row["address"]: row for row in queries if row["batch_id"] == batch_id}
-    # R09-0: queries set aside for having no key were sent too; their rows are not imported.
-    uncarried = {
-        row["address"] for row in report.get(UNCARRIED, []) if row["batch_id"] == batch_id
-    }
-    if len(submitted) + len(uncarried) != batch["address_count"] or uncarried & set(submitted):
+    if len(submitted) != batch["address_count"]:
         raise ValueError("TGOS submitted Address values are not one-to-one")
     with Path(response).open(encoding="utf-8-sig", newline="") as stream:
         reader = csv.DictReader(stream)
@@ -216,19 +233,20 @@ def import_tgos(
     addresses = [row["Address"] for row in returned]
     if len(addresses) != len(set(addresses)):
         raise ValueError("Duplicate Address in TGOS response")
-    if set(addresses) != set(submitted) | uncarried:
+    if set(addresses) != set(submitted):
         raise ValueError("TGOS response Address set differs from submitted batch")
     evidence = _table(paths["offline-row"])
-    prior_coordinates = {
-        row["building_key"]: (row["lng"], row["lat"])
-        for row in rows(paths["address-result"])
-        if row["status"] == "located"
-    }
+    prior_coordinates = {}
+    # R09-2: village and neighbourhood values of every pool key, by door signature.
+    door_layers = {}
+    for row in rows(paths["address-result"]):
+        if row["status"] == "located":
+            prior_coordinates[row["building_key"]] = (row["lng"], row["lat"])
+        signature, village, neighborhood = door_parts(row["building_key"])
+        door_layers.setdefault(signature, []).append((row["building_key"], village, neighborhood))
     new_results = []
     result_by_query = {}
     for line, row in enumerate(returned, 2):
-        if row["Address"] in uncarried:
-            continue
         query = submitted[row["Address"]]
         reason = None
         try:
@@ -246,6 +264,9 @@ def import_tgos(
                 # neighbourhood the query writes must not differ in the response.
                 if not same_door(query["building_key"], target_key):
                     raise ValueError("TGOS response address differs from submitted address")
+                # R09-2: the same door under two villages or neighbourhoods is not decided here.
+                if _layer_is_ambiguous(query["building_key"], door_layers):
+                    raise ValueError("TGOS response village or neighbourhood is ambiguous")
         except (TypeError, ValueError) as exc:
             coordinate = None
             status = "rejected"
@@ -327,16 +348,6 @@ def import_tgos(
         extra_report={
             "last_tgos_batch_id": batch_id,
             "last_tgos_response_sha256": response_hash,
-            **(
-                {
-                    "tgos_uncarried_response_rows": {
-                        **report.get("tgos_uncarried_response_rows", {}),
-                        batch_id: len(uncarried),
-                    }
-                }
-                if uncarried
-                else {}
-            ),
             "status_counts_before_import": before,
             "status_counts": statuses,
             **(

@@ -14,9 +14,6 @@ from .exchange import _csv_bytes, _write_exchange
 
 
 DAILY_LIMIT = 10_000
-# R09-0: carried queries with no key under the current rules stay in the report, not in tgos-query.
-UNCARRIED = "tgos_uncarried_queries"
-UNCARRIED_REASON = "no_building_key_current_rules"
 DYNAMIC_SCHEMAS = {"tgos-batch", "tgos-query", "tgos-result", "alias-event"}
 
 
@@ -74,7 +71,6 @@ def _write_state(
     unmatched_rows: list[dict] | None = None,
     resolution_rows: list[dict] | None = None,
     extra_report: dict | None = None,
-    extra_inputs: list[str] | None = None,
     run_id: str | None = None,
 ):
     manifest, report, source_stage = load_state(source)
@@ -83,8 +79,7 @@ def _write_state(
     binding = bindings(
         "tgos-state",
         {"action": action, "daily_limit": DAILY_LIMIT},
-        [source_hash, digest(batches), digest(queries), digest(results), digest(alias_events),
-         *(extra_inputs or [])],
+        [source_hash, digest(batches), digest(queries), digest(results), digest(alias_events)],
     )
     stage = Stage(Path(work_dir) / "tgos-state", "tgos-state", binding, run_id)
     if stage.reused:
@@ -207,7 +202,7 @@ def repair_prepared_exchange(
     return state, exchange
 
 
-def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict], int, list[dict]]:
+def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict], int]:
     """Carry sent batches and queries so they are not resent.
 
     Earlier results, evidence and aliases are dropped. Completed batches go
@@ -219,12 +214,7 @@ def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict], int, list[dict]
     fingerprints recomputed, so a rule change cannot hide an address already
     sent or leave a key the address pool no longer contains. The old snapshot
     is not modified. The third value is how many queries changed key.
-
-    R09-0 (owner decision 2026-10-09, option A): a query with no key under the
-    current rules is not carried into tgos-query, whose key is not nullable.
-    It is returned in the fourth value with the ledger's own values, for the
-    state report and the review table. Queries already set aside in the
-    ledger's report are carried the same way.
+    A carried query with no key under the current rules is refused.
     """
     manifest, ledger_report, stage_name = load_state(ledger)
     if stage_name != "tgos-state":
@@ -232,7 +222,6 @@ def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict], int, list[dict]
     paths = _artifact_paths(ledger, manifest)
     batches = _table(paths.get("tgos-batch"))
     queries = _table(paths.get("tgos-query"))
-    uncarried = [dict(row) for row in ledger_report.get(UNCARRIED, [])]
     reopened = set()
     for batch in batches:
         if batch["status"] == "completed":
@@ -243,36 +232,19 @@ def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict], int, list[dict]
         if query["batch_id"] in reopened:
             query["status"] = "submitted"
             query["result_id"] = None
-    for query in uncarried:
-        if query["batch_id"] in reopened:
-            query["status"] = "submitted"
     rekeyed = 0
     carried = []
     for query in queries:
         key = building_key(query["address"])
         if key is None:
-            uncarried.append(
-                {
-                    "batch_id": query["batch_id"],
-                    "ordinal": query["ordinal"],
-                    "query_fingerprint": query["query_fingerprint"],
-                    "building_key": query["building_key"],
-                    "address": query["address"],
-                    "county_code": query["county_code"],
-                    "address_family": query["address_family"],
-                    "status": query["status"],
-                    "reason": UNCARRIED_REASON,
-                }
-            )
-            continue
+            raise ValueError("Carried TGOS query has no building key under the current rules")
         carried.append(query)
         fingerprint = digest([key, query["address"]])
         if key != query["building_key"] or fingerprint != query["query_fingerprint"]:
             rekeyed += 1
         query["building_key"] = key
         query["query_fingerprint"] = fingerprint
-    uncarried.sort(key=lambda row: (row["batch_id"], row["ordinal"]))
-    return batches, carried, rekeyed, uncarried
+    return batches, carried, rekeyed
 
 
 def select_unmatched_candidates(
@@ -330,11 +302,10 @@ def prepare_tgos(
     aliases = _table(paths.get("verified-alias"))
     events = _table(paths.get("alias-event"))
     rekeyed = 0
-    uncarried = report.get(UNCARRIED, [])
     if ledger is not None:
         if stage_name != "offline-state":
             raise ValueError("A TGOS ledger can only seed a fresh offline state")
-        batches, queries, rekeyed, uncarried = _carry_ledger(ledger)
+        batches, queries, rekeyed = _carry_ledger(ledger)
     # R09-0 (owner decision 2026-10-09, option A): keys of suspended counties are not sent.
     suspension = report.get("address_suspension")
     suspended_codes = (
@@ -361,9 +332,7 @@ def prepare_tgos(
         raise ValueError("TGOS retry is not in a retryable state")
     prior = set(query_history) - retry_fingerprints
     # The same address text must not be sent twice even when its key changed.
-    sent_text = {
-        row["address"] for row in [*queries, *uncarried] if row["status"] not in retryable
-    }
+    sent_text = {row["address"] for row in queries if row["status"] not in retryable}
     candidates = select_unmatched_candidates(
         rows(paths["address-result"]),
         retry_fingerprints=retry_fingerprints,
@@ -436,17 +405,11 @@ def prepare_tgos(
             "last_tgos_batch_id": batch_id,
             "carried_query_keys_recomputed": rekeyed,
             **(
-                {UNCARRIED: uncarried, "tgos_uncarried_query_count": len(uncarried)}
-                if ledger is not None
-                else {}
-            ),
-            **(
                 {"tgos_suspended_candidates_excluded": suspended_excluded}
                 if suspension is not None
                 else {}
             ),
         },
-        extra_inputs=[digest(uncarried)] if uncarried else None,
         run_id=run_id,
     )
     exchange = _write_exchange(

@@ -308,6 +308,8 @@ def test_ledger_prevents_resend_and_reopens_results_for_revalidation(tmp_path):
     assert [row["status"] for row in batches] == ["submitted", "prepared"]
     assert batches[0]["response_sha256"] is None
     assert [row["address"] for row in queries].count(first["address"]) == 1
+    carried = next(row for row in queries if row["address"] == first["address"])
+    assert carried["status"] == "submitted" and carried["result_id"] is None
     assert list(rows(seeded / "tgos_imports.parquet")) == []
     assert load_state(seeded)[1]["status_counts"]["located"] == 1
 
@@ -426,6 +428,11 @@ def test_same_address_text_already_sent_is_not_selected_again(tmp_path, monkeypa
         lambda address: real(address).replace('"door":"', '"door":"9'),
     )
     seeded, _ = prepare_tgos(state, tmp_path / "new", tmp_path / "exchange", ledger=submitted)
+    carried = [r for r in rows(seeded / "tgos_queries.parquet") if r["batch_id"] == first["batch_id"]]
+    # R09-2: the patch must take effect (the carried query is re-keyed), so only the text can block it.
+    assert [r["address"] for r in carried] == [first["address"]]
+    assert carried[0]["building_key"] != first["building_key"]
+    assert carried[0]["query_fingerprint"] != first["query_fingerprint"]
     new_batch = [r for r in rows(seeded / "tgos_queries.parquet") if r["batch_id"] != first["batch_id"]]
     assert [r["address"] for r in new_batch] == [a for a in addresses if a != first["address"]]
 

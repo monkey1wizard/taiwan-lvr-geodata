@@ -99,11 +99,11 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline run-full \
 
 ## TGOS 回補
 
-TGOS 由個別命令處理，未接入 `run-full`。預定順序為 `prepare-tgos`、人工交換、`set-tgos-status`、`import-tgos`、`build-review`，之後新版回補由 R-10 定義。`prepare-tgos` 可從本次離線狀態建立初始 TGOS state，後續每個狀態更新都須使用前一命令輸出的新快照路徑。`build-review` 用 `--state` 接收離線狀態。該路徑須來自同一次 run。
+TGOS 由個別命令處理，未接入 `run-full`。預定順序為 `prepare-tgos`、人工交換、`set-tgos-status`、`import-tgos`、`build-review`，之後新版回補由 R-10 定義。`prepare-tgos` 可從本次離線狀態建立初始 TGOS state，後續每個狀態更新都須使用前一命令輸出的新快照路徑。`build-review` 用 `--state` 接收離線狀態。該路徑須來自同一次 run。這五個命令都必須給 `--run-id`，狀態寫入 `data/runs/<run-id>/`；`--run-id` 是 run 目錄名，不是快照 ID。指向 `run-full` 的 run 目錄時命令拒絕執行。
 
-舊 TGOS 帳本與舊回傳在本機已不存在，不轉接、不擋重送；新重建以新帳本從零開始，離線定位不到的門牌全部重新送查。現行 `--ledger` 轉接參數不得使用，R09-2 會移除。新帳本在重建期間不得清空或繞過，`submission_unknown` 不得自動重送。R09-2 完成前以下只可查詢命令參數：
+舊 TGOS 帳本與舊回傳在本機已不存在，不轉接、不擋重送；新重建以新帳本從零開始，離線定位不到的門牌全部重新送查。`prepare-tgos --ledger` 只帶入本次重建紀元的帳本，舊紀元帳本一律拒絕；帳本中有現行規則算不出門牌鍵的查詢時也拒絕。新帳本在重建期間不得清空或繞過，`submission_unknown` 不得自動重送。
 
-目前只可查看命令參數，不能依此執行新重建 TGOS 流程。每檔最多 10,000 筆是單檔上限，不是每日程式限制。未知送出狀態必須保留，阻止重送或釋放配額。以下命令僅查詢介面：
+首輪送查依 [R09 執行企劃](docs/plans/R09執行企劃.md) 的 R09-7 執行，R09-6 完成前不開始。每檔最多 10,000 筆是單檔上限，不是每日程式限制。未知送出狀態必須保留，阻止重送或釋放配額。以下命令僅查詢介面：
 
 ```bash
 uv run --locked --python 3.14.8 python -m lvr_pipeline prepare-tgos --help
@@ -114,9 +114,9 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline build-review --help
 
 目前沒有回補命令。新版回補由 R-10 依本次全新重建且已驗收的基線重新實作，不使用重建前的狀態或公開輸出。
 
-現行 TGOS 匯入會檢查查詢與回傳集合一對一，並具備相同批次及相同回傳雜湊的冪等重匯處理。`same_door` 允許回傳補上送出地址未寫的村里或鄰。R09-2 尚待補足候選跨村里／鄰歧義核對，完整同址驗收仍未通過。座標軸不明、門牌不符或證據不足時不得採用。
+現行 TGOS 匯入會檢查查詢與回傳集合一對一，並具備相同批次及相同回傳雜湊的冪等重匯處理。`same_door` 允許回傳補上送出地址未寫的村里或鄰；同一門牌在本次地址池中有兩個以上不同村里或鄰時不採用，記 `tgos_village_ambiguous`（R09-2）。完整同址的真實回傳驗收由 V-12 判定。座標軸不明、門牌不符或證據不足時不得採用。
 
-送查、回傳原檔及帳本屬執行資料。依實際命令提供 `--work-dir`，保存在指定 run 或 `data/tmp/` 工作區。不要覆寫原始回傳或重設配額帳本。
+送查、回傳原檔及帳本屬執行資料。狀態保存在 `data/runs/<run-id>/tgos-state/`，交換檔預設在 `data/tgos/`。不要覆寫原始回傳或重設配額帳本。
 
 ## 歷史回補與發布
 

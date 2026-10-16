@@ -14,7 +14,7 @@ from lvr_pipeline.offline.index import build_index
 from lvr_pipeline.results.reconcile import load_p2, resolve_offline
 from lvr_pipeline.results.review import COLUMNS, PRODUCED_CODES, build_review, exception_id
 from lvr_pipeline.storage.parquet import BatchWriter, inspect_parquet, rows
-from lvr_pipeline.storage.runs import sha256_file
+from lvr_pipeline.storage.runs import SnapshotStore, sha256_file
 from lvr_pipeline.tgos import import_tgos, prepare_tgos, transition_batch
 from test_p1_conversion import ADDRESS, pipeline
 from test_p1_conversion import pinned
@@ -29,7 +29,11 @@ RANGE = "臺北市中正區測試路1-3號"  # county and town parse, the door r
 INCOMPLETE = "臺北市中正區測試路13號"  # TGOS answers with an address that has no door
 FAR = "臺北市中正區測試路14號"  # TGOS answers with a coordinate outside Taiwan
 TGOS_FOUND = "臺北市中正區測試路15號"  # TGOS locates it, so it is no longer unmatched
+AMBIGUOUS = "臺北市中正區測試路16號"  # the pool holds this door under two villages
+VILLAGE_A = "臺北市中正區甲里測試路16號"
+VILLAGE_B = "臺北市中正區乙里測試路16號"
 TGOS_ANSWERS = {
+    AMBIGUOUS: (VILLAGE_A, "121.54", "25.04"),
     UNMATCHED: ("臺北市中正區測試路99號", "121.51", "25.01"),
     INCOMPLETE: ("臺北市中正區測試路", "121.52", "25.02"),
     FAR: (FAR, "10", "10"),
@@ -73,14 +77,14 @@ def built(tmp_path_factory):
     tmp_path = tmp_path_factory.mktemp("review")
     records = [{"address": value, "date": "1150102", "extra": ["中正區"]}
                for value in [ADDRESS, VARIANT, CONFLICT, UNMATCHED, NO_ADMIN, GARBLED, RANGE,
-                             INCOMPLETE, FAR, TGOS_FOUND]]
+                             INCOMPLETE, FAR, TGOS_FOUND, AMBIGUOUS, VILLAGE_A, VILLAGE_B]]
     _, _, converted = pipeline(tmp_path, records, extra_header=["鄉鎮市區"])
     root, descriptor = _two_road_source(tmp_path)
     work = tmp_path / "work"
     index = build_index(root, descriptor, work, counties=["63"])
     pool = build_pool(converted, root, descriptor, work, index_path=index)
     state = resolve_offline(pool, index, work)
-    prepared, _ = prepare_tgos(state, work, tmp_path / "exchange", limit=10, exchange_date="2026-10-08")
+    prepared, _ = prepare_tgos(state, work, tmp_path / "exchange", limit=20, exchange_date="2026-10-08")
     queries = list(rows(prepared / "tgos_queries.parquet"))
     batch_id = queries[0]["batch_id"]
     submitted = transition_batch(prepared, work, batch_id, "submitted")
@@ -134,7 +138,7 @@ def test_each_produced_reason_code_has_rows(built):
     assert [(p["lng"], p["lat"]) for p in points] == [(121.5, 25.0), (121.6, 25.1)]
     # Final status comes from the TGOS state: TGOS_FOUND was located there.
     unmatched = _by_reason(built["rows"], "offline_unmatched")
-    assert {row["raw_address"] for row in unmatched} == {UNMATCHED, VARIANT, INCOMPLETE, FAR}
+    assert {row["raw_address"] for row in unmatched} == {UNMATCHED, VARIANT, INCOMPLETE, FAR, AMBIGUOUS, VILLAGE_A, VILLAGE_B}
     review = _by_reason(built["rows"], "address_review")
     assert {row["raw_address"] for row in review} == {RANGE} and len(review) == 3
     assert all(row["building_key"] is None and row["town_code"] == "6300100" for row in review)
@@ -144,6 +148,8 @@ def test_each_produced_reason_code_has_rows(built):
     far = _by_reason(built["rows"], "tgos_coordinate_invalid")
     assert {row["raw_address"] for row in far} == {FAR}
     assert json.loads(far[0]["related_json"])["reason"] == "TGOS coordinate is outside declared WGS84 Taiwan bounds"
+    ambiguous = _by_reason(built["rows"], "tgos_village_ambiguous")
+    assert {row["raw_address"] for row in ambiguous} == {AMBIGUOUS}
     isolated = _by_reason(built["rows"], "tgos_isolated")
     assert {row["raw_address"] for row in isolated} == {UNMATCHED} and len(isolated) == 3
     detail = json.loads(isolated[0]["related_json"])
@@ -241,9 +247,11 @@ def test_cli_build_review(built, tmp_path, capsys):
     descriptor.write_text(json.dumps(built["descriptor"], ensure_ascii=False), encoding="utf-8")
     code = main(["build-review", "--input", str(built["converted"]), "--state", str(built["state"]),
                  "--tgos-state", str(built["tgos"]), "--address-source", str(descriptor),
-                 "--work-dir", str(tmp_path / "cli"), "--run-id", "review-cli"])
+                 "--runs-root", str(tmp_path / "runs"), "--run-id", "review-cli"])
     output = json.loads(capsys.readouterr().out)
     assert code == 0 and output["completed"] is True
     assert output["reason_counts"]["tgos_isolated"] == 3
-    path = tmp_path / "cli" / "review" / "snapshots" / "review-cli" / "exception_addresses.parquet"
+    # R09-2c: the snapshot id is digest-based, so it is read from the stage's current pointer.
+    store = SnapshotStore(tmp_path / "runs" / "review-cli" / "review")
+    path = store.root / "snapshots" / store.current()["snapshot_id"] / "exception_addresses.parquet"
     assert [row["exception_id"] for row in rows(path)] == [row["exception_id"] for row in built["rows"]]

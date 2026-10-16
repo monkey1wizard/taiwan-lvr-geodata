@@ -41,6 +41,7 @@ from .storage.runs import (
     RunStore,
     DEFAULT_RUNS_ROOT,
     SnapshotStore,
+    _identifier,
     _json_write,
     bindings as stage_bindings,
     digest,
@@ -60,6 +61,14 @@ def _char_fixes(args):
     if args.address_dir is None:
         raise ValueError("--address-dir is required to normalize addresses")
     return load_address_char_fixes(args.address_dir, _read(args.address_source))
+
+
+def _tgos_run_dir(args) -> Path:
+    """R09-2c: the run directory of a TGOS or build-review command, refused when a run-full run owns it."""
+    run_dir = (args.runs_root or DEFAULT_RUNS_ROOT) / _identifier(args.run_id)
+    if (run_dir / "manifest.json").exists():
+        raise ValueError(f"Run directory belongs to a run-full run: {run_dir}")
+    return run_dir
 
 
 def _run_local_stage(args):
@@ -187,38 +196,40 @@ def _run_offline_and_output(args):
         print(json.dumps({"verified": True, "status_counts": report["status_counts"]}))
         return 0
     elif command == "prepare-tgos":
+        work_dir = _tgos_run_dir(args)
         log_date = tgos_log_date(args.date_file)
         path, exchange = prepare_tgos(
             args.state,
-            args.work_dir,
+            work_dir,
             args.exchange_dir,
             limit=args.limit,
             retry_fingerprints=args.retry_query_fingerprint,
             retry_reason=args.retry_reason,
             ledger=args.ledger,
             exchange_date=log_date,
-            run_id=args.run_id,
+            run_id=None,
         )
         print(json.dumps({"path": str(path), "exchange": str(exchange), "completed": True}, ensure_ascii=False))
         return 0
     elif command == "set-tgos-status":
         path = transition_batch(
             args.state,
-            args.work_dir,
+            _tgos_run_dir(args),
             args.batch,
             args.status,
             reason=args.reason,
-            run_id=args.run_id,
+            run_id=None,
         )
     elif command == "repair-tgos-exchange":
+        work_dir = _tgos_run_dir(args)
         log_date = tgos_log_date(args.date_file)
         path, exchange = repair_prepared_exchange(
             args.state,
-            args.work_dir,
+            work_dir,
             args.exchange_dir,
             args.batch,
             exchange_date=log_date,
-            run_id=args.run_id,
+            run_id=None,
         )
         print(
             json.dumps(
@@ -230,10 +241,10 @@ def _run_offline_and_output(args):
     elif command == "import-tgos":
         path = import_tgos(
             args.state,
-            args.work_dir,
+            _tgos_run_dir(args),
             args.batch,
             args.response,
-            run_id=args.run_id,
+            run_id=None,
         )
     elif command == "revoke-alias":
         path = revoke_alias(
@@ -254,11 +265,11 @@ def _run_offline_and_output(args):
         path = build_review(
             args.input,
             args.state,
-            args.work_dir,
+            _tgos_run_dir(args),
             descriptor=read(args.address_source),
             tgos_state=args.tgos_state,
             prior_review=args.prior_review,
-            run_id=args.run_id,
+            run_id=None,
         )
         report = read(Path(path) / "quality.json")
         print(

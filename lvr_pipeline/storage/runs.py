@@ -287,8 +287,7 @@ class SnapshotStore:
             report_path = directory / "quality.json"
             report = _read_json(report_path) if report_path.exists() else {}
             # R07-12i: the relation checks spill under this store's own directory.
-            verify_relations(parquet_groups, spill_parent=self.root / "spill", source_scope=report.get("source_sha256"), cutoff=report.get("cutoff"),
-                             uncarried_queries=report.get("tgos_uncarried_queries"))
+            verify_relations(parquet_groups, spill_parent=self.root / "spill", source_scope=report.get("source_sha256"), cutoff=report.get("cutoff"))
         for name, rows in rows_by_schema.items():
             validate_rows(rows, name)
         if "address-component" in rows_by_schema:
