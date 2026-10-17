@@ -349,6 +349,10 @@ EXCEPTION_REASON_CODES = (
     "address_source_suspended",
     # R09-2
     "tgos_village_ambiguous",
+    # R10-1a
+    "tgos_not_found",
+    "tgos_key_text_not_round_trip",
+    "district_no_candidate_town",
 )
 OFFLINE_SCHEMAS["exception-address"] = _schema(
     "exception-address",
@@ -370,6 +374,62 @@ OFFLINE_SCHEMAS["exception-address"] = _schema(
     ],
 )
 PRIMARY["exception-address"] = ["exception_id"]
+
+# Second manual-review area (R10-1a): one row per review key (building_key, or the query
+# fingerprint of a district_missing address) that has no usable coordinate after TGOS.
+# status is pending, adopted, rejected or deferred; decision_* come from the owner's decision
+# files. second-review-observation links a review key to its transaction doors.
+OFFLINE_SCHEMAS["second-review"] = _schema(
+    "second-review",
+    [
+        ("review_id", S, False),
+        ("review_key", S, False),
+        ("key_kind", S, False),
+        ("building_key", S, True),
+        ("query_fingerprint", S, True),
+        ("county_code", S, True),
+        ("town", S, True),
+        ("canonical_address", S, True),
+        ("entry_reason", S, False),
+        ("mismatch_fields", S, True),
+        ("offline_status", S, True),
+        ("tgos_batch_id", S, True),
+        ("tgos_result_id", S, True),
+        ("prior_result_ids", S, True),
+        ("response_address", S, True),
+        ("response_building_key", S, True),
+        ("response_building_key_reason", S, True),
+        ("response_lng", F, True),
+        ("response_lat", F, True),
+        ("response_sha256", S, True),
+        ("status", S, False),
+        ("decision_file", S, True),
+        ("decision_file_sha256", S, True),
+        ("decision_row", I, True),
+        ("decided_at", S, True),
+        ("decision_mode", S, True),
+        ("decision_lng", F, True),
+        ("decision_lat", F, True),
+        ("decision_address", S, True),
+        ("observation_count", I, False),
+        ("tx_yyyymm_min", I, True),
+        ("tx_yyyymm_max", I, True),
+    ],
+)
+PRIMARY["second-review"] = ["review_id"]
+OFFLINE_SCHEMAS["second-review-observation"] = _schema(
+    "second-review-observation",
+    [
+        ("review_id", S, False),
+        ("transaction_id", S, False),
+        ("door_index", I, False),
+        ("raw_record_id", S, False),
+        ("component_id", S, False),
+        ("category", S, False),
+        ("tx_yyyymm", I, True),
+    ],
+)
+PRIMARY["second-review-observation"] = ["review_id", "raw_record_id", "component_id"]
 
 overlap = set(P1_SCHEMAS) & set(OFFLINE_SCHEMAS)
 if overlap:

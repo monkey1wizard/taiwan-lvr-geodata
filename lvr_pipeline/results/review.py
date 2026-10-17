@@ -75,11 +75,12 @@ import duckdb
 from ..contracts.schemas import EXCEPTION_REASON_CODES, dataset_schema
 from ..offline.resolve import _find_candidates
 from ..addresses.parse import parse
-from ..storage.parquet import BatchWriter, duckdb_config
+from ..storage.parquet import BatchWriter, duckdb_config, rows
 from ..storage.spill import measured_spill
 from ..storage.runs import Stage, bindings, digest, load_snapshot, sha256_file
 from ..addresses.identity import cjk_number
 from ..offline.index import _haversine_sql
+from . import second_review
 from .reconcile import DOOR_CROSS_CHECK, load_p2
 
 # Reason codes for TGOS results rejected by import-tgos, keyed by its recorded reason text.
@@ -273,6 +274,13 @@ _TGOS_SQL = r"""
 """
 
 
+def _single_path(snapshot: Path, manifest: dict, schema: str) -> Path:
+    found = _paths(snapshot, manifest, schema)
+    if len(found) != 1:
+        raise ValueError(f"Expected one {schema} file in {snapshot}, found {len(found)}")
+    return Path(found[0])
+
+
 def build_review(
     converted: Path,
     state: Path,
@@ -282,6 +290,8 @@ def build_review(
     tgos_state: Path | None = None,
     prior_review: Path | None = None,
     run_id: str | None = None,
+    index: Path | None = None,
+    review_decisions: Path | None = None,
 ) -> Path:
     converted, state = Path(converted), Path(state)
     converted_manifest, _ = load_snapshot(converted, "converted")
@@ -314,13 +324,31 @@ def build_review(
         prior_paths = _paths(prior_review, prior_manifest, "exception-address")
         hashes.append(sha256_file(prior_review / "manifest.json"))
     hashes.append(digest(descriptor))
+    # R10-1a: the offline index gives the candidate towns of district addresses; without it that
+    # entry reason is not produced and the report says so.
+    index_rows = None
+    if index is not None:
+        index = Path(index)
+        index_manifest, index_report = load_p2(index, "offline-index")
+        index_hash = sha256_file(index / "manifest.json")
+        if (
+            index_report["address_source_commit"] != state_report["address_source_commit"]
+            or index_hash != state_report["index_manifest_sha256"]
+        ):
+            raise ValueError("Offline index is not the one this state was built from")
+        index_rows = _single_path(index, index_manifest, "offline-row")
+        hashes.append(index_hash)
+    decisions = second_review.load_decisions(review_decisions) if review_decisions is not None else []
     binding = bindings(
         "review",
         {"reason_codes": list(EXCEPTION_REASON_CODES), "produced_codes": list(PRODUCED_CODES),
          "r04_12_codes": list(R04_12_CODES), "cross_check_codes": list(CROSS_CHECK_CODES),
          "r05_7_codes": list(R05_7_CODES), "r05_9_codes": list(R05_9_CODES),
          "tgos_rejection_codes": TGOS_REJECTION_CODES, "prior_review": prior_review is not None,
-         "final_status_from_tgos": tgos_state is not None},
+         "final_status_from_tgos": tgos_state is not None,
+         "second_review_entry_reasons": list(second_review.ENTRY_REASONS),
+         "district_candidates_checked": index is not None,
+         "review_decisions": second_review.decision_binding(decisions)},
         hashes,
     )
     stage = Stage(Path(work_dir) / "review", "review", binding, run_id)
@@ -347,6 +375,7 @@ def build_review(
             db.read_parquet(_paths(status_snapshot, status_manifest, "address-result")).create_view("result")
             db.read_parquet(_paths(status_snapshot, status_manifest, "offline-row")).create_view("evidence")
             db.read_parquet(_paths(converted, converted_manifest, "observation")).create_view("observations")
+            db.read_parquet(_paths(converted, converted_manifest, "address-component")).create_view("components")
             resolution_paths = _paths(status_snapshot, status_manifest, "coordinate-resolution")
             if resolution_paths:
                 db.read_parquet(resolution_paths).create_view("resolution")
@@ -431,11 +460,22 @@ def build_review(
             distinct = dict(
                 db.execute("SELECT reason_code, count(DISTINCT normalized_address) FROM picked GROUP BY 1").fetchall()
             )
+            # R10-1a: the second review area, in the same stage.
+            ledger = {"batches": [], "queries": [], "results": []}
+            if tgos_manifest is not None:
+                for name, schema in [("batches", "tgos-batch"), ("queries", "tgos-query"), ("results", "tgos-result")]:
+                    ledger[name] = [row for path in _paths(tgos_state, tgos_manifest, schema) for row in rows(path)]
+            second_artifacts, (second_csv, second_rows), second_report = second_review.build_second_review(
+                db, stage.build, suspended_codes={item["code"] for item in suspended}, tgos=ledger,
+                rejection_codes=TGOS_REJECTION_CODES, occurrences=_single_path(state, state_manifest, "address-occurrence"),
+                index_rows=index_rows, decisions=decisions,
+            )
     writer.close()
     cross_writer.close()
     stage.store.add(stage.id, "exception_addresses.csv", csv_path, format_name="csv", row_count=writer.row_count)
     stage.store.add(stage.id, "cross_check_addresses.csv", cross_csv_path, format_name="csv",
                     row_count=cross_writer.row_count)
+    stage.store.add(stage.id, "second_review.csv", second_csv, format_name="csv", row_count=second_rows)
     report = {
         "converted_snapshot_sha256": converted_hash,
         "offline_state_manifest_sha256": hashes[1],
@@ -451,10 +491,14 @@ def build_review(
         "cross_check_rows": cross_writer.row_count,
         "cross_check_csv_bytes": cross_csv_path.stat().st_size,
         # Both files use the exception-address columns; the count covers both.
-        "dataset_counts": {"exception-address": writer.row_count + cross_writer.row_count},
+        "dataset_counts": {"exception-address": writer.row_count + cross_writer.row_count,
+                           **{dataset: count for _, _, dataset, count in second_artifacts}},
+        "second_review": second_report,
+        "index_manifest_sha256": hashes[-1] if index is not None else None,
     }
     return stage.finish(
         [("exception_addresses.parquet", writer.path, "exception-address", writer.row_count),
-         ("cross_check_addresses.parquet", cross_writer.path, "exception-address", cross_writer.row_count)],
+         ("cross_check_addresses.parquet", cross_writer.path, "exception-address", cross_writer.row_count),
+         *second_artifacts],
         report,
     )

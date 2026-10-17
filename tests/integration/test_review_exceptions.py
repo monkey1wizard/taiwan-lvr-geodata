@@ -239,7 +239,10 @@ def test_existing_snapshots_are_unchanged(built):
              [("converted", built["converted"]), ("state", built["state"]), ("tgos", built["tgos"])]}
     assert after == built["before"]
     load_p2(built["state"], "offline-state")
-    assert load_p2(built["review"], "review")[1]["dataset_counts"] == {"exception-address": len(built["rows"])}
+    counts = load_p2(built["review"], "review")[1]["dataset_counts"]
+    assert counts["exception-address"] == len(built["rows"])
+    # R10-1a: the review stage also holds the second manual-review area.
+    assert set(counts) == {"exception-address", "second-review", "second-review-observation"}
 
 
 def test_cli_build_review(built, tmp_path, capsys):

@@ -14,13 +14,13 @@
 
 ### D-1 第二類人工查核區（R10-1a）
 
-- [ ] d01 在 `build_review` 內建立 `second_review.parquet`、`second_review_observations.parquet` 與同名 CSV，規格依資料契約
-- [ ] d02 `run-full` 新增 `--review-decisions <目錄>`，預設 `data/review-decisions/`。目錄下全部判定檔的檔名與 SHA-256 寫入 review 階段綁定，新增判定檔會使 review 與之後階段重建
-- [ ] d03 新增進入原因代碼 `tgos_not_found`、`tgos_key_text_not_round_trip`、`district_no_candidate_town`，加入 `EXCEPTION_REASON_CODES`。文字算不回鍵與缺區無候選區要在 review 建置時以同一函式重算，不讀 `prepare-tgos` 的報告
-- [ ] d04 回傳門牌鍵：帳本中 `response_building_key` 為空的列，建置時以現行 `building_key` 從 `response_address` 重算，算不出時欄位為空並保留原因
-- [ ] d05 判定檔核對依契約：檔名雜湊不符拒絕、同檔重複查核鍵拒絕、`orphaned` 與 `stale` 不套用並計數。`accept_tgos_response` 核對 `tgos_result_id` 屬於該查核鍵且回傳座標通過範圍檢查；`manual_coordinate` 核對經緯度範圍
-- [ ] d06 合成案例：每個進入原因各一列、等待中的查詢不進入、`located` 不進入、`conflict` 進入但暫停縣市不進入、三種判定各一、同檔重複查核鍵拒絕、檔名雜湊不符拒絕、`orphaned`、`stale`、同一組判定檔重跑結果不變、較晚判定取代較早判定
-- [ ] d07 全套測試、紀錄、提交
+- [x] d01 在 `build_review` 內建立 `second_review.parquet`、`second_review_observations.parquet` 與同名 CSV，規格依資料契約
+- [ ] d02 `run-full` 新增 `--review-decisions <目錄>`，預設 `data/review-decisions/`。目錄下全部判定檔的檔名與 SHA-256 寫入 review 階段綁定，新增判定檔會使 review 與之後階段重建。10-18 已完成 `build_review(review_decisions=...)` 與綁定；`run-full` 旗標等B 段 b12 到 b13 提交後接
+- [x] d03 新增進入原因代碼 `tgos_not_found`、`tgos_key_text_not_round_trip`、`district_no_candidate_town`，加入 `EXCEPTION_REASON_CODES`。文字算不回鍵與缺區無候選區要在 review 建置時以同一函式重算，不讀 `prepare-tgos` 的報告
+- [x] d04 回傳門牌鍵：帳本中 `response_building_key` 為空的列，建置時以現行 `building_key` 從 `response_address` 重算，算不出時欄位為空並保留原因
+- [x] d05 判定檔核對依契約：檔名雜湊不符拒絕、同檔重複查核鍵拒絕、`orphaned` 與 `stale` 不套用並計數。`accept_tgos_response` 核對 `tgos_result_id` 屬於該查核鍵且回傳座標通過範圍檢查；`manual_coordinate` 核對經緯度範圍
+- [x] d06 合成案例：每個進入原因各一列、等待中的查詢不進入、`located` 不進入、`conflict` 進入但暫停縣市不進入、三種判定各一、同檔重複查核鍵拒絕、檔名雜湊不符拒絕、`orphaned`、`stale`、同一組判定檔重跑結果不變、較晚判定取代較早判定
+- [x] d07 全套測試、紀錄、提交
 
 ### D-2 回補與受影響月份（R10-1b）
 
@@ -94,3 +94,5 @@
 - 不得刪除 tgos-state 中間快照或 `data/tgos/` 交換證據，不得修改已寫入的判定檔。
 - `data/runs/` 的基線 run 只讀，回補使用新的 run ID。
 - 合成測試若因新檢查失敗，改用正確夾具，不加繞過旗標。
+- `import-tgos` 不保存被拒絕回傳列的座標（`tgos/validate.py` 拒絕時座標記空）。在這之前，`accept_tgos_response` 判定在真實帳本上一律記 `stale`，只有 `manual_coordinate` 能套用。保存原座標屬 `tgos/` 範圍，要在 D-4 之前由B 段或C 段補上，或由擁有者決定 V-13 只用 `manual_coordinate`。
+- `rejected` 判定的門牌不進下一輪 TGOS 自動候選（契約轉換規則 4）要改 `prepare-tgos`，屬C 段 c32 到 c34 的範圍。
