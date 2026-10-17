@@ -50,42 +50,147 @@ def _is_town(text: str) -> bool:
     return len(text) >= 2 and text[-1] in TOWN_SUFFIXES
 
 
-def _villages(address_dir: Path, descriptor: dict, counties: dict[str, set[str]]) -> dict[str, dict[str, list[str]]]:
-    """Village names (current and historical) of each town, read from the village rows of the area tables.
+def _known_towns(address_dir: Path, descriptor: dict) -> frozenset[str]:
+    """Every town name any administrative table writes under any county code, old counties included."""
+    known: set[str] = set()
+    for item in descriptor["administrative_files"]:
+        for name, _ in _rows(Path(address_dir) / item["path"]):
+            for prefix in (*OLD_COUNTY_PAIRS, *_COUNTY_CODE):
+                if name.startswith(prefix):
+                    name = name[len(prefix):]
+                    break
+            if _is_town(name):
+                known.add(name)
+    return frozenset(known)
 
-    B-1: a 區, 鄉 or 鎮 written twice after the town is dropped only when a village of the town follows it.
-    Every spelling of the town code (頭份市, 頭份鎮) lists the same villages.
+
+def _old_towns(address_dir: Path, descriptor: dict) -> tuple[dict[str, str], dict[str, frozenset[str]]]:
+    """Old-county code (10012) to old county (高雄縣), and old town code (1001210) to the names it was written with."""
+    address_dir = Path(address_dir)
+    owners: dict[str, str] = {}
+    for item in descriptor["administrative_files"]:
+        for name, code in _rows(address_dir / item["path"]):
+            old = next((o for o in OLD_COUNTY_PAIRS if name.startswith(o)), None)
+            if old is not None and code[:2] not in _CURRENT_COUNTY and code[:5] not in _CURRENT_COUNTY:
+                if owners.setdefault(code[:5], old) != old:
+                    raise ValueError(f"Old county code {code[:5]} is written with two old counties")
+    names: dict[str, set[str]] = {}
+    for item in descriptor["administrative_files"]:
+        for name, code in _rows(address_dir / item["path"]):
+            old = owners.get(code[:5])
+            if old is None:
+                continue
+            for prefix in (old, _CURRENT_COUNTY[_COUNTY_CODE[OLD_COUNTY_PAIRS[old]]]):
+                if name.startswith(prefix):
+                    name = name[len(prefix):]
+                    break
+            else:
+                if any(name.startswith(other) for other in (*OLD_COUNTY_PAIRS, *_COUNTY_CODE)):
+                    continue  # written with a different county than the dgbas_id says
+            if _is_town(name):
+                names.setdefault(code, set()).add(name)
+    return owners, {code: frozenset(towns) for code, towns in names.items()}
+
+
+def _villages(address_dir: Path, descriptor: dict, renamed_codes: frozenset[str]) -> tuple[list[dict], list[dict]]:
+    """Village rows (NNNNNNN-NNN) of the area tables: accepted villages and rows excluded, each with a reason.
+
+    The village belongs to the county and town code of its dgbas_id. Rows of an old-county code (高雄縣 10012)
+    are listed under the new county (64) with the old town code and an old_county field. The written county
+    (current or old) and the written town are cut off the name; a row that writes no town is accepted by its
+    code. Excluded reasons: county_mismatch (another county written), renamed_town (the old town code was
+    split or renamed and is not mapped) and town_mismatch (the written town is not a name of the town code).
+    Rows of other unknown county codes (the old 臺中市 and 臺南市) and names that are not a 村 or 里 are skipped.
     """
     address_dir = Path(address_dir)
     names_by_code = town_names_by_code(address_dir, descriptor)
-    by_code: dict[tuple[str, str], set[str]] = {}
+    owners, old_names = _old_towns(address_dir, descriptor)
+    known = sorted(_known_towns(address_dir, descriptor), key=lambda t: -len(t))
+    found: dict[tuple[str, str, str, str, str], set[str]] = {}
+    excluded: dict[tuple[str, str, str], dict] = {}
     for item in descriptor["administrative_files"]:
-        path = address_dir / item["path"]
-        with path.open(encoding="utf-8-sig", newline="") as stream:
+        source = Path(item["path"]).name
+        with (address_dir / item["path"]).open(encoding="utf-8-sig", newline="") as stream:
             for row in csv.DictReader(stream):
                 code = row["dgbas_id"].strip()
                 if not re.fullmatch("[0-9]{7}-[0-9]{3}", code):
                     continue
+                old = owners.get(code[:5])
                 county_code = code[:2] if code[:2] in _CURRENT_COUNTY else code[:5]
-                if county_code not in _CURRENT_COUNTY:
+                if old is not None:
+                    county_code = _COUNTY_CODE[OLD_COUNTY_PAIRS[old]]
+                    code_towns = old_names.get(code[:7], frozenset())
+                elif county_code in _CURRENT_COUNTY:
+                    code_towns = names_by_code.get((county_code, code[:7]), frozenset())
+                else:
                     continue
-                name = norm(row["name"].replace("　", "").strip())
-                for prefix in (*OLD_COUNTY_PAIRS, _CURRENT_COUNTY[county_code]):
+                full = norm(row["name"].replace("　", "").strip())
+                # The county names this code may be written with: its own, and for an old county the old name.
+                allowed = {o for o, new in OLD_COUNTY_PAIRS.items() if _COUNTY_CODE[new] == county_code}
+                if old is not None:
+                    allowed = {old}
+                allowed |= {n for n, c in _COUNTY_CODE.items() if c == county_code}
+                name, written_county = full, ""
+                for prefix in (*OLD_COUNTY_PAIRS, *_COUNTY_CODE):
                     if name.startswith(prefix):
-                        name = name[len(prefix):]
+                        if prefix in allowed:
+                            name = name[len(prefix):]
+                        else:
+                            written_county = prefix
                         break
-                for town in sorted(names_by_code.get((county_code, code[:7]), ()), key=lambda t: -len(t)):
-                    if name.startswith(town):
-                        village = name[len(town):]
-                        if len(village) >= 2 and village[-1] in "村里":
-                            by_code.setdefault((county_code, code[:7]), set()).add(village)
-                        break
+                reason = None
+                if written_county:
+                    rest = name[len(written_county):]
+                    written_town = written_county + next((t for t in known if rest.startswith(t)), "")
+                    reason = "county_mismatch"
+                else:
+                    town = next((t for t in sorted(code_towns, key=lambda t: -len(t)) if name.startswith(t)), None)
+                    other = None if town is not None else next((t for t in known if name.startswith(t)), None)
+                    written_town = town if town is not None else other
+                    if town is not None:
+                        name = name[len(town):]
+                    if code[:7] in renamed_codes:
+                        reason = "renamed_town"
+                        written_town = written_town or ""
+                    elif other is not None:
+                        reason = "town_mismatch"
+                if reason is not None:
+                    excluded[(source, full, code)] = {
+                        "source": source, "name": full, "code": code, "reason": reason,
+                        "written_town": written_town, "code_towns": sorted(code_towns),
+                    }
+                elif len(name) >= 2 and name[-1] in "村里":
+                    found.setdefault((county_code, code[:7], code, name, old or ""), set()).add(source)
+    villages = []
+    for (county, town_code, code, name, old), sources in sorted(found.items(), key=lambda i: (i[0][2], i[0][3], i[0][0])):
+        entry = {"county": county, "town_code": town_code, "code": code, "name": name, "sources": sorted(sources)}
+        if old:
+            entry["old_county"] = old
+        villages.append(entry)
+    return villages, [excluded[key] for key in sorted(excluded, key=lambda k: (k[2], k[1], k[0]))]
+
+
+def _town_codes(address_dir: Path, descriptor: dict, counties: dict[str, set[str]],
+                old_counties: dict, renamed_codes: frozenset[str]) -> dict[str, dict[str, list[str]]]:
+    """County code to town code to the town names that code has had.
+
+    Current codes list the names that are towns of the county. Old-county codes are listed under the new county
+    with their old names and the mapped new name (燕巢鄉, 燕巢區); renamed or split old codes are left out.
+    """
     found: dict[str, dict[str, list[str]]] = {}
-    for (county_code, code), villages in by_code.items():
-        for town in names_by_code[(county_code, code)]:
-            if town in counties.get(county_code, ()):
-                found.setdefault(county_code, {})[town] = sorted(villages)
-    return {code: dict(sorted(towns.items())) for code, towns in sorted(found.items())}
+    for (county_code, code), names in sorted(town_names_by_code(address_dir, descriptor).items()):
+        towns = sorted(names & counties.get(county_code, set()))
+        if towns:
+            found.setdefault(county_code, {})[code] = towns
+    owners, old_names = _old_towns(address_dir, descriptor)
+    for code, names in sorted(old_names.items()):
+        old = owners[code[:5]]
+        if code in renamed_codes:
+            continue
+        mapping = old_counties[old]["towns"]
+        towns = sorted(names | {mapping[n] for n in names if n in mapping})
+        found.setdefault(_COUNTY_CODE[old_counties[old]["county"]], {})[code] = towns
+    return found
 
 
 def build_admin_towns(address_dir: Path, descriptor: dict) -> dict:
@@ -141,12 +246,16 @@ def build_admin_towns(address_dir: Path, descriptor: dict) -> dict:
         group = sorted(names & counties.get(county_code, set()))
         if len(group) > 1 and group not in same_town.setdefault(county_code, []):
             same_town[county_code].append(group)
+    renamed = frozenset(e["dgbas_id"] for e in excluded)
+    villages, village_excluded = _villages(address_dir, descriptor, renamed)
     return {
         "schema_version": SCHEMA_VERSION,
         "source_commit": descriptor["commit"],
         "source_files": source_files,
         "counties": {code: sorted(towns) for code, towns in sorted(counties.items())},
-        "villages": _villages(address_dir, descriptor, counties),
+        "town_codes": _town_codes(address_dir, descriptor, counties, old_counties, renamed),
+        "villages": villages,
+        "village_excluded": village_excluded,
         "same_town": {code: groups for code, groups in sorted(same_town.items()) if groups},
         "old_counties": old_counties,
         "renamed_excluded": sorted(excluded, key=lambda e: (e["county"], e["dgbas_id"])),
@@ -215,16 +324,26 @@ def _town_aliases(document: dict) -> dict[tuple[str, str], frozenset[str]]:
     return {key: frozenset(names - {key[1]}) for key, names in groups.items()}
 
 
+def _town_village_names(document: dict) -> dict[tuple[str, str], tuple[str, ...]]:
+    """(county code, town) to the sorted village names of every town code that has the town among its names."""
+    by_code: dict[tuple[str, str], set[str]] = {}
+    for entry in document["villages"]:
+        by_code.setdefault((entry["county"], entry["town_code"]), set()).add(entry["name"])
+    found: dict[tuple[str, str], set[str]] = {}
+    for county_code, codes in document["town_codes"].items():
+        for town_code, towns in codes.items():
+            for town in towns:
+                found.setdefault((county_code, town), set()).update(by_code.get((county_code, town_code), ()))
+    return {key: tuple(sorted(names)) for key, names in found.items() if names}
+
+
 @lru_cache(maxsize=1)
 def load_admin_towns() -> dict:
     with ADMIN_TOWNS_PATH.open(encoding="utf-8") as stream:
         document = json.load(stream)
     return {
         "aliases": _town_aliases(document),
-        "villages": {
-            (code, town): tuple(villages)
-            for code, towns in document["villages"].items() for town, villages in towns.items()
-        },
+        "villages": _town_village_names(document),
         "document": document,
         "counties": {code: frozenset(towns) for code, towns in document["counties"].items()},
         "old_towns": {old: info["towns"] for old, info in document["old_counties"].items()},

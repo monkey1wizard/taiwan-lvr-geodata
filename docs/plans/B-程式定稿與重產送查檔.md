@@ -35,7 +35,7 @@ TGOS 採用規則，也就是匯入回傳時怎麼判定同址，不影響送什
 
 C 段的村里代碼採用規則要用這張表。表的擴充會改綁定，所以要在重跑前做。
 
-- [ ] b11 `config/rules/admin_towns.json` 加入釘選版本 `taiwan-address-data` 的 `area_1984.csv`、`area_2010.csv`、`area_2014.csv` 村里層級列，即 `dgbas_id` 形如 `6801300-006` 的列：村里代碼、名稱、所屬鄉鎮代碼、來源表。重新產生後更新雜湊與 metadata，依 R07-6c 方式重新釘選。離線定位與門牌鍵不變
+- [x] b11 `config/rules/admin_towns.json` 加入釘選版本 `taiwan-address-data` 的 `area_1984.csv`、`area_2010.csv`、`area_2014.csv` 村里層級列，即 `dgbas_id` 形如 `6801300-006` 的列：村里代碼、名稱、所屬鄉鎮代碼、來源表。重新產生後更新雜湊與 metadata，依 R07-6c 方式重新釘選。離線定位與門牌鍵不變
 
 ### B-4 `run-full` 讀帳本
 
