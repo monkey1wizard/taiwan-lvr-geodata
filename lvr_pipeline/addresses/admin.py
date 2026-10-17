@@ -8,6 +8,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -47,6 +48,44 @@ def _rows(path: Path):
 
 def _is_town(text: str) -> bool:
     return len(text) >= 2 and text[-1] in TOWN_SUFFIXES
+
+
+def _villages(address_dir: Path, descriptor: dict, counties: dict[str, set[str]]) -> dict[str, dict[str, list[str]]]:
+    """Village names (current and historical) of each town, read from the village rows of the area tables.
+
+    B-1: a 區, 鄉 or 鎮 written twice after the town is dropped only when a village of the town follows it.
+    Every spelling of the town code (頭份市, 頭份鎮) lists the same villages.
+    """
+    address_dir = Path(address_dir)
+    names_by_code = town_names_by_code(address_dir, descriptor)
+    by_code: dict[tuple[str, str], set[str]] = {}
+    for item in descriptor["administrative_files"]:
+        path = address_dir / item["path"]
+        with path.open(encoding="utf-8-sig", newline="") as stream:
+            for row in csv.DictReader(stream):
+                code = row["dgbas_id"].strip()
+                if not re.fullmatch("[0-9]{7}-[0-9]{3}", code):
+                    continue
+                county_code = code[:2] if code[:2] in _CURRENT_COUNTY else code[:5]
+                if county_code not in _CURRENT_COUNTY:
+                    continue
+                name = norm(row["name"].replace("　", "").strip())
+                for prefix in (*OLD_COUNTY_PAIRS, _CURRENT_COUNTY[county_code]):
+                    if name.startswith(prefix):
+                        name = name[len(prefix):]
+                        break
+                for town in sorted(names_by_code.get((county_code, code[:7]), ()), key=lambda t: -len(t)):
+                    if name.startswith(town):
+                        village = name[len(town):]
+                        if len(village) >= 2 and village[-1] in "村里":
+                            by_code.setdefault((county_code, code[:7]), set()).add(village)
+                        break
+    found: dict[str, dict[str, list[str]]] = {}
+    for (county_code, code), villages in by_code.items():
+        for town in names_by_code[(county_code, code)]:
+            if town in counties.get(county_code, ()):
+                found.setdefault(county_code, {})[town] = sorted(villages)
+    return {code: dict(sorted(towns.items())) for code, towns in sorted(found.items())}
 
 
 def build_admin_towns(address_dir: Path, descriptor: dict) -> dict:
@@ -96,11 +135,19 @@ def build_admin_towns(address_dir: Path, descriptor: dict) -> dict:
                 else:
                     unmapped.append({"county": old, "town": name})
         old_counties[old] = {"county": new_county, "towns": dict(sorted(mapping.items()))}
+    # B-1: names one town code has had inside the same county (頭份市 and 頭份鎮), only where both are towns.
+    same_town: dict[str, list[list[str]]] = {}
+    for (county_code, _), names in sorted(town_names_by_code(address_dir, descriptor).items()):
+        group = sorted(names & counties.get(county_code, set()))
+        if len(group) > 1 and group not in same_town.setdefault(county_code, []):
+            same_town[county_code].append(group)
     return {
         "schema_version": SCHEMA_VERSION,
         "source_commit": descriptor["commit"],
         "source_files": source_files,
         "counties": {code: sorted(towns) for code, towns in sorted(counties.items())},
+        "villages": _villages(address_dir, descriptor, counties),
+        "same_town": {code: groups for code, groups in sorted(same_town.items()) if groups},
         "old_counties": old_counties,
         "renamed_excluded": sorted(excluded, key=lambda e: (e["county"], e["dgbas_id"])),
         "unmapped": [{"county": c, "town": t} for c, t in sorted({(u["county"], u["town"]) for u in unmapped})],
@@ -154,11 +201,30 @@ def write_admin_towns(address_dir: Path, descriptor: dict, output: Path) -> dict
     return document
 
 
+def _town_aliases(document: dict) -> dict[tuple[str, str], frozenset[str]]:
+    """(county code, town) to every other name of the same town: one town code, or an old county's name."""
+    groups: dict[tuple[str, str], set[str]] = {}
+    for county_code, county_groups in document["same_town"].items():
+        for group in county_groups:
+            for name in group:
+                groups.setdefault((county_code, name), set()).update(group)
+    for info in document["old_counties"].values():
+        county_code = _COUNTY_CODE[info["county"]]
+        for old_name, new_name in info["towns"].items():
+            groups.setdefault((county_code, new_name), {new_name}).add(old_name)
+    return {key: frozenset(names - {key[1]}) for key, names in groups.items()}
+
+
 @lru_cache(maxsize=1)
 def load_admin_towns() -> dict:
     with ADMIN_TOWNS_PATH.open(encoding="utf-8") as stream:
         document = json.load(stream)
     return {
+        "aliases": _town_aliases(document),
+        "villages": {
+            (code, town): tuple(villages)
+            for code, towns in document["villages"].items() for town, villages in towns.items()
+        },
         "document": document,
         "counties": {code: frozenset(towns) for code, towns in document["counties"].items()},
         "old_towns": {old: info["towns"] for old, info in document["old_counties"].items()},
@@ -192,6 +258,16 @@ def admin_towns_failures(address_source: dict) -> list[dict]:
 
 def town_in_county(county_code: str, town: str) -> bool:
     return town in load_admin_towns()["counties"].get(county_code, ())
+
+
+def town_aliases(county_code: str, town: str) -> frozenset[str]:
+    """Other names the admin tables record for the same town: 頭份鎮 for 頭份市, 中壢市 for 中壢區."""
+    return load_admin_towns()["aliases"].get((county_code, town), frozenset())
+
+
+def town_villages(county_code: str, town: str) -> tuple[str, ...]:
+    """Village names of the town, current and historical, from the area tables."""
+    return load_admin_towns()["villages"].get((county_code, town), ())
 
 
 def resolve_old_county(text: str) -> str | None:

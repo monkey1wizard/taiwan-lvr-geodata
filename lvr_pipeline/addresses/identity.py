@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 
-from .admin import resolve_old_county, town_in_county
+from .admin import resolve_old_county, town_aliases, town_in_county, town_villages
 from .parse import _COUNTY_CODE, _REJECT_RE, arab_to_cjk, is_garbled, norm
 
 KEY_VERSION = "v2"
@@ -12,7 +12,8 @@ KEY_VERSION = "v2"
 # normalize, address-pool and offline-index stages so snapshots made under older rules are not reused.
 # v2.5 (R04-12): village and neighbourhood become sub-identifiers of the door; see building_key.
 # v2.6 (R07-6b): district must exist in its county; old county names mapped by admin_towns.json.
-NORMALIZATION_VERSION = "v2.6"
+# v2.7 (B-1): repeated town and unit dropped, other town invalid, CJK main number before 之N號, unparsable floor door gives no key.
+NORMALIZATION_VERSION = "v2.7"
 _COUNTIES = "|".join(sorted(_COUNTY_CODE, key=len, reverse=True))
 # Town names end in 市, 區, 鄉 or 鎮, never 里 (R04-12: 太麻里鄉 was rejected by the old 里 alternative).
 _COUNTY_RE = re.compile("^(" + _COUNTIES + ")")
@@ -25,6 +26,7 @@ _DOOR = re.compile(
 _FLOOR_NUMBER = "[0-9一二三四五六七八九十百壹貳參肆伍陸柒捌玖拾]+"
 _ROOM = "[0-9A-Z一二三四五六七八九十甲乙丙丁東西南北]+室"
 # Floor, room and basement text after the door never takes part in the door identity.
+_FLOOR_TOKEN = rf"(?:地下室|地下[0-9一二三四五六七八九十]*[樓層]|{_FLOOR_NUMBER}樓)"
 _FLOOR = re.compile(
     rf"(?:(?:地下室|地下[0-9一二三四五六七八九十]*[樓層]|底層|{_FLOOR_NUMBER}樓)"
     rf"(?:之?[0-9一二三四五六七八九十]+號?)?(?:{_ROOM})?|{_ROOM})?"
@@ -39,7 +41,15 @@ _FULLWIDTH_LETTERS = str.maketrans(
     {chr(0xFF21 + i): chr(0x41 + i) for i in range(26)}
     | {chr(0xFF41 + i): chr(0x41 + i) for i in range(26)}
 )
-_CJK_DOOR = re.compile(r"(?<![0-9一二三四五六七八九十百千])([一二三四五六七八九十百]+)(?=(?:之[0-9]+)*號)")
+# A floor between the road and the door stays in locality_road (大順二樓189號). Only an unparsable door gives no
+# key (B-1): a floor followed by 之 (二一五之六樓之1號) or a floor token right after a digit (80十樓，…).
+_UNPARSABLE_FLOOR_DOOR = re.compile(rf"{_FLOOR_TOKEN}之$|[0-9]{_FLOOR_TOKEN}")
+# A CJK main number and any CJK sub-numbers of a door written 七之一號 or 七之1號 (B-1: 之 may be followed by CJK too).
+_CJK_DOOR = re.compile(
+    r"(?<![0-9一二三四五六七八九十百千])(?P<main>[一二三四五六七八九十百]+)"
+    r"(?P<subs>(?:之(?:[0-9]+|[一二三四五六七八九十百]+))*)(?=號)"
+)
+_CJK_RUN = re.compile("[一二三四五六七八九十百]+")
 _UNIT = re.compile("[路街道段巷弄衖衕]")
 
 
@@ -106,6 +116,37 @@ def split_county_town(text: str):
     return _split_town(text)
 
 
+def after_town(county_code: str, town: str, rest: str) -> str | None:
+    """The address text after the town with a repeated town or unit dropped; None when the town is a different one.
+
+    B-1 (owner-approved 2026-10-18). Shared by building_key and AdministrativeNames.canonicalize, so the pool,
+    the district fill and the keys agree. 市 plus the same town (臺南市東區市東區) and a different town of the
+    county (苗栗市公館鄉) are not readable (invalid_admin). The same town again, or a name the admin tables
+    record for the same town code (頭份市頭份鎮, 中壢區中壢市), is dropped once, and so is a repeated 區, 鄉 or 鎮
+    when a village of the town follows it.
+    """
+    if rest.startswith("市" + town):
+        return None
+    for name in sorted({town, *town_aliases(county_code, town)}, key=lambda n: -len(n)):
+        if rest.startswith(name):
+            return rest[len(name):]
+    if rest[:1] == town[-1] and rest[:1] in "區鄉鎮":
+        # Dropped only when a village of this town follows (前鎮區區瑞昌里); 鎮江街 and 鎮平里 stay as written.
+        if rest[1:].startswith(town_villages(county_code, town)):
+            return rest[1:]
+    for end in range(2, 6):
+        other = rest[:end]
+        if len(other) == end and other[-1] in "市區鄉鎮" and town_in_county(county_code, other):
+            return None
+    return rest
+
+
+def _arabic_door(match: re.Match) -> str:
+    main = match.group("main")
+    subs = _CJK_RUN.sub(lambda m: str(cjk_number(m.group()) or m.group()), match.group("subs"))
+    return str(cjk_number(main) or main) + subs
+
+
 def _split_village(rest: str):
     """(valid, village, neighbourhood, remainder) for the address text after the town."""
     match = _NEIGHBORHOOD.match(rest)
@@ -152,17 +193,20 @@ def building_key(address: str) -> str | None:
     if region is None:
         return None
     county_code, town, remainder = region
+    remainder = after_town(county_code, town, remainder)
+    if remainder is None:
+        return None
     ok, village, neighborhood, rest = _split_village(remainder)
     if not ok:
         return None
-    rest = _CJK_DOOR.sub(lambda m: str(cjk_number(m.group(1)) or m.group(1)), rest)
+    rest = _CJK_DOOR.sub(_arabic_door, rest)
     door = _DOOR.search(rest)
     if not door or not _FLOOR.fullmatch(door.group("floor")):
         return None
     if door.group("before") and door.group("after"):
         return None
     locality_road = rest[:door.start()]
-    if "號" in locality_road or "鄰" in locality_road:
+    if "號" in locality_road or "鄰" in locality_road or _UNPARSABLE_FLOOR_DOOR.search(locality_road):
         return None
     # A number not followed by a unit (測試路10一1號) is an unparsed door, not a place name.
     trailing = re.search(r"[0-9]([^0-9]*)$", locality_road)

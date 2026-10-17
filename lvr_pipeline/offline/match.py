@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 
 from ..addresses.admin import resolve_old_county, town_in_county
-from ..addresses.identity import drop_repeated_county
+from ..addresses.identity import after_town, drop_repeated_county
 from ..addresses.parse import _COUNTY_CODE, _CITY_RE, norm
 from ..transactions.normalize import normalize_address
 from ..storage.runs import sha256_file
@@ -82,5 +82,8 @@ class AdministrativeNames:
         region = _CITY_RE.fullmatch(canonical)
         county = _COUNTY_CODE[region[1]]
         if not town_in_county(county, region[2]):
+            return address, "", ""
+        # B-1: the same town rules as building_key; a different town after the town is not readable.
+        if after_town(county, region[2], address[end:]) is None:
             return address, "", ""
         return canonical + address[end:], county, town

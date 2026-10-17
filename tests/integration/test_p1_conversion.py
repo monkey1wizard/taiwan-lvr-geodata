@@ -203,7 +203,7 @@ def test_explicit_lists_subdoors_patch_and_ambiguous_ranges(tmp_path):
 
 
 def test_review_component_keeps_no_key_even_if_whole_text_has_one(tmp_path):
-    address="臺北市中正區測試路80十樓，測試三街232號"
+    address="臺北市中正區測試路，80號"
     from lvr_pipeline.address import building_key
     from lvr_pipeline.transactions.normalize import normalize_address
     assert building_key(normalize_address(address)) is not None
