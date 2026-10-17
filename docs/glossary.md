@@ -24,7 +24,7 @@
 | 範圍外 | `outside_scope` | 來源或查詢不在本次設定的處理範圍內。暫停縣市使用 `conflict` 與 `address_source_suspended`，不使用此狀態 |
 | 待查核表 | `exception_addresses` | 有問題或未定位原因的觀測地址清單 |
 | 人工交叉比對清單 | `cross_check_addresses` | 候選涉及多門牌歧義，需人工比對的清單 |
-| 第二類人工查核區 | — | TGOS 後仍未定位的獨立查核集合，新版尚未實作 |
+| 第二類人工查核區 | `second_review`、`review_key` | TGOS 後仍無座標、由擁有者逐筆判定的門牌集合，契約見資料契約，實作待 R10-1 |
 
 ## 來源及日期
 
