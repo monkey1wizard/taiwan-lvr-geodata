@@ -11,6 +11,11 @@ on:
         required: false
         default: b21217e
         type: string
+      code_commit:
+        description: Commit whose code produced the release; tier 2 runs verify_output from it
+        required: false
+        default: '8709337'
+        type: string
       expected_catalog_sha256:
         description: Expected SHA-256 of data/output/catalog.json
         required: false
@@ -35,6 +40,7 @@ jobs:
       # Inputs reach the shell only through the environment, never by template expansion.
       TAG: ${{ inputs.tag }}
       COMMIT: ${{ inputs.commit }}
+      CODE_COMMIT: ${{ inputs.code_commit }}
       CATALOG_SHA256: ${{ inputs.expected_catalog_sha256 }}
       MIN_FREE_GB: ${{ inputs.min_free_gb }}
     steps:
@@ -87,12 +93,14 @@ jobs:
           uv run --locked --python 3.14.8 python scripts/verify_release.py
           --tag "$TAG" --commit "$COMMIT"
           --expected-catalog-sha256 "$CATALOG_SHA256"
-          --mode full --work "$WORK" --report "$REPORTS/full.json"
+          --mode full --code-commit "$CODE_COMMIT" --work "$WORK" --report "$REPORTS/full.json"
       - name: Summary
         if: always()
         run: |
           {
             echo "## Release verification for $TAG"
+            echo
+            echo "Data commit: $COMMIT. verify_output code commit: $CODE_COMMIT"
             echo
             echo "Tier 1 stream: ${{ steps.tier1.outcome }}"
             if [ "${{ steps.space.outputs.full }}" = "true" ]; then

@@ -1,12 +1,17 @@
 """R08-4: verify a published release (Git data/output plus the GeoParquet release asset) from a fresh download.
 
     python scripts/verify_release.py --tag <tag> [--commit b21217e] [--mode full|stream]
+        [--code-commit 8709337] [--code-python PATH]
         [--expected-catalog-sha256 H] [--candidate output.json] [--work data/tmp/r08-4] [--report PATH]
 
 The script lists the release assets with ``gh``, downloads ``taiwanlvr.parquet``, makes a blobless clone of the
 public repository and checks the committed ``data/output`` tree against ``catalog.json`` without a working tree
 (``stream`` mode: Git blobs are hashed through one ``git cat-file --batch`` process). ``full`` mode also checks
-out ``data/output`` and runs ``verify_output`` on it and on the downloaded GeoParquet. Every step is recorded as
+out ``data/output`` and runs ``verify_output`` on it and on the downloaded GeoParquet. ``verify_output`` runs from
+the code of ``--code-commit``, the commit that produced the release, not from this checkout: the catalog's rule
+versions are compared with that code's constants. The code is taken from the clone with ``git archive`` and run
+in its own ``uv`` environment, or with ``--code-python`` when that commit's ``uv.lock`` equals this checkout's.
+Every step is recorded as
 pass, fail or not-run. ``passed`` means no step failed; ``complete`` additionally needs every step to pass, so a
 ``stream`` run is never complete. Exit code: 0 passed, 1 failed, 2 usage error.
 """
@@ -14,22 +19,24 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import shutil
 import stat
 import subprocess
 import sys
+import tarfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lvr_pipeline.output.catalog import CATALOG_NAME, PARQUET_NAME  # noqa: E402
-from lvr_pipeline.output.verify import OutputVerificationError, verify_output  # noqa: E402
 from lvr_pipeline.storage.runs import sha256_file  # noqa: E402
 
 DEFAULT_COMMIT = "b21217e"
+DEFAULT_CODE_COMMIT = "8709337"  # code of baseline run r07-10-20261016b, which produced the first release
 DEFAULT_CATALOG_SHA256 = "5a0067ccb056437ebd09ee8483b9c6ba34599d0e23803b4ab213c88482081ba2"
 DEFAULT_REPO_URL = "https://github.com/monkey1wizard/taiwan-lvr-geodata.git"
 DEFAULT_REPO_SLUG = "monkey1wizard/taiwan-lvr-geodata"
@@ -40,6 +47,23 @@ DUCKDB_DEFAULTS = {"LVR_DUCKDB_MEMORY_LIMIT": "8GiB", "LVR_DUCKDB_TEMP_LIMIT": "
 CHECKS = ("release_assets", "download", "clone", "catalog", "file_set", "public_files", "release_file",
           "parquet_meta", "candidate", "verify_output")
 MAX_LISTED = 20
+LOCAL_ROOT = Path(__file__).resolve().parents[1]
+CODE_PATHS = ("lvr_pipeline", "config", "pyproject.toml", "uv.lock", ".python-version")
+# Runs inside the code copy: import that copy's lvr_pipeline, refuse any other, write the verify_output report.
+CHILD = r"""
+import json, sys
+from pathlib import Path
+code, public, release, spill, out = sys.argv[1:6]
+sys.path.insert(0, code)
+from lvr_pipeline.output import verify
+if Path(verify.__file__).resolve().parents[2] != Path(code).resolve():
+    raise SystemExit(f"lvr_pipeline imported from {verify.__file__}, not from {code}")
+try:
+    report = verify.verify_output(Path(public), Path(release), Path(spill))
+except verify.OutputVerificationError as exc:
+    report = getattr(exc, "report", exc.args[0])
+Path(out).write_text(json.dumps(report, ensure_ascii=False, default=str), encoding="utf-8")
+"""
 
 
 def now() -> str:
@@ -317,6 +341,36 @@ class Verifier:
                  catalog_matches=catalog_ok, missing=fmt(missing), extra=fmt(extra), different=fmt(different),
                  different_count=len(different))
 
+    def resolve(self, ref):
+        try:
+            return run_git(["rev-parse", "--verify", f"{ref}^{{commit}}"], self.repo).decode().strip()
+        except RuntimeError:
+            run_git(["fetch", "origin", ref], self.repo)
+            return run_git(["rev-parse", "--verify", f"{ref}^{{commit}}"], self.repo).decode().strip()
+
+    def prepare_code(self, sha):
+        """Extract the code of ``sha`` and return (code_dir, python command, environment note)."""
+        code_dir = self.work / "code" / sha[:12]
+        if code_dir.exists():
+            _rmtree(code_dir)
+        code_dir.mkdir(parents=True)
+        archive = run_git(["archive", "--format=tar", sha, *CODE_PATHS], self.repo)
+        with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+            tar.extractall(code_dir, filter="data")
+        if self.args.code_python:
+            lock, local = sha256_file(code_dir / "uv.lock"), sha256_file(LOCAL_ROOT / "uv.lock")
+            if lock != local:
+                raise RuntimeError(f"uv.lock of {sha[:12]} ({lock[:12]}) differs from this checkout ({local[:12]});"
+                                   " drop --code-python to build its own environment")
+            return code_dir, [self.args.code_python], {"python": self.args.code_python, "uv_lock_sha256": lock}
+        python = (code_dir / ".python-version").read_text(encoding="utf-8").strip()
+        uv = ["--locked", "--project", str(code_dir), "--python", python]
+        done = subprocess.run(["uv", "sync", *uv], capture_output=True)
+        if done.returncode:
+            raise RuntimeError(f"uv sync failed: {done.stderr.decode('utf-8', 'replace').strip()}")
+        return code_dir, ["uv", "run", "--no-sync", *uv, "python"], {"uv_python": python,
+                                                                  "uv_lock_sha256": sha256_file(code_dir / "uv.lock")}
+
     def step_verify_output(self):
         if self.args.mode != "full":
             self.set("verify_output", "not-run", detail="stream mode: no working tree")
@@ -328,17 +382,28 @@ class Verifier:
         except Exception as exc:
             self.set("verify_output", "fail", error=f"checkout failed: {exc}")
             return
+        code = {"code_commit_requested": self.args.code_commit}
+        try:
+            code["code_commit"] = self.resolve(self.args.code_commit)
+            code_dir, python, environment = self.prepare_code(code["code_commit"])
+        except Exception as exc:
+            self.set("verify_output", "fail", error=f"code not prepared: {exc}", **code)
+            return
+        code["environment"] = environment
         for name, value in DUCKDB_DEFAULTS.items():
             os.environ.setdefault(name, value)
         spill = self.work / "spill"
         spill.mkdir(parents=True, exist_ok=True)
-        try:
-            report = verify_output(self.repo / OUTPUT_DIR, self.release_dir, spill)
-            self.set("verify_output", "pass" if report.get("passed") else "fail", report=report)
-        except OutputVerificationError as exc:
-            self.set("verify_output", "fail", report=getattr(exc, "report", exc.args[0]))
-        except Exception as exc:
-            self.set("verify_output", "fail", error=f"{type(exc).__name__}: {exc}")
+        out = self.work / "verify_output.json"
+        out.unlink(missing_ok=True)
+        done = subprocess.run([*python, "-I", "-c", CHILD, str(code_dir), str(self.repo / OUTPUT_DIR),
+                               str(self.release_dir), str(spill), str(out)], capture_output=True)
+        if done.returncode or not out.is_file():
+            error = done.stderr.decode("utf-8", "replace").strip()[-2000:]
+            self.set("verify_output", "fail", error=f"verify_output exited {done.returncode}: {error}", **code)
+            return
+        report = json.loads(out.read_text(encoding="utf-8"))
+        self.set("verify_output", "pass" if report.get("passed") else "fail", report=report, **code)
 
     def run(self):
         started = now()
@@ -362,6 +427,7 @@ class Verifier:
         statuses = [c["status"] for n, c in self.checks.items() if n != "candidate" or self.args.candidate]
         passed = "fail" not in [c["status"] for c in self.checks.values()]
         return {"tag": self.args.tag, "commit": self.commit or self.args.commit, "mode": self.args.mode,
+                "code_commit": self.checks["verify_output"].get("code_commit", self.args.code_commit),
                 "repo_url": self.args.repo_url, "started_at": started, "finished_at": now(), "disk": self.disk,
                 "checks": self.checks, "passed": passed, "complete": passed and all(s == "pass" for s in statuses)}
 
@@ -372,6 +438,10 @@ def parse_args(argv):
     p.add_argument("--commit", default=DEFAULT_COMMIT)
     p.add_argument("--expected-catalog-sha256", default=DEFAULT_CATALOG_SHA256)
     p.add_argument("--mode", choices=("full", "stream"), default="full")
+    p.add_argument("--code-commit", default=DEFAULT_CODE_COMMIT,
+                   help="commit whose code produced the release; verify_output runs from it")
+    p.add_argument("--code-python", help="interpreter to run that code with, allowed only when its uv.lock "
+                                         "equals this checkout's; default builds an environment with uv")
     p.add_argument("--candidate", help="output.json of the baseline candidate to compare file hashes with")
     p.add_argument("--work", default=DEFAULT_WORK)
     p.add_argument("--repo-url", default=DEFAULT_REPO_URL)

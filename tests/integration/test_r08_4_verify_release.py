@@ -20,7 +20,8 @@ _spec = importlib.util.spec_from_file_location("r08_4_verify_release_script", SC
 vr = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(vr)
 
-IDENT = ["-c", "user.name=Test", "-c", "user.email=test@example.invalid"]
+CODE = [*vr.CODE_PATHS]
+IDENT = ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "core.hooksPath=.git/hooks"]  # no host hooks
 TAG = "v-test"
 
 
@@ -35,6 +36,12 @@ class Fixture:
         self.src = tmp / "src"
         shutil.copytree(baseline["root"] / "public", self.src / "data" / "output")
         (self.src / ".gitattributes").write_text("data/output/** -text\n", encoding="utf-8")
+        for name in CODE:  # the code that built the synthetic output, so verify_output can run from this commit
+            source = REPO / name
+            if source.is_dir():
+                shutil.copytree(source, self.src / name, ignore=shutil.ignore_patterns("__pycache__"))
+            else:
+                shutil.copyfile(source, self.src / name)
         git(self.src, "init", "-q", "-b", "main")
         git(self.src, "add", "-A")
         git(self.src, "commit", "-q", "-m", "data")
@@ -48,8 +55,8 @@ class Fixture:
         self.assets = [{"name": "taiwanlvr.parquet", "size": self.parquet.stat().st_size}]
         self.truncate = False
 
-    def commit_more(self, change):
-        change(self.src / "data" / "output")
+    def commit_more(self, change, root=False):
+        change(self.src if root else self.src / "data" / "output")
         git(self.src, "add", "-A")
         git(self.src, "commit", "-q", "-m", "more")
         git(self.src, "push", "-q", str(self.bare), "main")
@@ -64,7 +71,7 @@ class Fixture:
         target.write_bytes(data[:-10] if self.truncate else data)
         return b""
 
-    def run(self, monkeypatch, *extra, mode="full", commit=None, sha=None):
+    def run(self, monkeypatch, *extra, mode="full", commit=None, sha=None, code=None):
         monkeypatch.setattr(vr, "run_gh", self.fake_gh)
         for name, value in (("LVR_DUCKDB_MEMORY_LIMIT", "256MB"), ("LVR_DUCKDB_TEMP_LIMIT", "1GiB"),
                             ("LVR_DUCKDB_THREADS", "2")):
@@ -72,7 +79,8 @@ class Fixture:
         report_path = self.tmp / "report.json"
         code = vr.main(["--tag", TAG, "--commit", commit or self.first, "--mode", mode,
                         "--expected-catalog-sha256", sha or self.catalog_sha, "--repo-url", self.bare.as_uri(),
-                        "--work", str(self.tmp / "work"), "--report", str(report_path), *extra])
+                        "--work", str(self.tmp / "work"), "--report", str(report_path),
+                        "--code-commit", code or self.first, "--code-python", sys.executable, *extra])
         return code, json.loads(report_path.read_text(encoding="utf-8"))
 
 
@@ -92,6 +100,34 @@ def test_full_mode_passes_and_is_complete(fx, monkeypatch):
     assert statuses(report)["candidate"] == "not-run"  # optional, so it does not block completeness
     assert report["checks"]["parquet_meta"]["has_geo_metadata"] is True
     assert report["checks"]["public_files"]["checked"] > 0 and report["disk"]["before_verify_output"]["free_bytes"] > 0
+    check = report["checks"]["verify_output"]
+    assert check["code_commit"] == fx.first and report["code_commit"] == fx.first
+    assert check["environment"]["python"] == sys.executable
+
+
+def test_verify_output_runs_from_the_code_commit(fx, monkeypatch):
+    """A later commit with another rule version must not change the verdict on data built by the first commit."""
+    def bump(root):
+        path = root / "lvr_pipeline" / "addresses" / "identity.py"
+        text = path.read_text(encoding="utf-8")
+        assert text.count('NORMALIZATION_VERSION = "') == 1
+        path.write_text(text.replace('NORMALIZATION_VERSION = "', 'NORMALIZATION_VERSION = "x', 1), encoding="utf-8")
+
+    later = fx.commit_more(bump, root=True)
+    code, report = fx.run(monkeypatch, commit=later, code=later)
+    check = report["checks"]["verify_output"]
+    assert code == 1 and check["status"] == "fail" and check["code_commit"] == later
+    assert any("door_rule_version" in f["detail"] for f in check["report"]["failures"])
+
+    code, report = fx.run(monkeypatch, commit=later, code=fx.first)
+    assert code == 0 and report["checks"]["verify_output"]["status"] == "pass", report["checks"]["verify_output"]
+
+
+def test_code_python_refused_when_uv_lock_differs(fx, monkeypatch):
+    later = fx.commit_more(lambda root: (root / "uv.lock").write_text("other\n", encoding="utf-8"), root=True)
+    code, report = fx.run(monkeypatch, code=later)
+    check = report["checks"]["verify_output"]
+    assert code == 1 and check["status"] == "fail" and "uv.lock" in check["error"]
 
 
 def test_stream_mode_passes_but_is_never_complete(fx, monkeypatch):
