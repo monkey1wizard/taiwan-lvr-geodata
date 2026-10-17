@@ -1,0 +1,128 @@
+name: Verify release download
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag that holds taiwanlvr.parquet
+        required: true
+        type: string
+      commit:
+        description: Commit that holds data/output
+        required: false
+        default: b21217e
+        type: string
+      expected_catalog_sha256:
+        description: Expected SHA-256 of data/output/catalog.json
+        required: false
+        default: 5a0067ccb056437ebd09ee8483b9c6ba34599d0e23803b4ab213c88482081ba2
+        type: string
+      min_free_gb:
+        description: Free GB needed on the work disk to run the full verify_output tier
+        required: false
+        default: '35'
+        type: string
+permissions:
+  contents: read
+jobs:
+  verify:
+    name: Verify release download
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      WORK: ${{ runner.temp }}/r08-4
+      REPORTS: ${{ runner.temp }}/r08-4-reports
+      # Inputs reach the shell only through the environment, never by template expansion.
+      TAG: ${{ inputs.tag }}
+      COMMIT: ${{ inputs.commit }}
+      CATALOG_SHA256: ${{ inputs.expected_catalog_sha256 }}
+      MIN_FREE_GB: ${{ inputs.min_free_gb }}
+    steps:
+      # Code only: the verified data comes from the fresh clone made by the script.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            /*
+            !/data/output/
+          sparse-checkout-cone-mode: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.23'
+      - name: Install
+        run: |
+          uv sync --locked --python 3.14.8
+          mkdir -p "$REPORTS"
+          df -h
+      - name: Tier 1 stream verification
+        id: tier1
+        continue-on-error: true
+        run: >
+          uv run --locked --python 3.14.8 python scripts/verify_release.py
+          --tag "$TAG" --commit "$COMMIT"
+          --expected-catalog-sha256 "$CATALOG_SHA256"
+          --mode stream --work "$WORK" --report "$REPORTS/stream.json"
+      - name: Free space for tier 2
+        id: space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h
+          free_gb=$(df --output=avail -BG "$RUNNER_TEMP" | tail -n 1 | tr -dc '0-9')
+          echo "free_gb=$free_gb" >> "$GITHUB_OUTPUT"
+          temp_gb=$((free_gb - 15))
+          echo "temp_gb=$temp_gb" >> "$GITHUB_OUTPUT"
+          if [ "$free_gb" -ge "$MIN_FREE_GB" ] && [ "$temp_gb" -gt 0 ]; then
+            echo "full=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "full=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Tier 2 full verification
+        id: tier2
+        if: steps.space.outputs.full == 'true'
+        continue-on-error: true
+        env:
+          LVR_DUCKDB_MEMORY_LIMIT: 8GiB
+          LVR_DUCKDB_THREADS: '4'
+          LVR_DUCKDB_TEMP_LIMIT: ${{ steps.space.outputs.temp_gb }}GiB
+        run: >
+          uv run --locked --python 3.14.8 python scripts/verify_release.py
+          --tag "$TAG" --commit "$COMMIT"
+          --expected-catalog-sha256 "$CATALOG_SHA256"
+          --mode full --work "$WORK" --report "$REPORTS/full.json"
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Release verification for $TAG"
+            echo
+            echo "Tier 1 stream: ${{ steps.tier1.outcome }}"
+            if [ "${{ steps.space.outputs.full }}" = "true" ]; then
+              echo "Tier 2 full: ${{ steps.tier2.outcome }}"
+            else
+              echo "Tier 2 full: skipped. full verify_output not run: insufficient disk (free ${{ steps.space.outputs.free_gb }} GB, needs $MIN_FREE_GB GB)"
+            fi
+            echo
+            for name in stream full; do
+              if [ -f "$REPORTS/$name.json" ]; then
+                python3 -c "import json,sys; r=json.load(open(sys.argv[1])); print('- %s: passed=%s complete=%s' % (sys.argv[2], r['passed'], r['complete'])); [print('  - %s: %s' % (k, v['status'])) for k, v in r['checks'].items()]" "$REPORTS/$name.json" "$name"
+              else
+                echo "- $name: no report"
+              fi
+            done
+            echo
+            echo '```'
+            df -h
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verify-release-reports
+          path: ${{ runner.temp }}/r08-4-reports
+          if-no-files-found: warn
+      - name: Fail if a tier failed
+        if: always()
+        run: |
+          if [ "${{ steps.tier1.outcome }}" != "success" ]; then echo "tier 1 failed"; exit 1; fi
+          if [ "${{ steps.space.outputs.full }}" = "true" ] && [ "${{ steps.tier2.outcome }}" != "success" ]; then
+            echo "tier 2 failed"; exit 1
+          fi
