@@ -26,7 +26,7 @@ from lvr_pipeline.results.reconcile import (
 from lvr_pipeline.results.review import build_review
 from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.storage.runs import SnapshotStore, sha256_file
-from lvr_pipeline.tgos import import_tgos, load_state, prepare_tgos, transition_batch
+from lvr_pipeline.tgos import import_tgos, load_state, merge_ledger, prepare_tgos, transition_batch
 from test_p1_conversion import ADDRESS, pinned, pipeline, write_char_fixes, write_road_index
 from test_p3_tgos import response
 from test_p2_offline import index_of, register_index
@@ -286,7 +286,9 @@ def tgos(built):
     response(path, [{"Address": q["address"], "Response_Address": q["address"],
                      "Response_X": answers[q["address"]][0], "Response_Y": answers[q["address"]][1]}
                     for q in queries])
-    return import_tgos(submitted, work, batch_id, path)
+    imported = import_tgos(submitted, work, batch_id, path)
+    # b14: the import snapshot holds the ledger only; the tests read the merged state.
+    return merge_ledger(imported, work, tmp_path / "merged")
 
 
 def test_tgos_located_suspended_key_is_not_located(built, tgos):

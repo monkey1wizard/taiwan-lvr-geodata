@@ -46,6 +46,10 @@ def _add_offline_and_output_commands(sub):
         help="Pipeline TOML with coordinate_tolerance_m and suspended_counties (default config/pipeline.example.toml)",
     )
     p.add_argument("--batch-rows", type=int, default=1024)
+    p.add_argument("--tgos-ledger", type=Path,
+                   help="TGOS state snapshot whose batches and queries are carried into the run (contract rules 4 to 6)")
+    p.add_argument("--exchange-dir", type=Path, default=Path("data/tgos"),
+                   help="TGOS exchange folders holding the Address_Finish.csv of carried batches")
     p = sub.add_parser("build-offline-index")
     p.add_argument("--address-dir", type=Path, required=True)
     p.add_argument(
@@ -130,8 +134,8 @@ def _add_offline_and_output_commands(sub):
     p.add_argument("--state", type=Path, required=True)
     p.add_argument("--alias-key", required=True)
     p.add_argument("--reason", required=True)
-    p.add_argument("--work-dir", type=Path, default=Path("data/work"))
-    p.add_argument("--run-id")
+    p.add_argument("--runs-root", type=Path, default=None, help="Run directories root (default data/runs)")
+    p.add_argument("--run-id", required=True, help="Run directory name under --runs-root")
     p = sub.add_parser("verify-tgos-state")
     p.add_argument("--input", type=Path, required=True)
     p = sub.add_parser("build-review")

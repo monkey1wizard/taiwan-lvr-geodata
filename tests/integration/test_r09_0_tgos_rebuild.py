@@ -1,6 +1,6 @@
 """R09-0 and R09-2b: TGOS rebuild under the current address rules.
 
-1. A carried ledger query with no key under the current rules makes prepare-tgos fail.
+1. A carried ledger query with no key under the current rules is kept as evidence (contract rule 5).
 2. prepare-tgos does not select keys of suspended counties.
 """
 
@@ -53,10 +53,24 @@ def ledger(tmp_path_factory):
             "ledger": submitted, "batch_id": sent["batch_id"], "sent": sent["address"], "old_key": old_key}
 
 
-def test_ledger_query_without_a_key_makes_prepare_fail(ledger):
-    with pytest.raises(ValueError, match="Carried TGOS query has no building key under the current rules"):
-        prepare_tgos(ledger["state"], ledger["tmp"] / "new", ledger["tmp"] / "exchange",
-                     ledger=ledger["ledger"], limit=1, index=index_of(ledger["state"]))
+def test_ledger_query_without_a_key_is_kept_as_evidence_and_never_resent(ledger):
+    """Contract rule 5, option A: no refusal; the query stays with a null key, is counted and is not sent again."""
+    seeded, _ = prepare_tgos(ledger["state"], ledger["tmp"] / "new", ledger["tmp"] / "exchange",
+                             ledger=ledger["ledger"], limit=10, index=index_of(ledger["state"]))
+    carried = {q["address"]: q for q in rows(seeded / "tgos_queries.parquet") if q["batch_id"] == ledger["batch_id"]}
+    keyless = carried[UNKEYED]
+    assert keyless["query_kind"] == "keyless" and keyless["building_key"] is None
+    assert keyless["query_fingerprint"] == digest([ledger["old_key"], UNKEYED])
+    assert keyless["status"] == "submitted"
+    assert carried[ledger["sent"]]["query_kind"] == "building_key"
+    assert load_state(seeded)[1]["tgos_carried_keyless_queries"] == 1
+    new_addresses = [q["address"] for q in rows(seeded / "tgos_queries.parquet") if q["batch_id"] != ledger["batch_id"]]
+    assert UNKEYED not in new_addresses and ledger["sent"] not in new_addresses
+    # Not even an approved retry can bring it back.
+    with pytest.raises(ValueError, match="evidence only"):
+        prepare_tgos(ledger["state"], ledger["tmp"] / "new2", ledger["tmp"] / "exchange", ledger=ledger["ledger"],
+                     retry_fingerprints=[keyless["query_fingerprint"]], retry_reason="x",
+                     index=index_of(ledger["state"]))
 
 
 def test_suspended_county_keys_are_not_selected(built):  # noqa: F811

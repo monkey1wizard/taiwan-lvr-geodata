@@ -13,7 +13,7 @@ from lvr_pipeline.pipeline import RUN_FULL_STAGES, run_full  # noqa: E402
 from lvr_pipeline.storage.runs import sha256_file  # noqa: E402
 from test_run_full import checkpoints, setup_inputs  # noqa: E402
 
-EARLIER = RUN_FULL_STAGES[:6]
+EARLIER = RUN_FULL_STAGES[:7]  # up to tgos-state (B-4)
 
 
 def record_of(run_dir):

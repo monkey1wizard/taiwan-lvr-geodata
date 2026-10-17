@@ -15,7 +15,7 @@ from lvr_pipeline.results.reconcile import load_p2, resolve_offline
 from lvr_pipeline.results.review import COLUMNS, PRODUCED_CODES, build_review, exception_id
 from lvr_pipeline.storage.parquet import BatchWriter, inspect_parquet, rows
 from lvr_pipeline.storage.runs import SnapshotStore, sha256_file
-from lvr_pipeline.tgos import import_tgos, prepare_tgos, transition_batch
+from lvr_pipeline.tgos import import_tgos, merge_ledger, prepare_tgos, transition_batch
 from test_p1_conversion import ADDRESS, pipeline
 from test_p1_conversion import pinned
 from test_p2_offline import source, index_of, register_index
@@ -96,7 +96,8 @@ def built(tmp_path_factory):
             answer, x, y = TGOS_ANSWERS.get(query["address"], ("", "", ""))
             writer.writerow({"Address": query["address"], "Response_Address": answer,
                              "Response_X": x, "Response_Y": y})
-    tgos_state = import_tgos(submitted, work, batch_id, response)
+    # b14: the import snapshot holds the ledger only; review reads the merged state.
+    tgos_state = merge_ledger(import_tgos(submitted, work, batch_id, response), work, tmp_path / "merged")
     before = {name: _tree_hashes(path) for name, path in
               [("converted", converted), ("state", state), ("tgos", tgos_state)]}
     review = build_review(converted, state, tmp_path / "review-work", descriptor=descriptor,

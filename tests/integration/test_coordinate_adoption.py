@@ -19,7 +19,7 @@ from lvr_pipeline.results.reconcile import (
 )
 from lvr_pipeline.storage.parquet import rows, verify_relations
 from lvr_pipeline.storage.runs import SnapshotStore
-from lvr_pipeline.tgos import import_tgos, load_state, prepare_tgos, transition_batch
+from lvr_pipeline.tgos import import_tgos, load_state, merge_ledger, prepare_tgos, transition_batch
 from test_p1_conversion import ADDRESS
 from test_p2_offline import run, index_of
 from test_p3_tgos import response
@@ -234,9 +234,11 @@ def test_tgos_import_keeps_the_tolerance_rule(tmp_path):
     _, report, _ = load_state(imported)
     assert report["status_counts"]["located"] == 2
     assert report["coordinate_tolerance_m"] == TOLERANCE
+    # b14: the import snapshot holds the ledger only; the merged state is computed from it.
+    merged = merge_ledger(imported, tmp_path / "work", tmp_path / "merged")
     located = {
-        r["canonical_address"]: r for r in rows(imported / "address_index.parquet")
+        r["canonical_address"]: r for r in rows(merged / "address_index.parquet")
     }
     assert (located[ADDRESS]["lng"], located[ADDRESS]["lat"]) == min(a, b)
-    [detail] = rows(imported / "coordinate_resolutions.parquet")
+    [detail] = rows(merged / "coordinate_resolutions.parquet")
     assert detail["status"] == "located"

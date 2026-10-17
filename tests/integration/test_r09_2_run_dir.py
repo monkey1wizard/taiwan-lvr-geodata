@@ -1,6 +1,7 @@
 """R09-2c: TGOS and build-review commands write into data/runs/<run-id>, never into a run-full run."""
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -19,7 +20,18 @@ def _date_file(tmp_path):
     return path
 
 
+def _in_runs(state, tmp_path):
+    """The offline state beside the TGOS run under the runs root, where its ledger records it (contract rule 3)."""
+    run = state.parent.parent.parent
+    target = tmp_path / "runs" / run.name
+    if not target.exists():
+        for stage in ("offline-state", "address-pool"):  # the pool tells the state's address rule version
+            shutil.copytree(run / stage, target / stage)
+    return target / "offline-state" / "snapshots" / state.name
+
+
 def _prepare_argv(state, tmp_path, run_id, *extra):
+    state = state if "tgos-state" in state.parts else _in_runs(state, tmp_path)
     return ["prepare-tgos", "--state", str(state), "--index", str(index_of(state)), "--date-file", str(_date_file(tmp_path)),
             "--exchange-dir", str(tmp_path / "exchange"), "--runs-root", str(tmp_path / "runs"),
             "--run-id", run_id, *extra]

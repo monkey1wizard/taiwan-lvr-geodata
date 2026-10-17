@@ -26,7 +26,7 @@ from lvr_pipeline.results.reconcile import (
 )
 from lvr_pipeline.results.review import CROSS_CHECK_CODES, R04_12_CODES, build_review
 from lvr_pipeline.storage.parquet import rows
-from lvr_pipeline.tgos import _rebuild_resolution, import_tgos, prepare_tgos, transition_batch
+from lvr_pipeline.tgos import _rebuild_resolution, import_tgos, merge_ledger, prepare_tgos, transition_batch
 from test_p2_offline import run, index_of
 
 T = "臺北市中正區"
@@ -222,7 +222,8 @@ def reviewed(built):
             answer, x, y = answers.get(query["address"], ("", "", ""))
             writer.writerow({"Address": query["address"], "Response_Address": answer,
                              "Response_X": x, "Response_Y": y})
-    tgos_state = import_tgos(submitted, tmp_path / "work", batch_id, response)
+    # b14: the import snapshot holds the ledger only; review reads the merged state.
+    tgos_state = merge_ledger(import_tgos(submitted, tmp_path / "work", batch_id, response), tmp_path / "work", tmp_path / "merged")
     review = build_review(built["converted"], built["state"], tmp_path / "review-work",
                           descriptor=built["descriptor"], tgos_state=tgos_state, run_id="r04-12")
     return {"queries": queries, "tgos": tgos_state, "review": review,

@@ -186,6 +186,10 @@ OFFLINE_SCHEMAS = {
             ("reason", S, True),
             # R09-6: the building key of a district fill response.
             ("response_building_key", S, True),
+            # B-4 (b14): the returned coordinate as parsed, also for rejected rows; lng and lat stay
+            # the adopted coordinate (null when rejected).
+            ("response_lng", F, True),
+            ("response_lat", F, True),
         ],
     ),
     "alias-event": _schema(

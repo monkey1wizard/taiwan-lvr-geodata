@@ -22,8 +22,12 @@ from .output.catalog import write_catalog
 from .output.verify import OutputVerificationError, verify_output
 from .results.address_patch import export_address_patch, verify_address_patch
 from .tgos import (
+    build_tgos_state,
     import_tgos,
+    ledger_responses,
     load_state,
+    merge_ledger,
+    plan_tgos_state,
     prepare_tgos,
     repair_prepared_exchange,
     revoke_alias,
@@ -250,10 +254,10 @@ def _run_offline_and_output(args):
     elif command == "revoke-alias":
         path = revoke_alias(
             args.state,
-            args.work_dir,
+            _tgos_run_dir(args),
             args.alias_key,
             reason=args.reason,
-            run_id=args.run_id,
+            run_id=None,
         )
     elif command == "verify-tgos-state":
         _, report, stage = load_state(args.input)
@@ -263,12 +267,20 @@ def _run_offline_and_output(args):
         return 0
     elif command == "build-review":
         start = time.perf_counter()
+        run_dir = _tgos_run_dir(args)
+        tgos_state = args.tgos_state
+        if tgos_state is not None:
+            # B-4 (b14): a ledger-only TGOS state has no address tables; review reads its merged state,
+            # written beside the run (contract rule 3). A merged tgos-state is used as it is.
+            tgos_manifest, _, _ = load_state(tgos_state)
+            if not any(item["schema"] == "address-result" for item in tgos_manifest["artifacts"]):
+                tgos_state = merge_ledger(tgos_state, run_dir, run_dir / "merged")
         path = build_review(
             args.input,
             args.state,
-            _tgos_run_dir(args),
+            run_dir,
             descriptor=read(args.address_source),
-            tgos_state=args.tgos_state,
+            tgos_state=tgos_state,
             prior_review=args.prior_review,
             run_id=None,
         )
@@ -312,7 +324,7 @@ def _run_offline_and_output(args):
 
 # R06-4: one full offline run over every batch of the raw manifest.
 RUN_FULL_STAGES = ["offline-index", "ingested", "normalized", "converted", "address-pool",
-                   "offline-state", "review", "output", "run-report"]
+                   "offline-state", "tgos-state", "review", "output", "run-report"]
 RUN_FULL_SCOPE = "all-manifest-batches"
 
 
@@ -418,9 +430,15 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
              raw_dir: Path = Path("data/raw"), manifest_path: Path = Path("config/sources/raw_manifest.json"),
              address_source: Path = Path("config/sources/address_source.json"),
              rules_path: Path = Path("config/rules/character-fixes.csv"), config: Path | None = None,
-             batch_rows: int = 1024) -> dict:
+             batch_rows: int = 1024, tgos_ledger: Path | None = None,
+             exchange_dir: Path = Path("data/tgos")) -> dict:
     """verify-sources, offline index, ingest, normalize, converted, coverage, address pool,
-    offline state and review, each stage committed through RunStore.
+    offline state, tgos-state and review, each stage committed through RunStore.
+
+    ``tgos_ledger`` is a TGOS state snapshot whose batches and queries are carried into the run
+    (data contract, TGOS ledger rules 4 to 6). The tgos-state stage re-imports every response it had
+    completed, read from ``exchange_dir``, and writes the merged state that review and output read.
+    Without a ledger that stage still runs, with an empty ledger, so its tables equal the offline state.
 
     The result is complete only when every step passed; only then is the ``run-report``
     stage written, and that checkpoint is the run's completion state.
@@ -479,7 +497,7 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
             "step": name, "actual_head": checked["actual_head"], "head_matches": checked["head_matches"],
             "full_check": full, "checked_at": checked["checked_at"]})
 
-    def stage(name, build):
+    def stage(name, build, reuse_check=None):
         current["step"] = name
         check_source(name)
         start = time.perf_counter()
@@ -487,6 +505,8 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
         reused = run.reusable(name, bindings_)
         if reused:
             path = run.stage(name).root / "snapshots" / run.checkpoints()[name]["snapshot_id"]
+            if reuse_check is not None:
+                reuse_check(path)
         else:
             headroom = disk_headroom(run.root)
             if not headroom["ok"]:
@@ -527,6 +547,7 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
         start = time.perf_counter()
         reset_peak("step")
         input_hashes = [sha256_file(Path(converted) / "manifest.json"), sha256_file(Path(state) / "manifest.json")]
+        # ``state`` is the tgos-state snapshot of this run; the id below keeps the earlier key name.
         output_id = "output-" + digest({"converted": input_hashes[0], "state": input_hashes[1],
                                         "contract": "22-column"})[:24]
         store = run.stage("output")
@@ -631,6 +652,16 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
                       for row in sources["batches"] for failure in row["failures"]),
                     *({"step": "verify-sources", **failure} for failure in sources["manifest_failures"])]
                 return result
+            if tgos_ledger is not None:
+                # Contract rule 4: only the ledger's own integrity and rebuild epoch, and the response file of
+                # every completed batch, are checked before any stage is built.
+                current["step"] = "tgos-ledger"
+                carried_ledger, ledger_files, ledger_hash = ledger_responses(tgos_ledger, exchange_dir)
+                result["steps"].append({"step": "tgos-ledger", "snapshot_id": Path(tgos_ledger).name,
+                                        "manifest_sha256": ledger_hash,
+                                        "batch_count": len(carried_ledger.batches),
+                                        "query_count": len(carried_ledger.queries),
+                                        "response_files_checked": len(ledger_files)})
             batches = sorted(entry["batch"] for entry in manifest["inputs"])
             work = run.root
             index = stage("offline-index", lambda: build_index(address_dir, descriptor, work))
@@ -649,11 +680,23 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
             state = stage("offline-state", lambda: resolve_offline(
                 pool, index, work, coordinate_tolerance_m=load_coordinate_tolerance(config),
                 suspended_counties=load_suspended_counties(config)))
-            review = stage("review", lambda: build_review(converted, state, work, descriptor=descriptor))
-            output = output_stage(converted, state)
+            current["step"] = "tgos-state"
+            tgos_plan = plan_tgos_state(state, tgos_ledger, exchange_dir, run.root.parent)
+
+            def same_tgos_inputs(path):
+                """A reused tgos-state must have been built from this ledger and these responses."""
+                recorded = _read(Path(path) / "manifest.json")["bindings"]["input_sha256"]
+                if recorded != tgos_plan.binding["input_sha256"]:
+                    raise ValueError(f"Run {run_id} has a tgos-state built from another TGOS ledger or response files; "
+                                     "use a new run id")
+
+            tgos = stage("tgos-state", lambda: build_tgos_state(state, work, tgos_plan), same_tgos_inputs)
+            review = stage("review", lambda: build_review(converted, state, work, descriptor=descriptor,
+                                                          tgos_state=tgos))
+            output = output_stage(converted, tgos)
             released = _read(output / "output.json")
             current["step"] = "run-report"
-            _, state_report = load_p2(state, "offline-state")
+            _, tgos_report = load_p2(tgos, "tgos-state")
             _, review_report = load_p2(review, "review")
             stages = {name: run.checkpoints()[name] for name in RUN_FULL_STAGES[:-1]}
             report = {
@@ -665,7 +708,14 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
                 "line_mode_members": converted_report.get("line_mode_members", []),
                 "detail_link": converted_report["detail_link"],
                 "member_count": len(converted_report["member_dispositions"]),
-                "address_status_counts": state_report["status_counts"],
+                "address_status_counts": tgos_report["status_counts"],
+                "tgos": {"ledger_snapshot": tgos_report["tgos_ledger_snapshot"],
+                         "ledger_manifest_sha256": tgos_report["tgos_ledger_manifest_sha256"],
+                         "batch_count": tgos_report["tgos_batch_count"],
+                         "result_count": tgos_report["tgos_result_count"],
+                         "reimported_batches": tgos_report["tgos_reimported_batches"],
+                         "carried_query_keys_recomputed": tgos_report["carried_query_keys_recomputed"],
+                         "tgos_carried_keyless_queries": tgos_report["tgos_carried_keyless_queries"]},
                 "review_reason_counts": review_report["reason_counts"],
                 "output": {"output_id": released["output_id"], "public_dir": released["public_dir"],
                            "release_dir": released["release_dir"],
@@ -703,6 +753,7 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
 def _run_full_command(args) -> int:
     result = run_full(run_id=args.run_id, cutoff=args.cutoff, address_dir=args.address_dir, runs_root=args.runs_root,
                       raw_dir=args.raw_dir, manifest_path=args.manifest, address_source=args.address_source,
-                      rules_path=args.garbled_rules, config=args.config, batch_rows=args.batch_rows)
+                      rules_path=args.garbled_rules, config=args.config, batch_rows=args.batch_rows,
+                      tgos_ledger=args.tgos_ledger, exchange_dir=args.exchange_dir)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["completed"] else 1

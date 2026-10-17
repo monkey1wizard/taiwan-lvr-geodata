@@ -113,7 +113,8 @@ def _old_style_ledger(prepared, work, status, *, only_sent=False):
 def test_carry_rederives_keys_of_old_and_new_style_text(tmp_path):
     _, prepared = _build(tmp_path)
     ledger, _ = _old_style_ledger(prepared, tmp_path / "old", "submitted")
-    _, carried, rekeyed = _carry_ledger(ledger)
+    carried = _carry_ledger(ledger)
+    carried, rekeyed = carried.queries, carried.rekeyed
     by_text = {r["address"]: r for r in carried if r["query_kind"] == "building_key"}
     assert FLOOR in by_text and TEXTS[VILLAGE] in by_text
     for text, row in by_text.items():

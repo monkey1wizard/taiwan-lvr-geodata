@@ -93,6 +93,53 @@ def test_full_run_cross_batch_three_categories_known_empty_and_duplicate_serials
     assert {name: files(run_dir / name / "snapshots") for name in RUN_FULL_STAGES} == before
 
 
+def test_run_full_without_a_ledger_has_a_tgos_state_equal_to_the_offline_state(tmp_path):
+    """B-4 b13/b15: the tgos-state stage runs after offline-state with an empty ledger, and review and output
+    read it, so their results are those of the offline state."""
+    import pyarrow.parquet as pq
+
+    from lvr_pipeline.output.build import write_output
+    from lvr_pipeline.storage.runs import sha256_file
+
+    inputs = setup_inputs(tmp_path)
+    result = run_full(run_id="noledger", **inputs)
+    assert result["completed"] is True, result["failures"]
+    assert [s["step"] for s in result["steps"] if s["step"] in RUN_FULL_STAGES] == RUN_FULL_STAGES
+    assert RUN_FULL_STAGES.index("tgos-state") == RUN_FULL_STAGES.index("offline-state") + 1
+    run_dir = inputs["runs_root"] / "noledger"
+
+    def snap(stage):
+        return run_dir / stage / "snapshots" / checkpoints(run_dir)[stage]["snapshot_id"]
+
+    offline, tgos = snap("offline-state"), snap("tgos-state")
+    for name in ["address_index", "address_observations", "unmatched_addresses", "coordinate_resolutions",
+                 "address_occurrences", "unique_addresses"]:
+        assert list(rows(tgos / f"{name}.parquet")) == list(rows(offline / f"{name}.parquet")), name
+    for name in ["tgos_batches", "tgos_queries", "tgos_imports", "alias_events", "verified_aliases"]:
+        assert list(rows(tgos / f"{name}.parquet")) == []
+    quality = json.loads((tgos / "quality.json").read_text(encoding="utf-8"))
+    assert quality["tgos_started"] is False and quality["tgos_ledger_snapshot"] is None
+    assert quality["source_state"]["snapshot_id"] == offline.name
+    assert quality["source_state"]["manifest_sha256"] == sha256_file(offline / "manifest.json")
+    assert quality["status_counts"] == json.loads((offline / "quality.json").read_text(encoding="utf-8"))["status_counts"]
+    report = json.loads(Path(result["report"]).read_text(encoding="utf-8"))
+    assert report["address_status_counts"]["located"] == 1  # the value test_full_run_... checks
+    assert report["tgos"]["batch_count"] == 0 and report["tgos"]["tgos_carried_keyless_queries"] == 0
+    assert report["stages"]["tgos-state"] == checkpoints(run_dir)["tgos-state"]
+    # The output is the one the offline state gives.
+    record = json.loads((snap("output") / "output.json").read_text(encoding="utf-8"))
+    public, release = tmp_path / "again" / "public", tmp_path / "again" / "release"
+    summary = write_output(snap("converted"), offline, public, release, spill_dir=tmp_path / "again-spill")
+    assert summary == record["summary"]
+    for relative, item in record["summary"]["files"].items():
+        mine = (run_dir / record["release_dir"] / relative) if item["format"] == "geoparquet" else (run_dir / record["public_dir"] / relative)
+        other = (release if item["format"] == "geoparquet" else public) / relative
+        if item["format"] == "geoparquet":
+            assert pq.read_table(mine).equals(pq.read_table(other))
+        else:
+            assert mine.read_bytes() == other.read_bytes()
+
+
 @pytest.mark.parametrize("missing", ["115q2_lvr_landcsv.zip", "101q1_lvr_landcsv.zip"])
 def test_missing_zip_is_incomplete_and_runs_no_stage(tmp_path, missing, capsys):
     inputs = setup_inputs(tmp_path)
@@ -133,7 +180,7 @@ def test_failed_stage_leaves_no_completion_and_residue_is_quarantined_on_resume(
     assert staged.name == built.name
     residue = {"staging": files(staged), "build": files(built)}
     assert residue["build"]  # the interrupted build wrote files
-    earlier = {name: checkpoints(run_dir)[name] for name in RUN_FULL_STAGES[:6]}
+    earlier = {name: checkpoints(run_dir)[name] for name in RUN_FULL_STAGES[:7]}
 
     monkeypatch.setattr(Stage, "finish", original)
     second = run_full(run_id="resume", **inputs)
@@ -147,9 +194,9 @@ def test_failed_stage_leaves_no_completion_and_residue_is_quarantined_on_resume(
     # Nothing deleted: the residue is byte-for-byte where the record says it went.
     assert {kind: files(path) for kind, path in targets.items()} == residue
     # Earlier stages are reused; the review is rebuilt under the same id, not from the residue.
-    assert {name: checkpoints(run_dir)[name] for name in RUN_FULL_STAGES[:6]} == earlier
+    assert {name: checkpoints(run_dir)[name] for name in RUN_FULL_STAGES[:7]} == earlier
     reused = {step["step"]: step["reused_checkpoint"] for step in second["steps"] if step["step"] in RUN_FULL_STAGES}
-    assert reused == {**{name: True for name in RUN_FULL_STAGES[:6]}, "review": False, "output": False, "run-report": False}
+    assert reused == {**{name: True for name in RUN_FULL_STAGES[:7]}, "review": False, "output": False, "run-report": False}
     assert checkpoints(run_dir)["review"]["snapshot_id"] == staged.name
     report = json.loads(Path(second["report"]).read_text(encoding="utf-8"))
     assert report["quarantined"] == moved

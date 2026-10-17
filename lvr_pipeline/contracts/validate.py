@@ -208,7 +208,9 @@ def validate_dataset_rows(values, dataset):
             if not 1 <= row["address_count"] <= 10_000:
                 raise ValueError("Invalid TGOS batch size")
         if dataset == "tgos-query":
-            if row["query_kind"] not in {"building_key", "district_missing"}:
+            # "keyless": a carried query whose text gives no key under the current rules (data contract,
+            # TGOS ledger rule 5). It is evidence only: never sent again, its response never adopted.
+            if row["query_kind"] not in {"building_key", "district_missing", "keyless"}:
                 raise ValueError("Invalid TGOS query kind")
             if (row["query_kind"] == "building_key") != (row["building_key"] is not None):
                 raise ValueError("TGOS query kind and building key disagree")

@@ -5,6 +5,7 @@ import pytest
 from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.storage.runs import digest
 from lvr_pipeline.tgos import import_tgos, prepare_tgos, transition_batch
+from lvr_pipeline.tgos.resolution import evidence_from_results
 from test_p3_tgos import fixture_two_unmatched, response
 from test_p2_offline import index_of
 
@@ -31,7 +32,8 @@ def _counts(work, snapshot):
     return (
         _snapshot_count(work),
         len(list(rows(snapshot / "tgos_imports.parquet"))),
-        len(list(rows(snapshot / "address_observations.parquet"))),
+        # b14: the snapshot holds the ledger only; the evidence is what its succeeded results stand for.
+        len(evidence_from_results(list(rows(snapshot / "tgos_imports.parquet")), list(rows(snapshot / "tgos_queries.parquet")))),
     )
 
 

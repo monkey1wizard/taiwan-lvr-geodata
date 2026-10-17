@@ -77,7 +77,7 @@ def cli(*args, cwd=None):
 def test_current_producer_hashes_match_what_the_run_recorded(baseline):
     """The script's producer_file_hashes agrees with the pipeline's bindings: package value digests to config_sha256."""
     document = package_json(baseline["package"])
-    for stage in ("converted", "offline-state"):
+    for stage in ("converted", "tgos-state"):
         directory = maintenance._snapshot_dir(baseline["package"], stage, document["baseline"][stage]["snapshot_id"])
         bindings, recorded = maintenance._snapshot_code(directory)
         assert recorded == maintenance.producer_file_hashes()
@@ -91,7 +91,7 @@ def test_export_then_rebuild_elsewhere_passes_with_every_file_same(baseline, tmp
     elsewhere.mkdir()
     document = package_json(baseline["package"])
     assert document["run_id"] == "base" and document["output"]["files_sha256"]
-    assert set(document["baseline"]) == {"converted", "offline-state", "output"}
+    assert set(document["baseline"]) == {"converted", "tgos-state", "output"}
     paths = {item["path"] for item in document["files"]}
     assert {"run/manifest.json", "run/checkpoints.json", "run/run_report.json"} <= paths
     assert not any(path.startswith(("snapshots/ingested", "snapshots/normalized")) for path in paths)

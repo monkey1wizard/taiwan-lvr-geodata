@@ -23,6 +23,7 @@ from lvr_pipeline.tgos import (  # noqa: E402
     _write_state,
     import_tgos,
     load_state,
+    merge_ledger,
     prepare_tgos,
     revoke_alias,
     transition_batch,
@@ -82,14 +83,19 @@ def send(state, work, tmp, batch_id, answers, *, mode="submitted", name="respons
     return import_tgos(submitted, work, batch_id, path)
 
 
+def merged(w, tgos):
+    """B-4 (b14): an import snapshot holds the ledger only; review and final state read its merged state."""
+    return None if tgos is None else merge_ledger(tgos, w["work"], w["tmp"] / "merged" / tgos.name)
+
+
 def review(w, tgos=None, *, decisions=None):
     return build_review(w["converted"], w["state"], fresh(w, "review"), descriptor=w["descriptor"],
-                        tgos_state=tgos, index=w["index"], review_decisions=decisions)
+                        tgos_state=merged(w, tgos), index=w["index"], review_decisions=decisions)
 
 
 def final(w, review_dir, tgos=None, *, baseline=None, work=None):
     return build_final_state(w["converted"], w["state"], work or fresh(w, "final"), review=review_dir,
-                             tgos_state=tgos, baseline=baseline)
+                             tgos_state=merged(w, tgos), baseline=baseline)
 
 
 def test_cross_year_and_category_adoption_lists_both_months(tmp_path):
@@ -151,7 +157,7 @@ def test_alias_revocation_leaves_final_state_unchanged(tmp_path):
     revoked = revoke_alias(seeded, w["work"], alias_key, reason="operator rejected equivalence")
     assert list(rows(revoked / "verified_aliases.parquet")) == []
     assert [r["action"] for r in rows(revoked / "alias_events.parquet")] == ["verified", "revoked"]
-    assert list(rows(seeded / "address_index.parquet")) == list(rows(revoked / "address_index.parquet"))
+    assert list(rows(merged(w, seeded) / "address_index.parquet")) == list(rows(merged(w, revoked) / "address_index.parquet"))
     second_final = final(w, review(w, revoked), revoked, baseline=first)
     assert list(rows(first / "address_index.parquet")) == list(rows(second_final / "address_index.parquet"))
     assert affected_of(second_final)["removed_total"] == 0
@@ -207,7 +213,7 @@ def test_submission_unknown_batch_imports_later_and_leaves_the_waiting_state(tmp
     assert [r["status"] for r in rows(imported / "tgos_batches.parquet")] == ["completed"]
     assert [r["status"] for r in rows(imported / "tgos_queries.parquet")] == ["succeeded"]
     assert not [r for r in second(review(w, imported)) if r["canonical_address"] == address]
-    located = {r["building_key"]: r for r in rows(imported / "address_index.parquet")}
+    located = {r["building_key"]: r for r in rows(merged(w, imported) / "address_index.parquet")}
     assert located[building_key(address)]["status"] == "located"
 
 
@@ -224,7 +230,7 @@ def test_a_succeeded_key_never_gets_a_second_result(tmp_path):
     query = next(q for q in rows(w["prepared"] / "tgos_queries.parquet") if q["batch_id"] == batch)
     first = send(w["prepared"], w["work"], w["tmp"], batch, {query["address"]: (query["address"], "121.57", "25.07")},
                  name="first")
-    assert {r["building_key"]: r for r in rows(first / "address_index.parquet")}[query["building_key"]]["status"] == "located"
+    assert {r["building_key"]: r for r in rows(merged(w, first) / "address_index.parquet")}[query["building_key"]]["status"] == "located"
     with pytest.raises(ValueError, match="not in a retryable state"):
         prepare_tgos(first, w["work"], w["tmp"] / "exchange-retry", index=index_of(w["state"]),
                      retry_fingerprints=[query["query_fingerprint"]], retry_reason="late different coordinate")

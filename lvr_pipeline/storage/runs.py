@@ -238,6 +238,21 @@ class SnapshotStore:
         if self._is_old_rule(version):
             # R07-6a: a snapshot made under another address rule version is rejected, not tolerated.
             raise ValueError(f"Snapshot was made under address rule {version}; it is never read")
+        return self._verify_structure(directory, manifest, draft=draft)
+
+    def verify_ledger(self, directory: Path) -> dict:
+        """Own integrity and rebuild epoch of a TGOS ledger snapshot; the address rule version is not judged.
+
+        Data contract, TGOS ledger rule 4: the query texts, batches and response hashes of a ledger are
+        evidence and can be read across rule versions. This is not a bypass of verify_integrity: the
+        ledger is only read by the carry-over code, which re-keys it under the current rules and
+        derives no address state from it.
+        """
+        manifest = _read_json(directory / "manifest.json")
+        return self._verify_structure(directory, manifest, draft=False)
+
+    @staticmethod
+    def _verify_structure(directory: Path, manifest: dict, *, draft: bool) -> dict:
         if manifest["complete"] is not (not draft) or manifest["schema_version"] != "1.0":
             raise ValueError("Invalid snapshot completion/schema")
         _identifier(manifest["snapshot_id"])

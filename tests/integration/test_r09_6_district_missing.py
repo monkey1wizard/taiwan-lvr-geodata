@@ -8,7 +8,7 @@ from lvr_pipeline.contracts.validate import validate_dataset_rows
 from lvr_pipeline.results.review import TGOS_REJECTION_CODES, build_review
 from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.storage.runs import digest
-from lvr_pipeline.tgos import import_tgos, load_state, prepare_tgos, transition_batch
+from lvr_pipeline.tgos import import_tgos, load_state, merge_ledger, prepare_tgos, transition_batch
 from lvr_pipeline.tgos.batches import select_district_candidates
 from test_p1_conversion import ADDRESS
 from test_p2_offline import index_of, run
@@ -101,7 +101,7 @@ def test_suspended_county_is_not_selected(built):
 
 
 def test_candidate_fill_is_adopted_without_changing_the_address_result(built):
-    imported, _, results = _import(
+    imported, work, results = _import(
         built, "good",
         {PLAIN: ("臺北市文山區測試路99號", GOOD), VILLAGE: ("臺北市中正區大安里測試路98號", GOOD)},
     )
@@ -111,21 +111,24 @@ def test_candidate_fill_is_adopted_without_changing_the_address_result(built):
     assert results[VILLAGE]["status"] == "succeeded"
     queries = {r["address"]: r for r in rows(imported / "tgos_queries.parquet")}
     assert queries[PLAIN]["status"] == queries[VILLAGE]["status"] == "succeeded"
+    merged = merge_ledger(imported, work, built["tmp"] / "merged-good")
     for name in (
         "address_index.parquet", "unmatched_addresses.parquet", "coordinate_resolutions.parquet",
         "address_observations.parquet",
     ):
-        assert list(rows(imported / name)) == list(rows(built["submitted"] / name))
+        # b14: the import snapshot holds the ledger only; the merged state equals the offline state.
+        assert list(rows(merged / name)) == list(rows(built["state"] / name))
 
 
 def test_key_query_in_the_same_batch_is_adopted_as_before(built):
-    imported, _, results = _import(
+    imported, work, results = _import(
         built, "key", {KEY: (KEY, GOOD), PLAIN: ("臺北市文山區測試路99號", GOOD)}
     )
     assert results[KEY]["status"] == "succeeded" and results[KEY]["reason"] is None
     assert results[KEY]["response_building_key"] is None
-    before = list(rows(built["submitted"] / "address_observations.parquet"))
-    after = list(rows(imported / "address_observations.parquet"))
+    before = list(rows(built["state"] / "address_observations.parquet"))
+    merged = merge_ledger(imported, work, built["tmp"] / "merged-key")
+    after = list(rows(merged / "address_observations.parquet"))
     added = [r for r in after if r["source_kind"] == "tgos_result"]
     assert len(after) == len(before) + 1 and [r["normalized_address"] for r in added] == [KEY]
 
@@ -158,7 +161,7 @@ def test_same_response_again_is_idempotent_and_review_skips_district_queries(bui
     assert import_tgos(imported, work, built["batch_id"], path) == imported
     review = build_review(
         built["converted"], built["state"], built["tmp"] / "work-review-out",
-        descriptor=built["descriptor"], tgos_state=imported,
+        descriptor=built["descriptor"], tgos_state=merge_ledger(imported, work, built["tmp"] / "merged-review"),
     )
     codes = {}
     for row in rows(review / "exception_addresses.parquet"):
@@ -168,14 +171,14 @@ def test_same_response_again_is_idempotent_and_review_skips_district_queries(bui
 
 
 def test_carried_ledger_keeps_the_district_query_and_does_not_resend_it(built):
-    tmp = built["tmp"] / "carry"
+    tmp = built["tmp"]
     first, _ = prepare_tgos(
-        built["state"], tmp / "old", tmp / "exchange", limit=2, index=built["index"]
+        built["state"], tmp / "carry-old", tmp / "carry-exchange", limit=2, index=built["index"]
     )
     old = {r["address"]: r for r in rows(first / "tgos_queries.parquet")}
     assert set(old) == {KEY, VILLAGE}
     seeded, _ = prepare_tgos(
-        built["state"], tmp / "new", tmp / "exchange", ledger=first, index=built["index"]
+        built["state"], tmp / "carry-new", tmp / "carry-exchange", ledger=first, index=built["index"]
     )
     queries = list(rows(seeded / "tgos_queries.parquet"))
     carried = {r["address"]: r for r in queries if r["address"] in old}
@@ -208,5 +211,9 @@ def test_query_kind_and_building_key_must_agree():
         )
     with pytest.raises(ValueError, match="candidate towns"):
         validate_dataset_rows([_query_row(query_kind="district_missing")], "tgos-query")
+    # A carried query without a key under the current rules (contract rule 5) has no key and no towns.
+    validate_dataset_rows([_query_row(query_kind="keyless")], "tgos-query")
+    with pytest.raises(ValueError, match="kind and building key"):
+        validate_dataset_rows([_query_row(query_kind="keyless", building_key=key)], "tgos-query")
     with pytest.raises(ValueError, match="query kind"):
         validate_dataset_rows([_query_row(query_kind="other", building_key=key)], "tgos-query")

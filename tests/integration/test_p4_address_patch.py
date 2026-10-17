@@ -2,7 +2,7 @@
 
 from lvr_pipeline.results.address_patch import _split_legacy, export_address_patch, verify_address_patch
 from lvr_pipeline.storage.parquet import rows
-from lvr_pipeline.tgos import import_tgos, prepare_tgos, transition_batch
+from lvr_pipeline.tgos import import_tgos, merge_ledger, prepare_tgos, transition_batch
 from test_p3_tgos import fixture_state, response
 from test_p2_offline import index_of
 
@@ -30,9 +30,11 @@ def imported_state(tmp_path, response_address):
             }
         ],
     )
-    return import_tgos(
+    imported = import_tgos(
         submitted, tmp_path / "work", query["batch_id"], result
     )
+    # b14: an import snapshot holds the ledger only; the patch export reads the merged state.
+    return merge_ledger(imported, tmp_path / "work", tmp_path / "merged")
 
 
 def test_export_address_patch_keeps_legacy_columns_and_provenance(tmp_path):
