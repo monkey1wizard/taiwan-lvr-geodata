@@ -111,10 +111,12 @@ def test_audit_reports_five_categories(tmp_path):
     [conflict] = table(out, "key_coordinate_variants")
     assert conflict["distinct_coordinates"] == 2
     expected = EARTH_RADIUS_M * math.radians(0.001)
-    assert conflict["max_distance_m"] == pytest.approx(expected, abs=1e-6)
-    assert round(conflict["max_distance_m"], 2) == 111.2
+    # B-10: distances are rounded to 0.001 m (raw 111.19508... before the rule).
+    assert conflict["max_distance_m"] == 111.195
+    assert conflict["max_distance_m"] == pytest.approx(expected, abs=1e-3)
+    assert round(conflict["max_distance_m"], 1) == 111.2
     assert {(conflict["lat_a"], conflict["lat_b"])} == {(25.0, 25.001)}
-    assert coordinate["max_distance_m_quantiles"]["max"] == pytest.approx(expected, abs=1e-6)
+    assert coordinate["max_distance_m_quantiles"]["max"] == pytest.approx(expected, abs=1e-3)
     assert coordinate["keys_by_county"] == {"63": 1}
 
     # 4. Unparsed: no key (missing 號, and an unresolvable county).

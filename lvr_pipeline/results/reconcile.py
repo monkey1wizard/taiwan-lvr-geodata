@@ -118,14 +118,27 @@ def suspension_report(counties: list[dict]) -> dict:
     return {"rule": SUSPENSION_RULE, "counties": counties}
 
 
+def round_distance_m(value: float) -> float:
+    """Round a non-negative distance in metres to 0.001 m, half away from zero.
+
+    Owner decision (B-10): every distance and distance sum is rounded this way
+    before it is stored or compared. ``_haversine_sql`` applies the same rule in SQL.
+    The built-in ``round()`` is not used because it rounds half to even.
+    """
+    return math.floor(value * 1000 + 0.5) / 1000
+
+
 def haversine_m(a: tuple[float, float], b: tuple[float, float]) -> float:
-    """Distance in metres between (lng, lat) points; same formula as ``_haversine_sql``."""
+    """Distance in metres between (lng, lat) points, rounded to 0.001 m.
+
+    Same formula as ``_haversine_sql``, and the same 0.001 m rounding.
+    """
     lng_a, lat_a = a
     lng_b, lat_b = b
     h = math.sin(math.radians(lat_b - lat_a) / 2) ** 2 + math.cos(
         math.radians(lat_a)
     ) * math.cos(math.radians(lat_b)) * math.sin(math.radians(lng_b - lng_a) / 2) ** 2
-    return 2 * EARTH_RADIUS_M * math.asin(math.sqrt(min(1.0, h)))
+    return round_distance_m(2 * EARTH_RADIUS_M * math.asin(math.sqrt(min(1.0, h))))
 
 
 def adopt_coordinates(points, tolerance_m: float | None) -> dict:
@@ -149,7 +162,8 @@ def adopt_coordinates(points, tolerance_m: float | None) -> dict:
             sums[b].append(distance)
             largest = max(largest, distance)
     # fsum is exactly rounded, so ties do not depend on summation order.
-    totals = {point: math.fsum(values) for point, values in sums.items()}
+    # Sums are rounded to 0.001 m (B-10) so the medoid choice and the output match SQL.
+    totals = {point: round_distance_m(math.fsum(values)) for point, values in sums.items()}
     within = tolerance_m is not None and largest <= tolerance_m
     representative = (
         min(coordinates, key=lambda point: (totals[point], point)) if within else None

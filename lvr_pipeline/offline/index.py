@@ -359,12 +359,17 @@ AUDIT_FILES = {
 
 
 def _haversine_sql(a: str, b: str) -> str:
-    """Great-circle distance in metres on a sphere of radius EARTH_RADIUS_M."""
+    """Great-circle distance in metres on a sphere of radius EARTH_RADIUS_M, rounded to 0.001 m.
+
+    The rounding is half away from zero, the same as ``reconcile.round_distance_m``.
+    """
     return (
+        "floor(("
         f"2 * {EARTH_RADIUS_M} * asin(sqrt(least(1.0, "
         f"pow(sin(radians({b}.lat - {a}.lat) / 2), 2) + "
         f"cos(radians({a}.lat)) * cos(radians({b}.lat)) * "
         f"pow(sin(radians({b}.lng - {a}.lng) / 2), 2))))"
+        ") * 1000 + 0.5) / 1000"
     )
 
 
