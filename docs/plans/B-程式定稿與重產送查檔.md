@@ -69,9 +69,29 @@ C 段的村里代碼採用規則要用這張表。表的擴充會改綁定，所
 
 ## 程式事實與行號
 
-- [ ] b28 由施做 session 以當時 HEAD 重查後填入。要列：`DAILY_LIMIT` 與 `--limit`；送查選擇只選 `unmatched` 與 `outside_scope`；可重送狀態集合；批次狀態轉換；匯入接受的狀態；距離函式 `haversine_m`、`_haversine_sql`、`adopt_coordinates`；帳本帶入函式；快照複製的位置；`run-full` 階段表；`admin_towns.json` 的產生與核對位置
+- [x] b28 10-18 以 HEAD `e9be8d7` 查定，haiku 子代理查、Claude 抽查 15 條相符。施做前仍先 `grep` 確認
 
-舊版行號以 `a7244d2` 與 `7895cca` 為準，R09-2 之後已變，不得沿用。
+| 事實 | 位置 |
+| --- | --- |
+| `DAILY_LIMIT = 10_000`；CLI `--limit` 預設是字面值 10_000，不引用常數 | `lvr_pipeline/tgos/batches.py:20`、`lvr_pipeline/cli.py:97` |
+| 送查選擇 `select_unmatched_candidates`，只選 `unmatched` 與 `outside_scope` | `batches.py:306-349`，過濾在 `:327` |
+| 文字算不回原鍵的計數 `text_not_round_trip` | `batches.py:337-339` |
+| 門牌層級查詢文字 `key_query_text`，往返檢查 `building_key(text) != key` | `batches.py:214-230`，檢查在 `:228-229` |
+| 缺區查詢文字 `district_query_text`、候選區與無候選計數 | `batches.py:233`、`:352-425`、報告欄位 `:624` |
+| 可重送狀態 `{failed, rejected, cancelled}` | `batches.py:498` |
+| 批次狀態轉換表：prepared → submitted／submission_unknown／cancelled；submission_unknown → submitted／cancelled；submitted → cancelled | `batches.py:670-674`，函式 `transition_batch` `:649-700` |
+| 帳本帶入 `_carry_ledger` | `batches.py:253-303` |
+| TGOS 狀態快照複製來源狀態全部檔案：`_write_state` 迴圈把來源路徑交給 `Stage.finish`，`SnapshotStore.add` 以 `shutil.copyfileobj` 逐檔複製 | `batches.py:109-119`、`lvr_pipeline/storage/runs.py:519-539`、複製在 `runs.py:201` |
+| 匯入接受 submitted、submission_unknown、completed；completed 且回傳雜湊相同直接回傳原快照；不同則拒絕 | `lvr_pipeline/tgos/validate.py:242`、`:245`、`:248-249` |
+| 距離 `haversine_m`、代表點 `adopt_coordinates` | `lvr_pipeline/results/reconcile.py:121-128`、`:131-163`，唯一呼叫 `:147` |
+| SQL 距離 `_haversine_sql` 與兩個呼叫處 | `lvr_pipeline/offline/index.py:361-368`、`index.py:502`、`lvr_pipeline/results/review.py:388` |
+| 驗證以 `adopt_coordinates` 重算 `coordinate-resolution` 並完全相等比對 `max_distance_m` | `lvr_pipeline/contracts/validate.py:87-133`，比對在 `:111`、`:128` |
+| `RUN_FULL_STAGES`：offline-index、ingested、normalized、converted、address-pool、offline-state、review、output、run-report | `lvr_pipeline/pipeline.py:314-315` |
+| `admin_towns.json`：產生 `write_admin_towns`、CLI 預設路徑、載入 `load_admin_towns`、`admin_towns_stale` 檢查與 `run_full` 呼叫 | `lvr_pipeline/addresses/admin.py:146-154`、`cli.py:25`、`admin.py:157-175`、`admin.py:182-192`、`pipeline.py:438` |
+| `NORMALIZATION_VERSION = "v2.6"`、`drop_repeated_county`、`building_key`、`door_parts`、`same_door` | `lvr_pipeline/addresses/identity.py:15`、`:66-73`、`:133-184`、`:187-195`、`:212-222` |
+| `canonicalize` 在 `AdministrativeNames` 類別內，不在 identity.py | `lvr_pipeline/offline/match.py:62` |
+| `normalize_address` | `lvr_pipeline/transactions/normalize.py:39-43` |
+| 程式指紋的檔案清單：`lvr_pipeline` 各子目錄 `*.py`、`contracts/json/*.json`、`uv.lock` | `runs.py:485-497` |
 
 ## 陷阱
 

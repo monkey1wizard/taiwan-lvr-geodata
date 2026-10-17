@@ -66,9 +66,25 @@
 
 ## 程式事實與行號
 
-- [ ] d22 由施做 session 以當時 HEAD 重查後填入。要列：`run-full` 階段表；review 與 output 的輸入；`output_id` 的雜湊輸入；`build_review` 參數；review 階段目錄與輸出檔；待查核碼清單與總數；TGOS 拒絕原因與待查核碼對應；回傳列狀態與 `conflict` 判定；可重送狀態與 `--retry-query-fingerprint`；缺區地址與 `unique_addresses` 的關係；`catalog.json` 每檔欄位；每月 CSV 路徑；程式中沒有 `backfill`
+- [x] d22 10-18 以 HEAD `e9be8d7` 查定，haiku 子代理查、Claude 抽查 14 條相符。B 段會改 `pipeline.py`，施做前仍先 `grep` 確認
 
-舊版行號以 `7895cca` 為準，B 段 會改 `pipeline.py`，不得沿用。
+| 事實 | 位置 |
+| --- | --- |
+| `RUN_FULL_STAGES` 沒有 TGOS，也沒有人工判定 | `lvr_pipeline/pipeline.py:314-315` |
+| `run_full` 的 review 呼叫不傳 `tgos_state`；output 只讀 converted 與 offline-state | `pipeline.py:652`、`:653` |
+| `output_id` 只由 converted 與 offline-state 的 `manifest.json` 雜湊加字面值 `22-column` 算出 | `pipeline.py:529-531` |
+| `build_review` 已有選用參數 `tgos_state`、`prior_review`、`run_id` | `lvr_pipeline/results/review.py:276-285` |
+| review 階段目錄與輸出：`exception_addresses`、`cross_check_addresses` 的 Parquet 與 CSV | `review.py:326`、`:330-334`、`:436-438`、`:456-458` |
+| 待查核碼 19 個，沒有查無、文字算不回鍵、缺區無候選的碼 | `lvr_pipeline/contracts/schemas.py:328-352` |
+| TGOS 拒絕訊息對待查核碼 8 對 | `review.py:86-97` |
+| 回傳列狀態 succeeded、failed、rejected；晚到成功座標與先前不同記 `conflict` | `lvr_pipeline/tgos/validate.py:282`、`:305`、`:349-352` |
+| 可重送狀態；核准重送要全部合格且排在最前 | `lvr_pipeline/tgos/batches.py:498`、`:489-504`、`:553-555` |
+| `--retry-query-fingerprint` 每個指紋一個旗標 | `lvr_pipeline/cli.py:98`、傳入 `pipeline.py:207` |
+| 缺區地址沒有門牌鍵，不進 `unique_addresses`，留在出現列 | `lvr_pipeline/addresses/pool.py:354`、`:372`、過濾 `:267` |
+| `catalog.json` 每檔記 `rows`、`size_bytes`、`sha256` | `lvr_pipeline/output/catalog.py:45-47` |
+| 每月 CSV 路徑 `csv/YYYY/taiwanlvr_YYYYMM_<類別>.csv`；GeoParquet 在 `release/taiwanlvr.parquet`，release 目錄必須為空 | `lvr_pipeline/output/build.py:74`、`:55`、`:47` |
+| 程式中沒有 `backfill`、`final-state`、`review-decisions`、`second_review` | 全部 not found |
+| `RunStore`、`stage`、`reusable`、`bindings` 與程式指紋檔案清單 | `lvr_pipeline/storage/runs.py:381`、`:415`、`:436`、`:485-497` |
 
 ## 陷阱
 

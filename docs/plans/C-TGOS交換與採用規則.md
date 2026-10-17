@@ -89,7 +89,23 @@ B 段完成，送查檔已從過渡基線重產。
 
 ## 程式事實與行號
 
-- [ ] c35 由施做 session 以當時 HEAD 重查後填入。要列：`same_door` 與歧義檢查位置；待查核碼清單與總數；TGOS 拒絕原因與待查核碼對應；回傳列狀態與 `conflict` 判定；可重送狀態與 `--retry-query-fingerprint`
+- [x] c35 10-18 以 HEAD `e9be8d7` 查定，haiku 子代理查、Claude 抽查 6 條相符。施做前仍先 `grep` 確認
+
+| 事實 | 位置 |
+| --- | --- |
+| `same_door`：簽章相同，查詢有寫的村里或鄰不得與回傳不同；唯一呼叫處在匯入 | `lvr_pipeline/addresses/identity.py:212-222`、`lvr_pipeline/tgos/validate.py:298` |
+| 跨村里鄰歧義 `_layer_is_ambiguous`，呼叫處與拒絕訊息 | `validate.py:48-63`、`:301-302`；訊息對應碼在 `lvr_pipeline/results/review.py:94` |
+| 待查核碼 `EXCEPTION_REASON_CODES` 共 19 個，含 `tgos_isolated`、`tgos_response_incomplete`、`tgos_coordinate_invalid`、`tgos_village_ambiguous`；沒有查無、文字算不回鍵、缺區無候選、鄰多位置的碼 | `lvr_pipeline/contracts/schemas.py:328-352` |
+| TGOS 拒絕訊息對待查核碼 `TGOS_REJECTION_CODES` 共 8 對 | `review.py:86-97` |
+| 回傳列狀態：有座標 `succeeded`、無座標 `failed`、例外 `rejected` | `validate.py:282`、`:305`、`:317` |
+| 同一查詢的成功座標與先前已定位座標不同時，查詢列記 `conflict` | `validate.py:349-352` |
+| 可重送狀態與核准重送的五個錯誤：缺理由、不在歷史、不在可重送狀態、不再合格、配額放不下 | `lvr_pipeline/tgos/batches.py:498`、`:491`、`:497`、`:503`、`:556`、`:558` |
+| CLI `--retry-query-fingerprint` 為 `action="append"`，另需 `--retry-reason` | `lvr_pipeline/cli.py:98-99` |
+| `prepare-tgos` 參數：`--state`、`--index` 必填、`--date-file`、`--limit`、重送兩項、`--ledger`、`--runs-root`、`--exchange-dir`、`--run-id` 必填 | `cli.py:88-103` |
+| `import-tgos` 參數：`--state`、`--batch`、`--response`、`--runs-root`、`--run-id` 必填。目前沒有 `--index`，c23 要加 | `cli.py:123-128` |
+| 缺區查詢：`select_district_candidates`、文字、指紋 `digest(["district_missing", 縣市碼, 文字])`、`query_kind`、`candidate_towns` | `batches.py:352-435`，指紋 `:394`，欄位 `:434-435` |
+| `response_building_key` 只在缺區分支寫入，同址分支不寫；`tgos_district_fill` 為採用原因 | `validate.py:278`、`:292-293`、`:321`；欄位定義 `schemas.py:188` |
+| `index_manifest_sha256` 在 `prepare` 核對、在離線狀態報告寫入 | `batches.py:467`、`lvr_pipeline/results/reconcile.py:531` |
 
 ## 陷阱
 
