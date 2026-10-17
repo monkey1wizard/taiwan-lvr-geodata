@@ -18,7 +18,7 @@ from test_p2_offline import source  # noqa: E402
 from test_run_full import checkpoints, setup_inputs  # noqa: E402
 
 STAGES = ["offline-index", "ingested", "normalized", "converted", "address-pool", "offline-state", "tgos-state",
-          "review", "output", "run-report"]
+          "review", "final-state", "output", "run-report"]
 
 
 def git(root, *args):
@@ -112,7 +112,7 @@ def test_run_full_with_docs_only_commit_passes_every_stage_and_records_head(tmp_
     assert [e["step"] for e in entries] == STAGES
     assert all(e["actual_head"] == head != pinned and e["head_matches"] is False for e in entries)
     # One full hash check at the first stage entry; later entries see the same HEAD and only check status.
-    assert [e["full_check"] for e in entries] == [True] + [False] * 9
+    assert [e["full_check"] for e in entries] == [True] + [False] * 10
     assert all(e["checked_at"] for e in entries)
     assert result["address_source_head"] == entries
 
@@ -121,7 +121,7 @@ def test_run_full_with_docs_only_commit_passes_every_stage_and_records_head(tmp_
     newer = commit_all(inputs["address_dir"], "docs again")
     again = run_full(run_id="docs", **inputs)
     assert again["completed"] is True, again["failures"]
-    assert [e["full_check"] for e in again["address_source_head"]] == [True] + [False] * 9
+    assert [e["full_check"] for e in again["address_source_head"]] == [True] + [False] * 10
     assert {e["actual_head"] for e in again["address_source_head"]} == {newer}
 
 

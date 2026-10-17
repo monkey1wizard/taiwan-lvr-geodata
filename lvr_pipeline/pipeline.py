@@ -16,7 +16,9 @@ from .addresses.address_fixes import load_address_char_fixes
 from .addresses.identity import NORMALIZATION_VERSION
 from .contracts import SCHEMA_VERSION
 from .results.reconcile import DEFAULT_CONFIG, load_coordinate_tolerance, load_suspended_counties, resolve_offline, load_p2
+from .results.final_state import build_final_state
 from .results.review import build_review
+from .results.second_review import decision_binding, load_decisions
 from .output.build import write_output
 from .output.catalog import write_catalog
 from .output.verify import OutputVerificationError, verify_output
@@ -324,8 +326,11 @@ def _run_offline_and_output(args):
 
 # R06-4: one full offline run over every batch of the raw manifest.
 RUN_FULL_STAGES = ["offline-index", "ingested", "normalized", "converted", "address-pool",
-                   "offline-state", "tgos-state", "review", "output", "run-report"]
+                   "offline-state", "tgos-state", "review", "final-state", "output", "run-report"]
 RUN_FULL_SCOPE = "all-manifest-batches"
+# R10-1c: the owner's decision files of the second manual-review area; read, never written. Only the CLI
+# supplies this default (when it exists); run_full itself applies no decision unless it is given a directory.
+DEFAULT_REVIEW_DECISIONS = Path("data/review-decisions")
 
 
 def _utc_stamp() -> str:
@@ -431,14 +436,21 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
              address_source: Path = Path("config/sources/address_source.json"),
              rules_path: Path = Path("config/rules/character-fixes.csv"), config: Path | None = None,
              batch_rows: int = 1024, tgos_ledger: Path | None = None,
-             exchange_dir: Path = Path("data/tgos")) -> dict:
+             exchange_dir: Path = Path("data/tgos"), review_decisions: Path | None = None,
+             backfill_baseline: Path | None = None) -> dict:
     """verify-sources, offline index, ingest, normalize, converted, coverage, address pool,
-    offline state, tgos-state and review, each stage committed through RunStore.
+    offline state, tgos-state, review and final-state, each stage committed through RunStore.
 
     ``tgos_ledger`` is a TGOS state snapshot whose batches and queries are carried into the run
     (data contract, TGOS ledger rules 4 to 6). The tgos-state stage re-imports every response it had
     completed, read from ``exchange_dir``, and writes the merged state that review and output read.
     Without a ledger that stage still runs, with an empty ledger, so its tables equal the offline state.
+
+    ``review_decisions`` is the directory of the owner's decision files (data contract, second manual-review
+    area). Left out (None), no decision is applied; a directory that is given and missing fails before anything
+    is written. The run report records the
+    directory and the name and SHA-256 of every file. ``backfill_baseline`` is the final-state snapshot of
+    the last published version; without it the final-state stage compares with this run's tgos-state.
 
     The result is complete only when every step passed; only then is the ``run-report``
     stage written, and that checkpoint is the run's completion state.
@@ -458,6 +470,13 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
         if not isinstance(_read(address_source).get("char_fixes"), dict):
             source_failures.append({"step": "address-source", "code": "address_source_missing_char_fixes",
                                     "detail": "the address source has no char_fixes entry; run pin-address-source"})
+    decisions_dir = Path(review_decisions) if review_decisions is not None else None
+    if decisions_dir is not None and not decisions_dir.is_dir():
+        source_failures.append({"step": "review-decisions", "code": "review_decisions_missing",
+                                "detail": f"review decisions directory does not exist: {decisions_dir}"})
+    if backfill_baseline is not None and not Path(backfill_baseline).is_dir():
+        source_failures.append({"step": "backfill-baseline", "code": "backfill_baseline_missing",
+                                "detail": f"backfill baseline snapshot does not exist: {backfill_baseline}"})
     if source_failures:
         return {"run_id": run_id, "completed": False, "started_at": datetime.now(timezone.utc).isoformat(),
                 "quarantined": [], "steps": [], "failures": source_failures}
@@ -505,9 +524,9 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
         reused = run.reusable(name, bindings_)
         if reused:
             path = run.stage(name).root / "snapshots" / run.checkpoints()[name]["snapshot_id"]
-            if reuse_check is not None:
-                reuse_check(path)
-        else:
+            # A check raises when the run can never use the checkpoint and returns False to rebuild the stage.
+            reused = reuse_check is None or reuse_check(path) is not False
+        if not reused:
             headroom = disk_headroom(run.root)
             if not headroom["ok"]:
                 raise DiskHeadroomError(f"free {headroom['free_ratio']:.4f} of disk before {name}, "
@@ -535,7 +554,7 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
                                                 "spill_peak_bytes"]}
                           for step in result["steps"] if "snapshot_bytes" in step]}
 
-    def output_stage(converted, state):
+    def output_stage(converted, state, final_state):
         """R07-8b: write_output into <run>/output/<output_id>/{public,release}, committed as one snapshot.
 
         Reused only when the checkpoint verifies, the snapshot id equals the id derived from the
@@ -546,10 +565,11 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
         check_source("output")
         start = time.perf_counter()
         reset_peak("step")
-        input_hashes = [sha256_file(Path(converted) / "manifest.json"), sha256_file(Path(state) / "manifest.json")]
+        input_hashes = [sha256_file(Path(converted) / "manifest.json"), sha256_file(Path(state) / "manifest.json"),
+                        sha256_file(Path(final_state) / "manifest.json")]
         # ``state`` is the tgos-state snapshot of this run; the id below keeps the earlier key name.
         output_id = "output-" + digest({"converted": input_hashes[0], "state": input_hashes[1],
-                                        "contract": "22-column"})[:24]
+                                        "final_state": input_hashes[2], "contract": "22-column"})[:24]
         store = run.stage("output")
         final = store.root / "snapshots" / output_id
         output_root = store.root / output_id
@@ -576,7 +596,7 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
             spill = store.root / "build" / f"spill-{output_id}"
             try:
                 summary = write_output(converted, state, output_root / "public", output_root / "release",
-                                       spill_dir=spill)
+                                       spill_dir=spill, final_state=final_state)
             finally:
                 shutil.rmtree(spill, ignore_errors=True)
             _, converted_report = load_snapshot(converted, "converted")
@@ -691,13 +711,35 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
                                      "use a new run id")
 
             tgos = stage("tgos-state", lambda: build_tgos_state(state, work, tgos_plan), same_tgos_inputs)
-            review = stage("review", lambda: build_review(converted, state, work, descriptor=descriptor,
-                                                          tgos_state=tgos))
-            output = output_stage(converted, tgos)
+            current["step"] = "review"
+            decision_files = decision_binding(load_decisions(decisions_dir)) if decisions_dir is not None else []
+
+            def same_decisions(path):
+                """A reused review must have read exactly these decision files; otherwise it is rebuilt."""
+                block = _read(Path(path) / "quality.json")["second_review"]
+                return [[item["file"], item["sha256"]] for item in block["decision_files"]] == decision_files
+
+            review = stage("review", lambda: build_review(
+                converted, state, work, descriptor=descriptor, tgos_state=tgos, index=index,
+                review_decisions=decisions_dir), same_decisions)
+            baseline_hash = sha256_file(Path(backfill_baseline if backfill_baseline is not None else state)
+                                        / "manifest.json")
+
+            def same_final_inputs(path):
+                """A reused final-state must have read this review and this baseline; otherwise it is rebuilt."""
+                recorded = _read(Path(path) / "quality.json")
+                return (recorded["review_manifest_sha256"] == sha256_file(Path(review) / "manifest.json")
+                        and recorded["baseline_manifest_sha256"] == baseline_hash)
+
+            final = stage("final-state", lambda: build_final_state(
+                converted, state, work, review=review, tgos_state=tgos, baseline=backfill_baseline, config=config),
+                same_final_inputs)
+            output = output_stage(converted, tgos, final)
             released = _read(output / "output.json")
             current["step"] = "run-report"
             _, tgos_report = load_p2(tgos, "tgos-state")
             _, review_report = load_p2(review, "review")
+            _, final_report = load_p2(final, "final-state")
             stages = {name: run.checkpoints()[name] for name in RUN_FULL_STAGES[:-1]}
             report = {
                 "run_id": run_id, "completed": True, "bindings": bindings_, "stages": stages,
@@ -717,6 +759,20 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
                          "carried_query_keys_recomputed": tgos_report["carried_query_keys_recomputed"],
                          "tgos_carried_keyless_queries": tgos_report["tgos_carried_keyless_queries"]},
                 "review_reason_counts": review_report["reason_counts"],
+                "review_decisions": {"dir": decisions_dir.as_posix() if decisions_dir is not None else None,
+                                     "exists": decisions_dir is not None,
+                                     "files": decision_files},
+                "second_review": review_report["second_review"],
+                "final_state": {"baseline_kind": final_report["baseline_kind"],
+                                "baseline_manifest_sha256": final_report["baseline_manifest_sha256"],
+                                "baseline_run_id": final_report["baseline_run_id"],
+                                "status_counts": final_report["status_counts"],
+                                "affected": final_report["affected"],
+                                "source_doors": final_report["source_doors"],
+                                "coordinate_source_rows": final_report["coordinate_source_rows"],
+                                "decisions": final_report["decisions"],
+                                "tgos_manual_conflict": final_report["tgos_manual_conflict"],
+                                "tgos_response_address_missing": final_report["tgos_response_address_missing"]},
                 "output": {"output_id": released["output_id"], "public_dir": released["public_dir"],
                            "release_dir": released["release_dir"],
                            "total_rows": released["summary"]["total_rows"],
@@ -732,7 +788,8 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
             }
             hashes = [sha256_file(run.stage(name).root / "snapshots" / entry["snapshot_id"] / "manifest.json")
                       for name, entry in stages.items()]
-            path = stage("run-report", lambda: write_report(report, hashes))
+            path = stage("run-report", lambda: write_report(report, hashes),
+                         lambda reused: _read(reused / "manifest.json")["bindings"]["input_sha256"] == hashes)
             result["report"] = str(path / "run_report.json")
             result["completed"] = True
         except AddressSourceChanged as exc:
@@ -751,9 +808,14 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
 
 
 def _run_full_command(args) -> int:
+    # The default directory is used only when it exists; a directory named with the flag must exist (run_full).
+    decisions = args.review_decisions
+    if decisions is None and DEFAULT_REVIEW_DECISIONS.is_dir():
+        decisions = DEFAULT_REVIEW_DECISIONS
     result = run_full(run_id=args.run_id, cutoff=args.cutoff, address_dir=args.address_dir, runs_root=args.runs_root,
                       raw_dir=args.raw_dir, manifest_path=args.manifest, address_source=args.address_source,
                       rules_path=args.garbled_rules, config=args.config, batch_rows=args.batch_rows,
-                      tgos_ledger=args.tgos_ledger, exchange_dir=args.exchange_dir)
+                      tgos_ledger=args.tgos_ledger, exchange_dir=args.exchange_dir,
+                      review_decisions=decisions, backfill_baseline=args.backfill_baseline)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["completed"] else 1

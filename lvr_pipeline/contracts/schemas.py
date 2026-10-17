@@ -359,6 +359,8 @@ EXCEPTION_REASON_CODES = (
     "district_no_candidate_town",
     # R10-1b
     "tgos_manual_conflict",
+    # R10-1c
+    "tgos_keyless_query",
 )
 OFFLINE_SCHEMAS["exception-address"] = _schema(
     "exception-address",

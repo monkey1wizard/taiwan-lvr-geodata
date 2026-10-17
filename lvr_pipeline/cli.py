@@ -50,6 +50,12 @@ def _add_offline_and_output_commands(sub):
                    help="TGOS state snapshot whose batches and queries are carried into the run (contract rules 4 to 6)")
     p.add_argument("--exchange-dir", type=Path, default=Path("data/tgos"),
                    help="TGOS exchange folders holding the Address_Finish.csv of carried batches")
+    p.add_argument("--review-decisions", type=Path,
+                   help="Directory of the owner decision files (default data/review-decisions when it exists); "
+                        "read only")
+    p.add_argument("--backfill-baseline", type=Path,
+                   help="final-state snapshot of the last published version to compare with "
+                        "(default: this run's tgos-state)")
     p = sub.add_parser("build-offline-index")
     p.add_argument("--address-dir", type=Path, required=True)
     p.add_argument(

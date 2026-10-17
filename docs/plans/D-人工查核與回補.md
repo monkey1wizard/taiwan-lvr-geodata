@@ -15,7 +15,7 @@
 ### D-1 第二類人工查核區（R10-1a）
 
 - [x] d01 在 `build_review` 內建立 `second_review.parquet`、`second_review_observations.parquet` 與同名 CSV，規格依資料契約
-- [ ] d02 `run-full` 新增 `--review-decisions <目錄>`，預設 `data/review-decisions/`。目錄下全部判定檔的檔名與 SHA-256 寫入 review 階段綁定，新增判定檔會使 review 與之後階段重建。10-18 已完成 `build_review(review_decisions=...)` 與綁定；`run-full` 旗標等B 段 b12 到 b13 提交後接
+- [x] d02 `run-full` 新增 `--review-decisions <目錄>`，預設 `data/review-decisions/`。目錄下全部判定檔的檔名與 SHA-256 寫入 review 階段綁定，新增判定檔會使 review 與之後階段重建。10-18 完成：CLI 預設目錄不存在時不套用判定，明確指定的目錄不存在時失敗
 - [x] d03 新增進入原因代碼 `tgos_not_found`、`tgos_key_text_not_round_trip`、`district_no_candidate_town`，加入 `EXCEPTION_REASON_CODES`。文字算不回鍵與缺區無候選區要在 review 建置時以同一函式重算，不讀 `prepare-tgos` 的報告
 - [x] d04 回傳門牌鍵：帳本中 `response_building_key` 為空的列，建置時以現行 `building_key` 從 `response_address` 重算，算不出時欄位為空並保留原因
 - [x] d05 判定檔核對依契約：檔名雜湊不符拒絕、同檔重複查核鍵拒絕、`orphaned` 與 `stale` 不套用並計數。`accept_tgos_response` 核對 `tgos_result_id` 屬於該查核鍵且回傳座標通過範圍檢查；`manual_coordinate` 核對經緯度範圍
@@ -26,11 +26,11 @@
 
 回補指把 TGOS 採用與人工 `adopted` 判定的座標放進公開輸出。依 10-12 決定，回補只新增列；經新規則核驗的結果可更新既有列的地址與座標。
 
-- [ ] d08 接法：新增 `final-state` 階段，位於 review 之後、output 之前。以 offline-state 為底，加上 tgos-state 的採用結果與 review 的 `adopted` 判定，產生 output 要讀的定位結果與 `coordinate_sources.parquet`。output 改讀 `final-state`，`output_id` 的雜湊輸入加入它的 manifest。若B 段 已讓 output 直接讀 tgos-state，改為在同一入口加入人工判定，不重做。10-18 已完成 `build_final_state` 與 `write_output(final_state=...)`；接 `run-full` 階段表與 `output_id` 等B 段 b12 到 b13
+- [x] d08 接法：新增 `final-state` 階段，位於 review 之後、output 之前。以 offline-state 為底，加上 tgos-state 的採用結果與 review 的 `adopted` 判定，產生 output 要讀的定位結果與 `coordinate_sources.parquet`。output 改讀 `final-state`，`output_id` 的雜湊輸入加入它的 manifest。若B 段 已讓 output 直接讀 tgos-state，改為在同一入口加入人工判定，不重做。10-18 完成：`final-state` 接在 review 之後，底為 tgos-state；`output_id` 加入它的 manifest；維護包帶 `final-state`
 - [x] d09 來源優先序（10-18 擁有者決定）：門牌已有有效 `adopted` 判定、之後 TGOS 又定位時，留在第二類人工查核區，進入原因 `tgos_manual_conflict`。兩座標在 30 m 內採 TGOS；超過時記 `conflict`，兩邊都不採用
 - [x] d10 受影響月份判定：比較基準是上一個公開版本的 `final-state`，第一次回補時是 offline-state。找出定位結果有差異的門牌鍵，經地址成員找出全部 `transaction_id` 加 `door_index`，取 `tx_yyyymm` 與 `category`，受影響檔案為這些年月與類別的每月 CSV 加 GeoParquet 與 `catalog.json`。年月取輸出分檔的 `trade_date` 年月（10-18 擁有者決定）。清單寫入 `final-state` 階段快照的 `affected_months.json`，含每個年月與類別的新增列數與更新列數
 - [x] d11 未受影響月份雜湊不變的證明：一律重產全部輸出，比較新舊 `catalog.json` 逐檔。不在清單的檔案 `sha256`、`rows`、`size_bytes` 全部相同；在清單的檔案新列數減舊列數等於記錄的新增列數；清單有但雜湊沒變的檔案列為警告
-- [ ] d12 合成 `run-full` 三種情況：無判定、一個 `adopted` 判定、一個新增 TGOS 採用。斷言受影響清單正確、未受影響 CSV 雜湊不變、`coordinate_sources.parquet` 列數等於更新門牌的觀測數。10-18 已在階段層級以合成資料測過三種情況；`run-full` 層級等接上後補
+- [x] d12 合成 `run-full` 三種情況：無判定、一個 `adopted` 判定、一個新增 TGOS 採用。斷言受影響清單正確、未受影響 CSV 雜湊不變、`coordinate_sources.parquet` 列數等於更新門牌的觀測數。10-18 完成，見 `tests/integration/test_d_run_full.py`
 - [x] d13 全套測試、紀錄、提交
 
 ### D-3 邊界情況（R10-2）
@@ -43,7 +43,7 @@
 | 晚到回傳 | `submission_unknown` 批次的回傳較晚交回時照常匯入。同一查詢較晚的成功結果與先前座標不同時記 `conflict`。C 段 每天到的批次就是這類案例 | 同查詢先查無後成功；先成功後不同座標 |
 
 - [x] d14 上表每個案例都有測試，受影響月份與新舊狀態符合證據，未證明地址等價時保留隔離
-- [ ] d15 全套測試、紀錄、提交
+- [x] d15 全套測試、紀錄、提交
 
 ### D-4 回補驗收（V-13）
 
@@ -90,5 +90,5 @@
 - 不得刪除 tgos-state 中間快照或 `data/tgos/` 交換證據，不得修改已寫入的判定檔。
 - `data/runs/` 的基線 run 只讀，回補使用新的 run ID。
 - 合成測試若因新檢查失敗，改用正確夾具，不加繞過旗標。
-- `import-tgos` 不保存被拒絕回傳列的座標（`tgos/validate.py` 拒絕時座標記空）。在這之前，`accept_tgos_response` 判定在真實帳本上一律記 `stale`，只有 `manual_coordinate` 能套用。保存原座標屬 `tgos/` 範圍，要在 D-4 之前由B 段或C 段補上，或由擁有者決定 V-13 只用 `manual_coordinate`。
+- 被拒絕回傳列的原始座標由B 段 B-4（`f56558c`）存入 `tgos-result` 的 `response_lng`、`response_lat`，`accept_tgos_response` 判定讀這兩欄。
 - `rejected` 判定的門牌不進下一輪 TGOS 自動候選（契約轉換規則 4）要改 `prepare-tgos`，屬C 段 c32 到 c34 的範圍。

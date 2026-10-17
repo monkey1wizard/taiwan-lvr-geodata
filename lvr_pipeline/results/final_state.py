@@ -22,9 +22,10 @@ listed in the coordinate sources get a new ``address``: the TGOS response addres
 result, or the decision address. The period of a door is the year and month of the output
 ``trade_date`` (``output.rows.roc_date`` of ``tx_date_raw``) with the category.
 
-``affected_months.json`` compares the located doors with the baseline (a previous final state, or the
-offline state when none is given): ``added`` is located now and not in the baseline, ``updated`` is
-located in both with another coordinate or address, ``removed`` is located in the baseline and not now.
+``affected_months.json`` compares the located doors with the baseline (a previous final state, tgos state or
+offline state; this run's offline state when none is given):
+``added`` is located now and not in the baseline, ``updated`` is located in both with another coordinate
+or address, ``removed`` is located in the baseline and not now.
 Any removed door stops the stage before it writes a snapshot (published rows are not allowed to
 disappear). Nothing here changes a ``building_key`` or merges keys.
 """
@@ -46,7 +47,7 @@ from .review import _paths
 
 DISTANCE_RULE = "haversine, sphere radius 6371008.8 m, X=longitude Y=latitude"
 CONFLICT_REASON = "tgos_manual_conflict"
-KINDS = ("final-state", "offline-state")
+KINDS = ("final-state", "tgos-state", "offline-state")
 
 
 def _stage_kind(snapshot: Path) -> str:
@@ -122,15 +123,19 @@ def build_final_state(
     ):
         raise ValueError("Review was not built from this converted snapshot, offline state and TGOS state")
     hashes.append(review_hash)
+    # Without a baseline the doors are compared with this run's offline state (version 1 was published from
+    # offline matching only), so TGOS adoptions count as added.
     baseline_kind, baseline_hash = "offline-state", state_hash
     if baseline is not None:
         baseline = Path(baseline)
         baseline_kind = _stage_kind(baseline)
         if baseline_kind not in KINDS:
-            raise ValueError(f"Baseline must be a final-state or offline-state snapshot, not {baseline_kind}")
+            raise ValueError(f"Baseline must be a final-state, tgos-state or offline-state snapshot, not {baseline_kind}")
         baseline_manifest, baseline_report = load_p2(baseline, baseline_kind)
         baseline_hash = sha256_file(baseline / "manifest.json")
         hashes.append(baseline_hash)
+    else:
+        baseline_manifest = state_manifest
     tolerance = load_coordinate_tolerance(config)
     binding = bindings(
         "final-state",
@@ -163,6 +168,7 @@ def build_final_state(
     districts = [r for r in adopted if r["key_kind"] == "district_query"]
 
     tgos_results: dict[str, list[dict]] = {}
+    key_results: dict[str, list[dict]] = {}
     all_results: dict[str, dict] = {}
     if tgos_state is not None:
         queries = {(q["batch_id"], q["query_fingerprint"]): q for path in _paths(
@@ -171,8 +177,10 @@ def build_final_state(
             for result in rows(path):
                 all_results[result["result_id"]] = result
                 query = queries[(result["batch_id"], result["query_fingerprint"])]
-                if result["status"] == "succeeded" and query["query_kind"] == "building_key":
-                    tgos_results.setdefault(query["building_key"], []).append(result)
+                if query["query_kind"] == "building_key":
+                    key_results.setdefault(query["building_key"], []).append(result)
+                    if result["status"] == "succeeded":
+                        tgos_results.setdefault(query["building_key"], []).append(result)
 
     scratch = Path(work_dir) / "final-state-scratch"
     with measured_spill(scratch, "final-state") as spill:
@@ -237,8 +245,10 @@ def build_final_state(
             for key, lng, lat in changed:
                 if key in manual:
                     decision = manual[key]
-                    result = next((r for r in reversed(tgos_results.get(key, []))
-                                   if (r["lng"], r["lat"]) == (decision["decision_lng"], decision["decision_lat"])
+                    # The decision coordinate of accept_tgos_response is the returned one, also of a rejected result.
+                    result = next((r for r in reversed(key_results.get(key, []))
+                                   if (r["response_lng"], r["response_lat"])
+                                   == (decision["decision_lng"], decision["decision_lat"])
                                    and r["response_address"] == decision["decision_address"]), None)
                     info[key] = {"source": "manual", "address": decision["decision_address"], "review_key": key,
                                  "tgos_result_id": result["result_id"] if result else None,
@@ -266,7 +276,8 @@ def build_final_state(
                     result = next((r for r in all_results.values()
                                    if decision["decision_mode"] == "accept_tgos_response"
                                    and r["query_fingerprint"] == decision["query_fingerprint"]
-                                   and (r["lng"], r["lat"]) == (decision["decision_lng"], decision["decision_lat"])),
+                                   and (r["response_lng"], r["response_lat"])
+                                   == (decision["decision_lng"], decision["decision_lat"])),
                                   None)
                     by_id[decision["review_id"]] = {
                         "source": "manual", "address": decision["decision_address"],
@@ -291,7 +302,7 @@ def build_final_state(
             )
             _door_table(db, "after_doors", "final_results", "new_overrides")
             _door_table(db, "off_doors", "off_results", "no_overrides")
-            if baseline is not None and baseline_kind == "final-state":
+            if baseline_kind == "final-state":
                 view("base_results", schema_paths(baseline, baseline_manifest, "final-address-result"))
                 view("base_sources", schema_paths(baseline, baseline_manifest, "coordinate-source"))
                 # Rows of the baseline coordinate sources are matched to this run's components by door identity.
@@ -304,11 +315,9 @@ def build_final_state(
                              FROM components c JOIN observations o USING (raw_record_id)) c
                          ON c.transaction_id = s.transaction_id AND c.door_index = s.door_index""")
                 _door_table(db, "base_doors", "base_results", "base_overrides")
-            elif baseline is not None:
-                view("base_results", schema_paths(baseline, baseline_manifest, "address-result"))
-                _door_table(db, "base_doors", "base_results", "no_overrides")
             else:
-                db.execute("CREATE VIEW base_doors AS SELECT * FROM off_doors")
+                view("base_results", schema_paths(baseline or state, baseline_manifest, "address-result"))
+                _door_table(db, "base_doors", "base_results", "no_overrides")
 
             # Door-level coordinate sources.
             names = ["component_id", "raw_record_id", "door_index", "lng", "lat", "address", "base_address",

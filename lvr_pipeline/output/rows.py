@@ -248,16 +248,19 @@ def doors_select(results: str, overrides: str) -> str:
 
 
 def apply_final_state(db, converted, state, final_state):
-    """Replace the views results and overrides by those of a final-state snapshot of this converted and state."""
+    """Replace the views results and overrides by those of a final-state snapshot of this converted and state.
+
+    ``state`` is the offline state or the TGOS state (which holds the offline tables) the final state was
+    built from; the report records the manifest hash of both.
+    """
     converted, state, final_state = Path(converted), Path(state), Path(final_state)
     manifest, report = load_p2(final_state, "final-state")
-    if (
-        report["converted_snapshot_sha256"] != sha256_file(converted / "manifest.json")
-        or report["offline_state_manifest_sha256"] != sha256_file(state / "manifest.json")
-    ):
-        raise ValueError("Final state was not built from this converted snapshot and offline state")
-    if json.loads((state / "quality.json").read_text(encoding="utf-8"))["stage"] != "offline-state":
-        raise ValueError("Occurrences come from the offline state when a final state is given")
+    stage = json.loads((state / "quality.json").read_text(encoding="utf-8"))["stage"]
+    recorded = {"offline-state": report["offline_state_manifest_sha256"],
+                "tgos-state": report["tgos_state_manifest_sha256"]}[stage]
+    if report["converted_snapshot_sha256"] != sha256_file(converted / "manifest.json") or recorded != sha256_file(
+            state / "manifest.json"):
+        raise ValueError(f"Final state was not built from this converted snapshot and {stage}")
 
     def one(schema):
         found = [final_state / x["path"] for x in manifest["artifacts"] if x["schema"] == schema]

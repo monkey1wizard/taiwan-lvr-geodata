@@ -17,7 +17,7 @@ from lvr_pipeline.results.second_review import DECISION_COLUMNS, ENTRY_REASONS
 from lvr_pipeline.output.rows import make_transaction_id
 from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.storage.runs import digest, sha256_file
-from lvr_pipeline.tgos import import_tgos, load_state, prepare_tgos, transition_batch
+from lvr_pipeline.tgos import import_tgos, load_state, merge_ledger, prepare_tgos, transition_batch
 from lvr_pipeline.tgos.batches import _artifact_paths, _table, _write_state
 import test_r05_9_suspension as suspension
 from test_p1_conversion import ADDRESS, pipeline
@@ -101,23 +101,24 @@ def build_base(tmp, extra_records=()):
          "Response_Y": ANSWERS.get(q["address"], ("", "", ""))[2]}
         for q in queries])
     imported = import_tgos(submitted, work, batch_id, path)
-    # Rejected rows keep their response coordinate in the ledger (spec of the second review area);
-    # import-tgos of this version drops it, so the fixture writes the ledger as that import would.
+    # A ledger that carries a wrong response key, to show the review recomputes it.
     manifest, report, _ = load_state(imported)
     paths = _artifact_paths(imported, manifest)
     results = _table(paths["tgos-result"])
     for result in results:
-        if result["status"] == "rejected":
-            _, x, y = ANSWERS[result["address"]]
-            result["lng"], result["lat"] = float(x), float(y)
         if result["address"] == INCOMPLETE:
             result["response_building_key"] = BOGUS_KEY
-    tgos = _write_state(
+    ledger = _write_state(
         imported, work, action="import", batches=_table(paths["tgos-batch"]), queries=_table(paths["tgos-query"]),
         results=results, aliases=_table(paths["verified-alias"]), alias_events=_table(paths["alias-event"]))
     return {"tmp": tmp, "converted": converted, "descriptor": descriptor, "index": index, "state": state,
-            "prepared": prepared, "submitted": submitted, "tgos": tgos, "queries": queries,
-            "results": {r["address"]: r for r in rows(tgos / "tgos_imports.parquet")}}
+            "prepared": prepared, "submitted": submitted, "ledger": ledger, "tgos": merged(tmp, work, ledger),
+            "queries": queries, "results": {r["address"]: r for r in rows(ledger / "tgos_imports.parquet")}}
+
+
+def merged(tmp, work, ledger):
+    """An import or prepare snapshot holds the ledger only; review and final state read its merged tgos-state."""
+    return merge_ledger(ledger, work, tmp / "merged" / ledger.name)
 
 
 @pytest.fixture(scope="module")
@@ -134,7 +135,7 @@ def review(base, *, tgos=True, index=True, decisions=None, work=None, state=None
     return build_review(
         base["converted"], base["state"], work or base["tmp"] / f"review-{_builds['count']}",
         descriptor=base["descriptor"],
-        tgos_state=(state or base["tgos"]) if tgos else None,
+        tgos_state=(merged(base["tmp"], base["tmp"] / "work", state) if state else base["tgos"]) if tgos else None,
         index=base["index"] if index else None, review_decisions=decisions)
 
 
@@ -518,3 +519,76 @@ def test_district_address_without_a_parseable_door_enters_with_the_address_diges
     assert row["entry_reason"] == "district_no_candidate_town" and row["key_kind"] == "district_query"
     assert row["review_key"] == digest(["district_missing", "63", NO_ROAD])
     assert row["observation_count"] == 3
+
+
+def test_rejected_result_keeps_its_raw_coordinate_and_can_be_accepted(base, plain, tmp_path):
+    """response_lng/response_lat are the returned pair also for a rejected row; accept_tgos_response adopts it."""
+    isolated = by_address(second(plain), ISOLATED)
+    assert (isolated["response_lng"], isolated["response_lat"]) == (121.51, 25.01)
+    result = base["results"][ISOLATED]
+    assert result["status"] == "rejected" and result["lng"] is None and (result["response_lng"], result["response_lat"]) == (
+        121.51, 25.01)
+    far = by_address(second(plain), FAR)
+    assert (far["response_lng"], far["response_lat"]) == (10.0, 10.0)
+    path, _ = _decide(base, tmp_path, [[
+        {"review_key": isolated["review_key"], "decision": "adopted", "mode": "accept_tgos_response",
+         "tgos_result_id": isolated["tgos_result_id"]},
+        {"review_key": far["review_key"], "decision": "adopted", "mode": "accept_tgos_response",
+         "tgos_result_id": far["tgos_result_id"]},
+    ]])
+    after = {r["review_key"]: r for r in second(path)}
+    adopted = after[isolated["review_key"]]
+    assert adopted["status"] == "adopted" and (adopted["decision_lng"], adopted["decision_lat"]) == (121.51, 25.01)
+    assert adopted["decision_address"] == "臺北市中正區測試路99號"
+    # The raw coordinate is outside Taiwan: stale, nothing adopted.
+    assert after[far["review_key"]]["status"] == "pending"
+    block = json.loads((path / "quality.json").read_text(encoding="utf-8"))["second_review"]
+    assert block["decision_totals"] == {"rows": 2, "applied": 1, "superseded": 0, "orphaned": 0, "stale": 1}
+
+
+def keyless_world(base):
+    """The ledger of ``base`` where the NOT_FOUND query has no key under the current rules (a carried query)."""
+    from lvr_pipeline.tgos.validate import KEYLESS_REASON
+
+    manifest, _, _ = load_state(base["ledger"])
+    paths = _artifact_paths(base["ledger"], manifest)
+    queries, results = _table(paths["tgos-query"]), _table(paths["tgos-result"])
+    query = next(q for q in queries if q["address"] == NOT_FOUND)
+    query["query_kind"], query["building_key"] = "keyless", None
+    result = next(r for r in results if r["query_fingerprint"] == query["query_fingerprint"])
+    result.update(status="rejected", reason=KEYLESS_REASON, lng=None, lat=None, response_building_key=None,
+                  response_address=NOT_FOUND, response_lng=121.5, response_lat=25.0)
+    ledger = _write_state(
+        base["ledger"], base["tmp"] / "work", action="import", batches=_table(paths["tgos-batch"]), queries=queries,
+        results=results, aliases=_table(paths["verified-alias"]), alias_events=_table(paths["alias-event"]))
+    return merged(base["tmp"], base["tmp"] / "work", ledger), query
+
+
+def test_keyless_query_enters_without_doors_and_every_decision_on_it_is_stale(base, plain, tmp_path):
+    tgos, query = keyless_world(base)
+    fingerprint = query["query_fingerprint"]
+    directory = tmp_path / "decisions"
+    _decision_file(directory, "20261018", 1, [
+        {"review_key": fingerprint, "decision": "adopted", "mode": "manual_coordinate",
+         "lng": "121.5", "lat": "25.0", "address": NOT_FOUND}])
+    _decision_file(directory, "20261018", 2, [{"review_key": fingerprint, "decision": "rejected"}])
+    _builds["count"] += 1
+    path = build_review(base["converted"], base["state"], base["tmp"] / f"review-{_builds['count']}",
+                        descriptor=base["descriptor"], tgos_state=tgos, index=base["index"], review_decisions=directory)
+    entries = [r for r in second(path) if r["entry_reason"] == "tgos_keyless_query"]
+    assert len(entries) == 1
+    row = entries[0]
+    assert row["key_kind"] == "keyless_query" and row["review_key"] == row["query_fingerprint"] == fingerprint
+    assert row["building_key"] is None and row["observation_count"] == 0 and row["canonical_address"] == NOT_FOUND
+    assert row["county_code"] == query["county_code"] and row["review_id"] == digest(["second_review", fingerprint])
+    assert (row["response_address"], row["response_lng"], row["response_lat"]) == (NOT_FOUND, 121.5, 25.0)
+    assert row["tgos_batch_id"] == query["batch_id"] and row["tgos_result_id"] and row["response_sha256"]
+    assert row["status"] == "pending" and row["decision_file"] is None and row["decision_mode"] is None
+    assert not [o for o in rows(path / "second_review_observations.parquet") if o["review_id"] == row["review_id"]]
+    block = json.loads((path / "quality.json").read_text(encoding="utf-8"))["second_review"]
+    assert block["entry_reason_counts"]["tgos_keyless_query"] == 1
+    assert block["decision_totals"] == {"rows": 2, "applied": 0, "superseded": 0, "orphaned": 0, "stale": 2}
+    # The offline status of the key itself is untouched, and the review table gets no row for it.
+    report = json.loads((path / "quality.json").read_text(encoding="utf-8"))
+    assert report["reason_counts"]["tgos_keyless_query"] == 0
+    assert "tgos_keyless_query" in EXCEPTION_REASON_CODES

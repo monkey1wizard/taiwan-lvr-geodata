@@ -77,7 +77,7 @@ def cli(*args, cwd=None):
 def test_current_producer_hashes_match_what_the_run_recorded(baseline):
     """The script's producer_file_hashes agrees with the pipeline's bindings: package value digests to config_sha256."""
     document = package_json(baseline["package"])
-    for stage in ("converted", "tgos-state"):
+    for stage in ("converted", "tgos-state", "final-state"):
         directory = maintenance._snapshot_dir(baseline["package"], stage, document["baseline"][stage]["snapshot_id"])
         bindings, recorded = maintenance._snapshot_code(directory)
         assert recorded == maintenance.producer_file_hashes()
@@ -91,7 +91,7 @@ def test_export_then_rebuild_elsewhere_passes_with_every_file_same(baseline, tmp
     elsewhere.mkdir()
     document = package_json(baseline["package"])
     assert document["run_id"] == "base" and document["output"]["files_sha256"]
-    assert set(document["baseline"]) == {"converted", "tgos-state", "output"}
+    assert set(document["baseline"]) == {"converted", "tgos-state", "final-state", "output"}
     paths = {item["path"] for item in document["files"]}
     assert {"run/manifest.json", "run/checkpoints.json", "run/run_report.json"} <= paths
     assert not any(path.startswith(("snapshots/ingested", "snapshots/normalized")) for path in paths)
@@ -124,8 +124,9 @@ def test_script_exits_1_and_reports_the_file_that_differs(baseline, tmp_path):
     assert [Path(item).name for item in report["comparison"]["different"]] == ["catalog.json"]
 
 
-def test_tampered_snapshot_byte_is_refused_before_any_output(package, tmp_path):
-    victim = next(item for item in sorted((package / "snapshots" / "converted").rglob("*.parquet")))
+@pytest.mark.parametrize("stage", ["converted", "tgos-state", "final-state"])
+def test_tampered_snapshot_byte_is_refused_before_any_output(package, tmp_path, stage):
+    victim = next(item for item in sorted((package / "snapshots" / stage).rglob("*.parquet")))
     data = bytearray(victim.read_bytes())
     data[len(data) // 2] ^= 0x01
     victim.write_bytes(bytes(data))

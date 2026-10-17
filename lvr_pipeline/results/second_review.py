@@ -13,6 +13,15 @@ enters only when its query text does not round-trip (``tgos_key_text_not_round_t
 district address, when it has no candidate town (``district_no_candidate_town``, needs the offline
 index). A ``conflict`` key enters as ``conflict`` unless its county is suspended.
 
+A sent query that has no key under the current rules (``keyless``, R10-1c) enters as
+``tgos_keyless_query`` with ``key_kind`` ``keyless_query`` and its query fingerprint as review key. It has
+no observations (``observation_count`` 0) and no door to apply a coordinate to, so every decision on such
+a row is counted ``stale`` and the row stays ``pending``.
+
+``response_lng`` and ``response_lat`` are the coordinate TGOS returned as parsed (``tgos-result``
+``response_lng``/``response_lat``), also for a rejected result. An ``accept_tgos_response`` decision
+checks and adopts that coordinate, so a rejected row (for example ``tgos_isolated``) can be adopted.
+
 A located key that has a valid ``adopted`` decision (the latest valid decision of the key is
 ``adopted``) stays in the area as ``tgos_manual_conflict`` (R10-1b, owner decision 2026-10-18); the
 final-state stage decides between the two coordinates.
@@ -51,6 +60,7 @@ ENTRY_REASONS = (
     "district_no_candidate_town",
     "conflict",
     "tgos_manual_conflict",
+    "tgos_keyless_query",
 )
 STATUSES = ("pending", "adopted", "rejected", "deferred")
 WAITING_QUERY = {"prepared", "submitted", "submission_unknown"}
@@ -179,7 +189,7 @@ def _with_result(row: dict, results: list[dict]) -> dict:
         query_fingerprint=latest["query_fingerprint"], tgos_batch_id=latest["batch_id"],
         tgos_result_id=latest["result_id"], prior_result_ids=json.dumps([r["result_id"] for r in results[:-1]]),
         response_address=latest["response_address"], response_building_key=key,
-        response_building_key_reason=why, response_lng=latest["lng"], response_lat=latest["lat"],
+        response_building_key_reason=why, response_lng=latest["response_lng"], response_lat=latest["response_lat"],
         response_sha256=latest["response_sha256"],
     )
     return row
@@ -286,6 +296,14 @@ def build_second_review(
         trial = {key: dict(row) for key, row in candidates.items()}
         _apply_decisions(trial, decisions, results_by_id)
         rows.update({key: row for key, row in candidates.items() if trial[key]["status"] == "adopted"})
+
+    # R10-1c: sent queries that have no key under the current rules; no door to apply a decision to.
+    for fingerprint, known in sorted(ledger.items()):
+        if known["kind"] != "keyless" or known["waiting"]:
+            continue
+        row = _blank(fingerprint, "keyless_query", "tgos_keyless_query", query_fingerprint=fingerprint,
+                     county_code=known["query"]["county_code"], canonical_address=known["query"]["address"])
+        rows[fingerprint] = _with_result(row, known["results"]) if known["results"] else row
 
     # District queries in the ledger, and district addresses never sent.
     queried_fingerprints = {k for k, v in ledger.items() if v["kind"] == "district_missing"}
@@ -413,6 +431,8 @@ def _apply_decisions(rows: dict[str, dict], decisions: list[dict], results_by_id
 def _validate_against_run(row: dict, decision: dict, results_by_id: dict) -> dict | None:
     """The decision_* values to store, or None when the decision is stale for this run."""
     empty = {"decision_mode": None, "decision_lng": None, "decision_lat": None, "decision_address": None}
+    if row["key_kind"] == "keyless_query":
+        return None  # no observations, so no door for any decision to apply to
     if decision["decision"] != "adopted":
         return empty
     if decision["mode"] == "manual_coordinate":
@@ -426,9 +446,10 @@ def _validate_against_run(row: dict, decision: dict, results_by_id: dict) -> dic
                 "decision_address": decision["address"]}
     allowed = {row["tgos_result_id"], *json.loads(row["prior_result_ids"] or "[]")} - {None}
     result = results_by_id.get(decision["tgos_result_id"])
-    if (decision["tgos_result_id"] not in allowed or result is None or result["lng"] is None
-            or result["lat"] is None or not within_taiwan_bounds(result["lng"], result["lat"])):
+    if (decision["tgos_result_id"] not in allowed or result is None or result["response_lng"] is None
+            or result["response_lat"] is None
+            or not within_taiwan_bounds(result["response_lng"], result["response_lat"])):
         return None
-    return {"decision_mode": decision["mode"], "decision_lng": result["lng"], "decision_lat": result["lat"],
-            "decision_address": result["response_address"]}
+    return {"decision_mode": decision["mode"], "decision_lng": result["response_lng"],
+            "decision_lat": result["response_lat"], "decision_address": result["response_address"]}
 

@@ -145,7 +145,13 @@ def test_manual_decision_updates_only_its_months_and_categories(world):
     from_offline = affected_of(final_of(world, review, tgos=True))
     assert compare_catalogs(offline["catalog"], after["catalog"], from_offline)["ok"]
     assert from_offline["baseline_kind"] == "offline-state"
+    assert from_offline["baseline_manifest_sha256"] == sha256_file(world["state"] / "manifest.json")
     assert {m["csv_path"] for m in from_offline["months"]} >= set(expected_csv)
+    # Against this run's TGOS state (explicit baseline) only the decision is listed.
+    from_tgos = affected_of(final_of(world, review, tgos=True, baseline=world["tgos"]))
+    assert from_tgos["baseline_kind"] == "tgos-state"
+    assert from_tgos["baseline_manifest_sha256"] == sha256_file(world["tgos"] / "manifest.json")
+    assert {m["csv_path"] for m in from_tgos["months"]} == set(expected_csv)
 
 
 def test_new_tgos_adoption_is_a_source_tgos_update(world):
@@ -159,7 +165,11 @@ def test_new_tgos_adoption_is_a_source_tgos_update(world):
     assert {(r["after_lng"], r["after_lat"]) for r in sources} == {(121.54, 25.04)}
     assert {r["after_address"] for r in sources} == {found["response_address"]} and {r["before_lng"] for r in sources} == {None}
     assert all(r["review_key"] is None and r["decision_file"] is None for r in sources)
+    # Without a baseline the offline state is the baseline: the TGOS adoption is new. Against the TGOS state it is not.
     affected = affected_of(final)
+    assert affected["baseline_kind"] == "offline-state"
+    own = affected_of(final_of(world, review, tgos=True, baseline=world["tgos"]))
+    assert own["baseline_kind"] == "tgos-state" and own["months"] == [] and own["files"] == []
     assert [(m["category"], m["added"]) for m in affected["months"]] == [(c, 1) for c in sorted(CATEGORIES)]
     offline, with_tgos = output_of(world, "offline"), output_of(world, "tgos", final)
     expected = [m["csv_path"] for m in affected["months"]] + ["taiwanlvr.parquet"]
@@ -180,6 +190,7 @@ def test_tgos_manual_conflict_keeps_tgos_within_tolerance_and_drops_both_beyond(
     review = review_of(world, tgos=True, decisions=directory)
     entry = by_address(second(review), FOUND)
     assert entry["entry_reason"] == "tgos_manual_conflict" and entry["status"] == "adopted"
+    # Against the offline state a dropped TGOS coordinate is no removal; against this run's own TGOS state it would be.
     final = final_of(world, review, tgos=True)
     result = {r["building_key"]: r for r in rows(final / "address_index.parquet")}[_key(FOUND)]
     report = json.loads((final / "quality.json").read_text(encoding="utf-8"))["tgos_manual_conflict"]
@@ -195,6 +206,8 @@ def test_tgos_manual_conflict_keeps_tgos_within_tolerance_and_drops_both_beyond(
     else:
         assert (result["status"], result["lng"], result["lat"], result["evidence_id"]) == ("conflict", None, None, None)
         assert sources_of(final) == [] and affected_of(final)["months"] == []
+        with pytest.raises(ValueError, match="3 published doors would disappear"):
+            final_of(world, review, tgos=True, baseline=world["tgos"])
         assert report["kept_tgos"] == 0 and report["conflict"] == 1 and report["conflict_doors"] == 3
         assert not [a for a in written if "15號" in a]
         assert not [r for r in iter_door_rows(world["converted"], world["state"], spill_dir=fresh(world, "s"),
@@ -222,9 +235,12 @@ def test_rerun_with_identical_inputs_gives_identical_files_and_reuses_the_stage(
     assert other != first
     names = ("address_index.parquet", "coordinate_sources.parquet", "affected_months.json")
     assert {n: sha256_file(first / n) for n in names} == {n: sha256_file(other / n) for n in names}
-    # The output of a final state needs the converted and offline state it was built from.
+    # The output of a final state needs the converted and status state it was built from: the TGOS
+    # state of this final state is accepted; a TGOS state it did not read is not.
+    assert list(iter_door_rows(world["converted"], world["tgos"], spill_dir=fresh(world, "s"), final_state=first))
+    without_tgos = final_of(world, review_of(world, tgos=False), tgos=False)
     with pytest.raises(ValueError, match="not built from"):
-        list(iter_door_rows(world["converted"], world["tgos"], spill_dir=fresh(world, "s"), final_state=first))
+        list(iter_door_rows(world["converted"], world["tgos"], spill_dir=fresh(world, "s"), final_state=without_tgos))
 
 
 def test_compare_catalogs_reports_every_kind_of_difference():
@@ -312,3 +328,14 @@ def test_baseline_of_another_program_version_is_rejected(world, other_run, monke
                                 review=review_of(other_run, tgos=True), tgos_state=other_run["tgos"])
     with pytest.raises(ValueError, match="different program version"):
         final_of(world, review_of(world, tgos=True), tgos=True, baseline=old)
+
+
+def test_baseline_may_be_a_tgos_state_or_an_offline_state_and_other_kinds_are_refused(world):
+    review = review_of(world, tgos=True)
+    default = affected_of(final_of(world, review, tgos=True))
+    explicit = affected_of(final_of(world, review, tgos=True, baseline=world["tgos"]))
+    assert default["baseline_kind"] == "offline-state" and default["months"]
+    assert explicit["months"] == [] and explicit["baseline_kind"] == "tgos-state"
+    assert explicit["baseline_manifest_sha256"] == sha256_file(world["tgos"] / "manifest.json")
+    with pytest.raises(ValueError, match="Baseline must be"):
+        final_of(world, review, tgos=True, baseline=review)

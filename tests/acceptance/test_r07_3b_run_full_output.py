@@ -79,7 +79,8 @@ def test_write_failure_stops_at_output_and_resume_reuses_earlier_stages(tmp_path
     monkeypatch.undo()
     second = run_full(run_id="out2", **inputs)
     assert second["completed"] is True, second["failures"]
-    assert reused(second) == {**{name: True for name in EARLIER}, "review": True, "output": False, "run-report": False}
+    assert reused(second) == {**{name: True for name in EARLIER}, "review": True, "final-state": True,
+                                                       "output": False, "run-report": False}
     assert set(checkpoints(run_dir)) == set(RUN_FULL_STAGES)
 
 

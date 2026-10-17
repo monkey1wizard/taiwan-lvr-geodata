@@ -172,7 +172,7 @@ def test_failed_stage_leaves_no_completion_and_residue_is_quarantined_on_resume(
     assert first["completed"] is False
     assert first["failures"] == [{"step": "review", "code": "RuntimeError", "detail": "interrupted review"}]
     run_dir = inputs["runs_root"] / "resume"
-    assert set(checkpoints(run_dir)) == set(RUN_FULL_STAGES) - {"review", "output", "run-report"}
+    assert set(checkpoints(run_dir)) == set(RUN_FULL_STAGES) - {"review", "final-state", "output", "run-report"}
     assert not (run_dir / "run-report").exists()
     review = run_dir / "review"
     [staged] = list((review / "staging").iterdir())
@@ -196,7 +196,8 @@ def test_failed_stage_leaves_no_completion_and_residue_is_quarantined_on_resume(
     # Earlier stages are reused; the review is rebuilt under the same id, not from the residue.
     assert {name: checkpoints(run_dir)[name] for name in RUN_FULL_STAGES[:7]} == earlier
     reused = {step["step"]: step["reused_checkpoint"] for step in second["steps"] if step["step"] in RUN_FULL_STAGES}
-    assert reused == {**{name: True for name in RUN_FULL_STAGES[:7]}, "review": False, "output": False, "run-report": False}
+    assert reused == {**{name: True for name in RUN_FULL_STAGES[:7]}, "review": False,
+                                                           "final-state": False, "output": False, "run-report": False}
     assert checkpoints(run_dir)["review"]["snapshot_id"] == staged.name
     report = json.loads(Path(second["report"]).read_text(encoding="utf-8"))
     assert report["quarantined"] == moved

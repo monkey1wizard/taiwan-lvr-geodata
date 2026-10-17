@@ -3,7 +3,7 @@
     python scripts/maintenance.py export --run-id <id> [--runs-root data/runs]
     python scripts/maintenance.py rebuild --package <dir> --out <dir>
 
-Export copies the converted and tgos-state snapshots named by the run's checkpoints.json, plus three
+Export copies the converted, tgos-state and final-state snapshots named by the run's checkpoints.json, plus three
 run files, to ``<run>/maintenance/``. Rebuild uses only that package and the code: it verifies the
 package, runs write_output, write_catalog and verify_output into ``<out>/output/<output_id>`` and compares
 every produced file's SHA-256 with ``output.files_sha256``. The package keeps the store layout
@@ -51,8 +51,8 @@ from lvr_pipeline.storage.spill import measured_spill, peak_bytes, reset_peak  #
 PACKAGE_SCHEMA_VERSION = "1.0"
 PACKAGE_KEYS = {"schema_version", "created_at", "run_id", "rebuild_epoch", "config_sha256", "code_commit",
                 "baseline", "output", "files"}
-SNAPSHOT_STAGES = ("converted", "tgos-state")
-BASELINE_STAGES = ("converted", "tgos-state", "output")
+SNAPSHOT_STAGES = ("converted", "tgos-state", "final-state")
+BASELINE_STAGES = ("converted", "tgos-state", "final-state", "output")
 
 
 def producer_file_hashes() -> dict:
@@ -70,17 +70,18 @@ def producer_file_hashes() -> dict:
             hashlib.sha256(file.read_text(encoding="utf-8").encode("utf-8")).hexdigest() for file in files}
 
 
-def output_id_for(converted_manifest_sha256: str, state_manifest_sha256: str) -> str:
-    """The output id run_full derives from the two input manifest hashes."""
+def output_id_for(converted_manifest_sha256: str, state_manifest_sha256: str, final_state_manifest_sha256: str) -> str:
+    """The output id run_full derives from the three input manifest hashes."""
     return "output-" + digest({"converted": converted_manifest_sha256, "state": state_manifest_sha256,
-                               "contract": "22-column"})[:24]
+                               "final_state": final_state_manifest_sha256, "contract": "22-column"})[:24]
 
 
-def write_output_tree(converted, state, output_root: Path, spill: Path, cutoff_yyyymm: str):
+def write_output_tree(converted, state, final_state, output_root: Path, spill: Path, cutoff_yyyymm: str):
     """write_output, write_catalog and verify_output into output_root/{public,release}; spill is removed."""
     output_root = Path(output_root)
     try:
-        summary = write_output(converted, state, output_root / "public", output_root / "release", spill_dir=spill)
+        summary = write_output(converted, state, output_root / "public", output_root / "release", spill_dir=spill,
+                               final_state=final_state)
     finally:
         shutil.rmtree(spill, ignore_errors=True)
     _, converted_report = load_snapshot(converted, "converted")
@@ -157,7 +158,7 @@ def _check_baseline(package: Path, document: dict) -> None:
     checkpoints = _read_json(package / "run" / "checkpoints.json")["stages"]
     baseline = document["baseline"]
     if set(baseline) != set(BASELINE_STAGES):
-        raise ValueError("Package baseline must name converted, tgos-state and output")
+        raise ValueError("Package baseline must name converted, tgos-state, final-state and output")
     for stage in BASELINE_STAGES:
         entry = baseline[stage]
         if set(entry) != {"snapshot_id", "manifest_sha256"} or entry != checkpoints.get(stage):
@@ -194,13 +195,14 @@ def export_maintenance(run_id: str, runs_root: Path | None = None) -> dict:
         SnapshotStore(run_root / stage).verify_integrity(directory)
         directories[stage] = directory
     record = _read_json(directories["output"] / "output.json")
-    output_id = output_id_for(stages["converted"]["manifest_sha256"], stages["tgos-state"]["manifest_sha256"])
+    output_id = output_id_for(*(stages[stage]["manifest_sha256"] for stage in SNAPSHOT_STAGES))
     if record["output_id"] != output_id or stages["output"]["snapshot_id"] != output_id:
-        raise ValueError("The run's output id does not follow from its converted and tgos-state manifests")
-    (converted_bindings, converted_files), (state_bindings, state_files) = (
-        _snapshot_code(directories[stage]) for stage in SNAPSHOT_STAGES)
-    if converted_files != state_files or converted_bindings["code_commit"] != state_bindings["code_commit"]:
-        raise ValueError("The converted and tgos-state snapshots were built by different code")
+        raise ValueError("The run's output id does not follow from its converted, tgos-state and final-state manifests")
+    codes = [_snapshot_code(directories[stage]) for stage in SNAPSHOT_STAGES]
+    (converted_bindings, converted_files) = codes[0]
+    if any(files != converted_files or bindings["code_commit"] != converted_bindings["code_commit"]
+           for bindings, files in codes[1:]):
+        raise ValueError("The converted, tgos-state and final-state snapshots were built by different code")
 
     staging = run_root / f".maintenance-staging-{uuid.uuid4().hex[:12]}"
     try:
@@ -282,23 +284,22 @@ def rebuild_from_maintenance(package: Path, out: Path) -> dict:
                 raise ValueError(f"Copied file {relative} does not match package.json")
             copied_bytes += target.stat().st_size
     timings["copy_snapshots"] = round(time.perf_counter() - begin, 3)
-    converted, state = copies["converted"], copies["tgos-state"]
+    converted, state, final_state = (copies[stage] for stage in SNAPSHOT_STAGES)
     begin = time.perf_counter()
-    for stage, directory in (("converted", converted), ("tgos-state", state)):
-        SnapshotStore(out / "store" / stage).verify_full(directory)
+    for stage in SNAPSHOT_STAGES:
+        SnapshotStore(out / "store" / stage).verify_full(copies[stage])
     phase("verify_full", begin)
     # Rule 2: the running program's producer files equal those recorded in each packaged snapshot.
     current = producer_file_hashes()
-    for stage, directory in (("converted", converted), ("tgos-state", state)):
-        _, recorded = _snapshot_code(directory)
+    for stage in SNAPSHOT_STAGES:
+        _, recorded = _snapshot_code(copies[stage])
         if digest(recorded) != document["config_sha256"]:
             raise ValueError(f"Packaged {stage} snapshot producer files differ from package.json config_sha256")
         differing = _code_diff(recorded, current)
         if differing:
             raise ValueError(f"The running code differs from the package in {len(differing)} producer file(s): "
                              f"{differing}; rebuild refused")
-    output_id = output_id_for(document["baseline"]["converted"]["manifest_sha256"],
-                              document["baseline"]["tgos-state"]["manifest_sha256"])
+    output_id = output_id_for(*(document["baseline"][stage]["manifest_sha256"] for stage in SNAPSHOT_STAGES))
     if output_id != document["output"]["output_id"]:
         raise ValueError("package.json output_id does not follow from the baseline manifests")
 
@@ -316,7 +317,7 @@ def rebuild_from_maintenance(package: Path, out: Path) -> dict:
     error, verification = None, None
     try:
         with measured_spill(out / "spill", "rebuild") as spill:
-            _, verification = write_output_tree(converted, state, output_root, spill.path / "output",
+            _, verification = write_output_tree(converted, state, final_state, output_root, spill.path / "output",
                                                 run_manifest["bindings"]["cutoff_yyyymm"])
     except OutputVerificationError as exc:
         error = {"code": "OutputVerificationError", "detail": str(exc), "report": exc.report}
