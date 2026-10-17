@@ -411,11 +411,17 @@ def test_same_address_text_already_sent_is_not_selected_again(tmp_path, monkeypa
     submitted, first = _submit_first(tmp_path, state, tmp_path / "old")
     # A rule change that moves every key: fingerprints no longer match, only the text can.
     from lvr_pipeline.addresses.identity import building_key as real
+    from lvr_pipeline.tgos import batches
 
-    monkeypatch.setattr(
-        "lvr_pipeline.tgos.batches.building_key",
-        lambda address: real(address).replace('"door":"', '"door":"9'),
-    )
+    carry = batches._carry_ledger
+
+    def moved_carry(ledger):
+        # R09-7a: the moved rule applies to the carry only; query text is still checked with the real rule.
+        with monkeypatch.context() as patch:
+            patch.setattr(batches, "building_key", lambda address: real(address).replace('"door":"', '"door":"9'))
+            return carry(ledger)
+
+    monkeypatch.setattr(batches, "_carry_ledger", moved_carry)
     seeded, _ = prepare_tgos(state, tmp_path / "new", tmp_path / "exchange", ledger=submitted, index=index_of(state))
     carried = [r for r in rows(seeded / "tgos_queries.parquet") if r["batch_id"] == first["batch_id"]]
     # R09-2: the patch must take effect (the carried query is re-keyed), so only the text can block it.

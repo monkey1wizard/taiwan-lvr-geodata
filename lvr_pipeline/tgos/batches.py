@@ -8,6 +8,7 @@ from pathlib import Path
 
 import duckdb
 
+from ..addresses.admin import county_name
 from ..addresses.identity import building_key
 from ..addresses.pool import district_query, lane_free_road
 from ..results.reconcile import check_suspended_counties, load_p2
@@ -206,6 +207,49 @@ def repair_prepared_exchange(
     return state, exchange
 
 
+def _door_text(locality_road: str, door: str) -> str:
+    return locality_road + door + ("" if "號" in door else "號")
+
+
+def key_query_text(key: str) -> str:
+    """R09-7a: door-level query text built from the key fields; never the original address.
+
+    County, town, village, neighbourhood (stored without 鄰), locality road and door, so floors,
+    rooms, basements and bracket notes are never sent. The text must give the same key back.
+    """
+    value = json.loads(key[3:])
+    text = (
+        county_name(value["county"])
+        + value["town"]
+        + value.get("village", "")
+        + (value["neighborhood"] + "鄰" if "neighborhood" in value else "")
+        + _door_text(value["locality_road"], value["door"])
+    )
+    if building_key(text) != key:
+        raise ValueError(f"TGOS query text does not give back its building key: {key}")
+    return text
+
+
+def district_query_text(county_code: str, parsed: tuple) -> str:
+    """R09-7a: door-level text of a district_missing address: county, village, neighbourhood,
+    road and door; no town and no floor. Its parse must equal the parse of the original."""
+    _, _, locality_road, door, village, neighborhood = parsed
+    text = (
+        county_name(county_code)
+        + (village or "")
+        + (neighborhood + "鄰" if neighborhood else "")
+        + _door_text(locality_road, door)
+    )
+    again = district_query(text)
+    if again is None or (again[0], *again[2:]) != (county_code, *parsed[2:]):
+        raise ValueError(f"TGOS district query text does not give back its door: {text}")
+    return text
+
+
+def _district_door(county_code: str, parsed: tuple) -> tuple:
+    return (county_code, *parsed[2:])
+
+
 def _carry_ledger(ledger: Path) -> tuple[list[dict], list[dict], int]:
     """Carry sent batches and queries so they are not resent.
 
@@ -265,27 +309,43 @@ def select_unmatched_candidates(
     retry_fingerprints: set[str] = frozenset(),
     prior: set[str] = frozenset(),
     sent_text: set[str] = frozenset(),
+    queried_keys: set[str] = frozenset(),
     suspended_codes: set[str] = frozenset(),
     suspended_excluded: dict[str, int] | None = None,
+    counts: dict[str, int] | None = None,
 ) -> list[dict]:
     """Pure TGOS candidate selection: unmatched or outside-scope rows not yet sent.
 
     Before ledger carry-over and quota; suspended counties are counted into
-    `suspended_excluded` (when given) and left out.
+    `suspended_excluded` (when given) and left out. R09-7a: the query text is built from the
+    key (`query_text`); a key in `queried_keys` is never selected again, and such skips are
+    counted in `counts["already_queried"]`. A key whose text does not give it back is not sent;
+    it is counted in `counts["text_not_round_trip"]`.
     """
     candidates = []
     for row in address_rows:
         if row["status"] not in {"unmatched", "outside_scope"}:
             continue
-        fingerprint = digest([row["building_key"], row["canonical_address"]])
+        if row["building_key"] in queried_keys:
+            if counts is not None:
+                counts["already_queried"] += 1
+            continue
+        try:
+            text = key_query_text(row["building_key"])
+        except ValueError:
+            # R09-7a: an unverified text is never sent; the key waits for a normalization fix.
+            if counts is not None:
+                counts["text_not_round_trip"] += 1
+            continue
+        fingerprint = digest([row["building_key"], text])
         if fingerprint in retry_fingerprints or (
-            fingerprint not in prior and row["canonical_address"] not in sent_text
+            fingerprint not in prior and text not in sent_text
         ):
             if row["county_code"] in suspended_codes:
                 if suspended_excluded is not None:
                     suspended_excluded[row["county_code"]] += 1
                 continue
-            candidates.append({**row, "query_fingerprint": fingerprint})
+            candidates.append({**row, "query_text": text, "query_fingerprint": fingerprint})
     return candidates
 
 
@@ -296,14 +356,18 @@ def select_district_candidates(
     retry_fingerprints: set[str] = frozenset(),
     prior: set[str] = frozenset(),
     sent_text: set[str] = frozenset(),
+    queried_doors: set[tuple] = frozenset(),
     suspended_codes: set[str] = frozenset(),
     suspended_excluded: dict[str, int] | None = None,
+    counts: dict[str, int] | None = None,
 ) -> tuple[list[dict], int]:
     """R09-6: district_missing addresses not yet sent, with their candidate towns.
 
     A candidate town is a town of the offline index, in the same county, that has a valid
     key on the same road (locality road before its lane). An address with no candidate
     town is left out and counted in the second value. Rows are sorted by county and address.
+    R09-7a: the query text is door-level (`district_query_text`); addresses with the same text are
+    one query (`counts["merged"]`), and a door in `queried_doors` is skipped (`counts["already_queried"]`).
     """
     with duckdb.connect() as db:
         pending = db.execute(
@@ -311,22 +375,35 @@ def select_district_candidates(
             "WHERE reason = 'district_missing' AND county_code <> '' ORDER BY 1, 2",
             [str(occurrences)],
         ).fetchall()
-        eligible = []
+        eligible, seen = [], set()
         for county, address in pending:
-            fingerprint = digest(["district_missing", county, address])
+            parsed = district_query(address)
+            if parsed is None:
+                eligible.append((county, address, None, None))
+                continue
+            text = district_query_text(county, parsed)
+            if (county, text) in seen:
+                if counts is not None:
+                    counts["merged"] += 1
+                continue
+            seen.add((county, text))
+            if _district_door(county, parsed) in queried_doors:
+                if counts is not None:
+                    counts["already_queried"] += 1
+                continue
+            fingerprint = digest(["district_missing", county, text])
             if not (
                 fingerprint in retry_fingerprints
-                or (fingerprint not in prior and address not in sent_text)
+                or (fingerprint not in prior and text not in sent_text)
             ):
                 continue
             if county in suspended_codes:
                 if suspended_excluded is not None:
                     suspended_excluded[county] += 1
                 continue
-            parsed = district_query(address)
-            eligible.append((county, address, fingerprint, lane_free_road(parsed[2]) if parsed else None))
+            eligible.append((county, text, fingerprint, lane_free_road(parsed[2])))
         towns: dict[tuple[str, str], set[str]] = {}
-        counties = sorted({county for county, *_ in eligible})
+        counties = sorted({county for county, _, fingerprint, _ in eligible if fingerprint is not None})
         if counties:
             found = db.execute(
                 "SELECT DISTINCT county_code, json_extract_string(substr(building_key, 4), '$.town'), "
@@ -340,6 +417,9 @@ def select_district_candidates(
                 towns.setdefault((county, lane_free_road(locality_road)), set()).add(town)
     candidates, without_candidates = [], 0
     for county, address, fingerprint, road in eligible:
+        if fingerprint is None:
+            without_candidates += 1
+            continue
         candidate_towns = sorted(towns.get((county, road), ())) if road else []
         if not candidate_towns:
             without_candidates += 1
@@ -348,6 +428,7 @@ def select_district_candidates(
             {
                 "building_key": None,
                 "canonical_address": address,
+                "query_text": address,
                 "county_code": county,
                 "address_family": digest([county, "", road]),
                 "query_kind": "district_missing",
@@ -423,22 +504,47 @@ def prepare_tgos(
     prior = set(query_history) - retry_fingerprints
     # The same address text must not be sent twice even when its key changed.
     sent_text = {row["address"] for row in queries if row["status"] not in retryable}
+    # R09-7a: a door already queried under any text is not queried again, unless an approved retry names it.
+    queried_keys, retried_keys, queried_doors, retried_doors = set(), set(), set(), set()
+    for row in queries:
+        if row["query_kind"] == "district_missing":
+            parsed = district_query(row["address"])
+            door = _district_door(row["county_code"], parsed) if parsed else None
+            queried, retried = queried_doors, retried_doors
+        else:
+            door = row["building_key"]
+            queried, retried = queried_keys, retried_keys
+        if door is None:
+            continue
+        if row["status"] != "cancelled":
+            queried.add(door)
+        if row["query_fingerprint"] in retry_fingerprints:
+            retried.add(door)
+    queried_keys -= retried_keys
+    queried_doors -= retried_doors
+    key_counts = {"already_queried": 0, "text_not_round_trip": 0}
+    district_counts = {"merged": 0, "already_queried": 0}
     candidates = select_unmatched_candidates(
         rows(paths["address-result"]),
         retry_fingerprints=retry_fingerprints,
         prior=prior,
         sent_text=sent_text,
+        queried_keys=queried_keys,
         suspended_codes=suspended_codes,
         suspended_excluded=suspended_excluded,
+        counts=key_counts,
     )
+    key_text_merged = len(candidates) - len({row["query_text"] for row in candidates})
     district, without_candidates = select_district_candidates(
         paths["address-occurrence"],
         _artifact_paths(index, index_manifest)["offline-row"],
         retry_fingerprints=retry_fingerprints,
         prior=prior,
         sent_text=sent_text,
+        queried_doors=queried_doors,
         suspended_codes=suspended_codes,
         suspended_excluded=suspended_excluded,
+        counts=district_counts,
     )
     candidates = [
         {**row, "query_kind": "building_key", "candidate_towns": None} for row in candidates
@@ -476,7 +582,7 @@ def prepare_tgos(
             "query_kind": row["query_kind"],
             "building_key": row["building_key"],
             "candidate_towns": row["candidate_towns"],
-            "address": row["canonical_address"],
+            "address": row["query_text"],
             "county_code": row["county_code"],
             "address_family": row["address_family"],
             "status": "prepared",
@@ -516,6 +622,11 @@ def prepare_tgos(
             "last_tgos_batch_id": batch_id,
             "carried_query_keys_recomputed": rekeyed,
             "tgos_district_missing_without_candidates": without_candidates,
+            "tgos_key_text_merged": key_text_merged,
+            "tgos_key_already_queried": key_counts["already_queried"],
+            "tgos_key_text_not_round_trip": key_counts["text_not_round_trip"],
+            "tgos_district_text_merged": district_counts["merged"],
+            "tgos_district_already_queried": district_counts["already_queried"],
             **(
                 {"tgos_suspended_candidates_excluded": suspended_excluded}
                 if suspension is not None
