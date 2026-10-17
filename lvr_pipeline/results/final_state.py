@@ -376,9 +376,12 @@ def build_final_state(
                 group["removed" if removed else "added" if added else "updated"] += 1
         totals = {name: sum(g[name] for g in groups.values()) for name in ("added", "updated", "removed")}
         if totals["removed"]:
+            # Owner decision 2026-10-18: detect and stop; the detail goes into the message (and run attempts).
+            detail = ", ".join(f"{year:04d}{month:02d} {category} {group['removed']}"
+                               for (year, month, category), group in sorted(groups.items()) if group["removed"])
             raise ValueError(
                 f"{totals['removed']} published doors would disappear from the output; the backfill stops "
-                "(removed rows are not allowed)"
+                f"(removed rows are not allowed): {detail}"
             )
         months = [
             {"year": year, "month": month, "category": category, **groups[(year, month, category)],
