@@ -353,6 +353,8 @@ EXCEPTION_REASON_CODES = (
     "tgos_not_found",
     "tgos_key_text_not_round_trip",
     "district_no_candidate_town",
+    # R10-1b
+    "tgos_manual_conflict",
 )
 OFFLINE_SCHEMAS["exception-address"] = _schema(
     "exception-address",
@@ -430,6 +432,46 @@ OFFLINE_SCHEMAS["second-review-observation"] = _schema(
     ],
 )
 PRIMARY["second-review-observation"] = ["review_id", "raw_record_id", "component_id"]
+
+# Coordinate sources (R10-1b): one row per door whose coordinate or address in the final-state
+# differs from the offline-state result. source is tgos or manual. before_* are the offline-state
+# values (before_lng and before_lat are null when the door had no offline coordinate); after_* are
+# the values the output uses for the door. The period is the output file period of the door.
+OFFLINE_SCHEMAS["coordinate-source"] = _schema(
+    "coordinate-source",
+    [
+        ("transaction_id", S, False),
+        ("door_index", I, False),
+        ("raw_record_id", S, False),
+        ("component_id", S, False),
+        ("building_key", S, True),
+        ("review_key", S, True),
+        ("source", S, False),
+        ("before_address", S, False),
+        ("before_lng", F, True),
+        ("before_lat", F, True),
+        ("after_address", S, False),
+        ("after_lng", F, False),
+        ("after_lat", F, False),
+        ("tgos_result_id", S, True),
+        ("decision_file", S, True),
+        ("decision_row", I, True),
+        ("period_year", I, False),
+        ("period_month", I, False),
+        ("category", S, False),
+    ],
+)
+PRIMARY["coordinate-source"] = ["transaction_id", "door_index"]
+# Final address status (R10-1b): the columns of address-result. It is a separate dataset because the
+# owner's decisions add coordinates that have no offline evidence row and no coordinate-resolution row,
+# which the relation checks of address-result require. evidence_count and coordinate_count stay those of
+# the status the final state started from; a manual coordinate gets the evidence id
+# digest(["manual", review_key, decision_file, decision_row]).
+OFFLINE_SCHEMAS["final-address-result"] = _schema(
+    "final-address-result",
+    [(f.name, f.type, f.nullable) for f in OFFLINE_SCHEMAS["address-result"]],
+)
+PRIMARY["final-address-result"] = PRIMARY["address-result"]
 
 overlap = set(P1_SCHEMAS) & set(OFFLINE_SCHEMAS)
 if overlap:

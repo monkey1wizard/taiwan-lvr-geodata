@@ -36,10 +36,12 @@ class _Open:
             self.closed.add(key)
 
 
-def write_output(converted, state, public_root, release_root, *, spill_dir, bom: bool = False) -> dict:
+def write_output(converted, state, public_root, release_root, *, spill_dir, bom: bool = False, final_state=None) -> dict:
     """Create GeoParquet under release_root and monthly CSV files under public_root.
 
     Returns {"files": {relative path: {"format", "year", "month", "category", "rows"}}, "total_rows": n}.
+    With ``final_state`` (R10-1b) the located doors and the addresses of updated doors come from that
+    final-state snapshot of the same converted and offline state.
     DuckDB spills under spill_dir, outside both roots. The parquet path is relative to release_root, every other path to public_root.
     """
     public_root, release_root = Path(public_root), Path(release_root)
@@ -62,7 +64,7 @@ def write_output(converted, state, public_root, release_root, *, spill_dir, bom:
             record(writer.path, public_root, "csv", year, month, category, writer.rows)
 
     try:
-        for row in iter_door_rows(converted, state, spill_dir=spill_dir):
+        for row in iter_door_rows(converted, state, spill_dir=spill_dir, final_state=final_state):
             date = row["trade_date"]
             if date is None:
                 raise ValueError(f"Row {row['transaction_id']} has no valid trade_date and cannot be placed in a period")

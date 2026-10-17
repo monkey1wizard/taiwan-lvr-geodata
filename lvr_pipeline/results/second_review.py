@@ -13,6 +13,10 @@ enters only when its query text does not round-trip (``tgos_key_text_not_round_t
 district address, when it has no candidate town (``district_no_candidate_town``, needs the offline
 index). A ``conflict`` key enters as ``conflict`` unless its county is suspended.
 
+A located key that has a valid ``adopted`` decision (the latest valid decision of the key is
+``adopted``) stays in the area as ``tgos_manual_conflict`` (R10-1b, owner decision 2026-10-18); the
+final-state stage decides between the two coordinates.
+
 Decision files (``YYYYMMDD-NN-<sha8>.csv``) are owner evidence; this module only reads them.
 Nothing here changes a ``building_key`` or merges keys.
 """
@@ -46,6 +50,7 @@ ENTRY_REASONS = (
     "tgos_key_text_not_round_trip",
     "district_no_candidate_town",
     "conflict",
+    "tgos_manual_conflict",
 )
 STATUSES = ("pending", "adopted", "rejected", "deferred")
 WAITING_QUERY = {"prepared", "submitted", "submission_unknown"}
@@ -229,6 +234,7 @@ def build_second_review(
     """
     ledger, results_by_id = _ledger(tgos)
     rows: dict[str, dict] = {}
+    adopted_keys = {d["review_key"] for f in decisions for d in f["rows"] if d["decision"] == "adopted"}
 
     # Building keys that are not located.
     cursor = db.execute(
@@ -258,6 +264,28 @@ def build_second_review(
                     tgos_batches.key_query_text(key)
                 except ValueError:
                     rows[key] = _blank(key, "building_key", "tgos_key_text_not_round_trip", **base)
+
+    # R10-1b: located keys whose latest valid decision is adopted stay in the area.
+    candidates: dict[str, dict] = {}
+    if adopted_keys:
+        db.execute("CREATE OR REPLACE TEMP TABLE adopted_keys (building_key VARCHAR)")
+        db.executemany("INSERT INTO adopted_keys VALUES (?)", [(k,) for k in sorted(adopted_keys)])
+        for key, address, county, status in db.execute(
+            "SELECT building_key, canonical_address, county_code, status FROM result "
+            "WHERE status = 'located' AND building_key IN (SELECT building_key FROM adopted_keys) ORDER BY 1"
+        ).fetchall():
+            known = ledger.get(key)
+            if known is not None and known["waiting"]:
+                continue
+            row = _blank(key, "building_key", "tgos_manual_conflict", building_key=key, county_code=county,
+                         town=json.loads(key[3:])["town"], canonical_address=address, offline_status=status)
+            if known is not None and known["results"]:
+                _with_result(row, known["results"])
+            candidates[key] = row
+    if candidates:
+        trial = {key: dict(row) for key, row in candidates.items()}
+        _apply_decisions(trial, decisions, results_by_id)
+        rows.update({key: row for key, row in candidates.items() if trial[key]["status"] == "adopted"})
 
     # District queries in the ledger, and district addresses never sent.
     queried_fingerprints = {k for k, v in ledger.items() if v["kind"] == "district_missing"}

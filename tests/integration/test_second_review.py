@@ -82,12 +82,11 @@ def _raw_file(directory, name, data):
     return path
 
 
-@pytest.fixture(scope="module")
-def base(tmp_path_factory):
-    tmp = tmp_path_factory.mktemp("second_review")
+def build_base(tmp, extra_records=()):
+    """The synthetic world of this module in ``tmp``: converted, offline state and one imported TGOS batch."""
     records = [{"address": a, "date": "1150102"} for a in [
         ADDRESS, CONFLICT, NOT_FOUND, ISOLATED, VILLAGE_Q, INCOMPLETE, FAR, FOUND, AMBIGUOUS, VILLAGE_A,
-        VILLAGE_B, PLAIN, FILLED, NO_ROAD]]
+        VILLAGE_B, PLAIN, FILLED, NO_ROAD]] + list(extra_records)
     converted, _, descriptor, index, _, state = run(tmp, coordinates=SOURCE, records=records)
     work = tmp / "work"
     prepared, _ = prepare_tgos(state, work, tmp / "exchange", limit=30, exchange_date="2026-10-18",
@@ -119,6 +118,11 @@ def base(tmp_path_factory):
     return {"tmp": tmp, "converted": converted, "descriptor": descriptor, "index": index, "state": state,
             "prepared": prepared, "submitted": submitted, "tgos": tgos, "queries": queries,
             "results": {r["address"]: r for r in rows(tgos / "tgos_imports.parquet")}}
+
+
+@pytest.fixture(scope="module")
+def base(tmp_path_factory):
+    return build_base(tmp_path_factory.mktemp("second_review"))
 
 
 _builds = {"count": 0}
@@ -353,15 +357,41 @@ def test_file_name_must_follow_the_pattern(base, tmp_path):
 
 
 def test_unknown_key_is_orphaned_and_not_applied(base, plain, tmp_path):
-    located = _key(FOUND)  # located by TGOS, so it is not in the second review
+    located = _key(FOUND)  # located by TGOS: an adopted decision keeps it in the area (R10-1b)
     path, directory = _decide(base, tmp_path, [[
         {"review_key": BOGUS_KEY, "decision": "rejected"},
         {"review_key": located, "decision": "adopted", "mode": "manual_coordinate",
          "lng": "121.5", "lat": "25.0", "address": FOUND},
     ]])
-    assert [r["status"] for r in second(path)] == ["pending"] * len(second(plain))
+    values = second(path)
+    assert len(values) == len(second(plain)) + 1
+    assert [r["status"] for r in values if r["entry_reason"] != "tgos_manual_conflict"] == ["pending"] * len(second(plain))
     block = json.loads((path / "quality.json").read_text(encoding="utf-8"))["second_review"]
-    assert block["decision_totals"] == {"rows": 2, "applied": 0, "superseded": 0, "orphaned": 2, "stale": 0}
+    assert block["decision_totals"] == {"rows": 2, "applied": 1, "superseded": 0, "orphaned": 1, "stale": 0}
+
+
+def test_tgos_located_key_with_an_adopted_decision_stays_as_tgos_manual_conflict(base, plain, tmp_path):
+    located = _key(FOUND)
+    path, _ = _decide(base, tmp_path, [[
+        {"review_key": located, "decision": "adopted", "mode": "manual_coordinate",
+         "lng": "121.5", "lat": "25.0", "address": "臺北市中正區測試路15號之一"},
+    ]])
+    row = by_address(second(path), FOUND)
+    assert row["entry_reason"] == "tgos_manual_conflict" and row["review_key"] == located
+    assert row["status"] == "adopted" and row["decision_mode"] == "manual_coordinate"
+    assert (row["decision_lng"], row["decision_lat"]) == (121.5, 25.0)
+    assert row["offline_status"] == "located" and row["observation_count"] == 3
+    assert (row["response_lng"], row["response_lat"]) == (121.54, 25.04)
+    # A later rejected decision means the key has no adopted decision, so it does not stay in the area.
+    path, _ = _decide(base, tmp_path / "again", [
+        [{"review_key": located, "decision": "adopted", "mode": "manual_coordinate",
+          "lng": "121.5", "lat": "25.0", "address": FOUND}],
+        [{"review_key": located, "decision": "rejected"}]])
+    assert not [r for r in second(path) if r["canonical_address"] == FOUND]
+    block = json.loads((path / "quality.json").read_text(encoding="utf-8"))["second_review"]
+    # The key is not in the area of this run, so both decisions are orphaned.
+    assert block["decision_totals"]["orphaned"] == 2 and block["decision_totals"]["applied"] == 0
+    assert block["entry_reason_counts"]["tgos_manual_conflict"] == 0
 
 
 def test_invalid_coordinate_or_foreign_result_is_stale(base, plain, tmp_path):
