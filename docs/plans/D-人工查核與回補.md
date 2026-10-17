@@ -27,8 +27,8 @@
 回補指把 TGOS 採用與人工 `adopted` 判定的座標放進公開輸出。依 10-12 決定，回補只新增列；經新規則核驗的結果可更新既有列的地址與座標。
 
 - [ ] d08 接法：新增 `final-state` 階段，位於 review 之後、output 之前。以 offline-state 為底，加上 tgos-state 的採用結果與 review 的 `adopted` 判定，產生 output 要讀的定位結果與 `coordinate_sources.parquet`。output 改讀 `final-state`，`output_id` 的雜湊輸入加入它的 manifest。若B 段 已讓 output 直接讀 tgos-state，改為在同一入口加入人工判定，不重做
-- [ ] d09 來源優先序：同一門牌同時有 TGOS 採用與人工 `adopted` 時誰優先，擁有者未決定。決定前兩者座標不同時不採用任何一方，記 `conflict` 並列入第二類人工查核區
-- [ ] d10 受影響月份判定：比較基準是上一個公開版本的 `final-state`，第一次回補時是 offline-state。找出定位結果有差異的門牌鍵，經地址成員找出全部 `transaction_id` 加 `door_index`，取 `tx_yyyymm` 與 `category`，受影響檔案為這些年月與類別的每月 CSV 加 GeoParquet 與 `catalog.json`。清單寫入 `data/runs/<run-id>/review/affected_months.json`，含每個年月與類別的新增列數與更新列數
+- [ ] d09 來源優先序（10-18 擁有者決定）：門牌已有有效 `adopted` 判定、之後 TGOS 又定位時，留在第二類人工查核區，進入原因 `tgos_manual_conflict`。兩座標在 30 m 內採 TGOS；超過時記 `conflict`，兩邊都不採用
+- [ ] d10 受影響月份判定：比較基準是上一個公開版本的 `final-state`，第一次回補時是 offline-state。找出定位結果有差異的門牌鍵，經地址成員找出全部 `transaction_id` 加 `door_index`，取 `tx_yyyymm` 與 `category`，受影響檔案為這些年月與類別的每月 CSV 加 GeoParquet 與 `catalog.json`。年月取輸出分檔的 `trade_date` 年月（10-18 擁有者決定）。清單寫入 `final-state` 階段快照的 `affected_months.json`，含每個年月與類別的新增列數與更新列數
 - [ ] d11 未受影響月份雜湊不變的證明：一律重產全部輸出，比較新舊 `catalog.json` 逐檔。不在清單的檔案 `sha256`、`rows`、`size_bytes` 全部相同；在清單的檔案新列數減舊列數等於記錄的新增列數；清單有但雜湊沒變的檔案列為警告
 - [ ] d12 合成 `run-full` 三種情況：無判定、一個 `adopted` 判定、一個新增 TGOS 採用。斷言受影響清單正確、未受影響 CSV 雜湊不變、`coordinate_sources.parquet` 列數等於更新門牌的觀測數
 - [ ] d13 全套測試、紀錄、提交
@@ -60,9 +60,7 @@
 
 | 事項 | 暫行做法 | 時機 |
 | --- | --- | --- |
-| TGOS 採用與人工 `adopted` 判定衝突時誰優先 | 列為衝突，不自動選 | D-2 開工前 |
 | 別名撤銷使已發布的列消失，允許嗎 | 偵測後停下，不自動刪列 | D-3 開工前 |
-| 判定檔位置 | `data/review-decisions/`，跨 run 沿用 | D-1 開工前 |
 
 ## 程式事實與行號
 
