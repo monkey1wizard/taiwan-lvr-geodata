@@ -69,7 +69,7 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline <command> --help
 
 ## 現有全量命令
 
-`run-full` 是現行全量離線流程入口。它核對來源、執行離線階段、產生待查核資料、輸出及 run report。程式流程包含續跑與階段驗證。它目前不讀取 TGOS 狀態。輸出階段使用新版 22 欄公開契約，已由 R07-10 以真實資料執行，V-10b 通過。第一版輸出已由 R08-3 複製到 `data/output/`。
+`run-full` 是現行全量離線流程入口。它核對來源、執行離線階段、產生待查核資料、輸出及 run report。程式流程包含續跑與階段驗證。給 `--tgos-ledger` 時，它在 `offline-state` 之後的 `tgos-state` 階段帶入帳本，並以現行規則重新匯入全部回傳，review 與輸出都讀這個階段。輸出階段使用新版 22 欄公開契約，已由 R07-10 以真實資料執行，V-10b 通過。第一版輸出已由 R08-3 複製到 `data/output/`。
 
 先核對來源清單與本機原始 ZIP：
 
@@ -90,18 +90,18 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline run-full \
   --raw-dir data/raw \
   --address-source config/sources/address_source.json \
   --garbled-rules config/rules/character-fixes.csv \
-  --config config/pipeline.example.toml
+  --config config/pipeline.example.toml \n  --tgos-ledger <TGOS 帳本快照目錄> \n  --exchange-dir data/tgos
 ```
 
-截止年月使用西元 `YYYYMM`。此為參數完整的命令模板，不是已驗收的發布命令。`run-full` 有來源核對、階段續跑、離線處理、新版 22 欄輸出及 run report，但未讀 TGOS 狀態。輸出寫在 run 目錄的 `output/<output_id>/public/` 與 `release/`，輸出階段會寫入 `catalog.json` 並執行格式間驗證，失敗時留下 `verify_report.json` 且不提交該階段。快照只在建立時逐列驗證一次，之後載入只核對雜湊；稽核時用 `python -m lvr_pipeline verify-snapshot --path <快照目錄>` 完整重驗。尚未有 `NOTICE.json`，也不是公開發布。舊的 `package-output`、`verify-output`、`backfill-output`、`fetch-output`、`publish-output`、`commit-release-pointer`、`verify-public-snapshot` 命令已於 2026-10-12 移除。單批轉換不能視為全歷史完成。流程輸入、每階段產物及失敗去向見[資料處理流程](docs/資料處理流程.md)。
+截止年月使用西元 `YYYYMM`。此為參數完整的命令模板，不是已驗收的發布命令。`run-full` 有來源核對、階段續跑、離線處理、TGOS 帳本帶入、新版 22 欄輸出及 run report。不給 `--tgos-ledger` 時 `tgos-state` 階段仍會執行，帳本為空，內容等於離線狀態。帶入帳本時，已完成批次的回傳檔從 `--exchange-dir` 讀取，雜湊與帳本不符就拒絕。輸出寫在 run 目錄的 `output/<output_id>/public/` 與 `release/`，輸出階段會寫入 `catalog.json` 並執行格式間驗證，失敗時留下 `verify_report.json` 且不提交該階段。快照只在建立時逐列驗證一次，之後載入只核對雜湊；稽核時用 `python -m lvr_pipeline verify-snapshot --path <快照目錄>` 完整重驗。尚未有 `NOTICE.json`，也不是公開發布。舊的 `package-output`、`verify-output`、`backfill-output`、`fetch-output`、`publish-output`、`commit-release-pointer`、`verify-public-snapshot` 命令已於 2026-10-12 移除。單批轉換不能視為全歷史完成。流程輸入、每階段產物及失敗去向見[資料處理流程](docs/資料處理流程.md)。
 
 明細讀入與關聯已於 2026-10-12 實作（R07-7）：`ingest` 讀入三種明細為 `ingest-detail`，`normalize` 依明細關聯契約以 `編號` 連回主檔，產生 `detail` 資料集，並把七項計數寫入 `detail_link`。新版公開輸出的三個 JSON 欄由 R07-8 產生。明細欄位與例外處理詳見[資料契約](docs/資料契約.md)及[輸出欄位](docs/輸出欄位.md)。
 
 ## TGOS 回補
 
-TGOS 由個別命令處理，未接入 `run-full`。預定順序為 `prepare-tgos`、人工交換、`set-tgos-status`、`import-tgos`、`build-review`，之後新版回補由 R-10 定義。`prepare-tgos` 可從本次離線狀態建立初始 TGOS state，後續每個狀態更新都須使用前一命令輸出的新快照路徑。`build-review` 用 `--state` 接收離線狀態。該路徑須來自同一次 run。`prepare-tgos` 必須以 `--index` 指定同一 run 的 offline-index 快照，用於缺區地址的候選區。這五個命令都必須給 `--run-id`，狀態寫入 `data/runs/<run-id>/`；`--run-id` 是 run 目錄名，不是快照 ID。指向 `run-full` 的 run 目錄時命令拒絕執行。
+TGOS 交換由個別命令處理，回傳的採用在每次 `run-full` 以 `--tgos-ledger` 重新判定。預定順序為 `prepare-tgos`、人工交換、`set-tgos-status`、`import-tgos`、`build-review`，之後新版回補由 R-10 定義。`prepare-tgos` 可從本次離線狀態或 `run-full` 的 tgos-state 快照建立 TGOS state，後續每個狀態更新都須使用該 run 最新的快照路徑。TGOS 狀態快照只存帳本表，並記錄來源 offline-state 的位置與雜湊；需要門牌狀態時依記錄找回來源，見[資料契約](docs/資料契約.md)「TGOS 帳本快照與 `run-full` 帶入」。`build-review` 用 `--state` 接收離線狀態。該路徑須來自同一次 run。`prepare-tgos` 必須以 `--index` 指定同一 run 的 offline-index 快照，用於缺區地址的候選區。這五個命令都必須給 `--run-id`，狀態寫入 `data/runs/<run-id>/`；`--run-id` 是 run 目錄名，不是快照 ID。指向 `run-full` 的 run 目錄時命令拒絕執行。
 
-舊 TGOS 帳本與舊回傳在本機已不存在，不轉接、不擋重送；新重建以新帳本從零開始，離線定位不到的門牌全部重新送查。`prepare-tgos --ledger` 只帶入本次重建紀元的帳本，舊紀元帳本一律拒絕；帳本中有現行規則算不出門牌鍵的查詢時也拒絕。新帳本在重建期間不得清空或繞過，`submission_unknown` 不得自動重送。
+舊 TGOS 帳本與舊回傳在本機已不存在，不轉接、不擋重送；新重建以新帳本從零開始，離線定位不到的門牌全部重新送查。帶入的帳本只接受本次重建紀元，舊紀元帳本一律拒絕。已送出的查詢在現行規則下算不出門牌鍵時，保留為證據，`query_kind` 記 `keyless`，不重送、不採用（2026-10-18 擁有者決定）。新帳本在重建期間不得清空或繞過，`submission_unknown` 不得自動重送。
 
 首輪送查依 [00 主企劃 C 段](docs/plans/00-主企劃.md) 的 R09-7 執行，R09-6 完成前不開始。每檔最多 10,000 筆是單檔上限，不是每日程式限制。未知送出狀態必須保留，阻止重送或釋放配額。以下命令僅查詢介面：
 
