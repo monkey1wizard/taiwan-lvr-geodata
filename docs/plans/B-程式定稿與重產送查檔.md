@@ -62,10 +62,10 @@ C 段的村里代碼採用規則要用這張表。表的擴充會改綁定，所
 
 ### B-7 收尾
 
-- [ ] b24 全套測試 `.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp=C:/Code/taiwan-lvr-geodata/data/tmp/b/pytest`
-- [ ] b25 每張子卡從[空白範本](../task-result-template.md)複製紀錄到 `docs/records/`
-- [ ] b26 同步地址規則、資料契約、README、00 與總表
-- [ ] b27 本機提交
+- [x] b24 全套測試 `.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp=C:/Code/taiwan-lvr-geodata/data/tmp/b/pytest`
+- [x] b25 每張子卡從[空白範本](../task-result-template.md)複製紀錄到 `docs/records/`
+- [x] b26 同步地址規則、資料契約、README、00 與總表
+- [x] b27 本機提交
 
 ## 程式事實與行號
 
