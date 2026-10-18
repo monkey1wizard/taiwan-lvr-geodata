@@ -17,10 +17,20 @@ B 段完成，送查檔已從過渡基線重產。
 | 批次 | 送查檔 | 筆數 | 送出 | 匯入 | 採用 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `data/tgos/20261017-7c3aca87/addresses.csv` | 10,000 | 10-17 | 10-17 | 2,787 |
-| 2 起 | B 段 b19 到 b23 重產後填入 | — | — | — | — |
+| 2 | `data/tgos/20261018-5d20ece7/addresses.csv` | 10,000 | — | — | — |
+| 3 | `data/tgos/20261018-3ab9a3ae/addresses.csv` | 10,000 | — | — | — |
+| 4 | `data/tgos/20261018-442f7501/addresses.csv` | 10,000 | — | — | — |
+| 5 | `data/tgos/20261018-98863b5c/addresses.csv` | 10,000 | — | — | — |
+| 6 | `data/tgos/20261018-d8b72061/addresses.csv` | 10,000 | — | — | — |
+| 7 | `data/tgos/20261018-b5007286/addresses.csv` | 10,000 | — | — | — |
+| 8 | `data/tgos/20261018-d5a8fa05/addresses.csv` | 10,000 | — | — | — |
+| 9 | `data/tgos/20261018-46b32fdd/addresses.csv` | 10,000 | — | — | — |
+| 10 | `data/tgos/20261018-7f20523e/addresses.csv` | 10,000 | — | — | — |
+| 11 | `data/tgos/20261018-fc41654e/addresses.csv` | 10,000 | — | — | — |
+| 12 | `data/tgos/20261018-fd0df3b4/addresses.csv` | 6,948 | — | — | — |
 
 - [x] c01 第 1 批送出、匯入並記錄，見 [R09-7 紀錄](../records/R09-7首輪送查.md)
-- [ ] c02 B 段完成後更新上表，開始每日交換
+- [x] c02 10-18 B 段重產後更新上表，共 12 批。舊資料夾都已取消，只上傳上表檔案，見 [R09-7 紀錄](../records/R09-7首輪送查.md)「第二次重產：B-6」
 - [ ] c03 第 2 批
 - [ ] c04 第 3 批
 - [ ] c05 第 4 批
@@ -32,7 +42,9 @@ B 段完成，送查檔已從過渡基線重產。
 - [ ] c11 第 10 批
 - [ ] c12 第 11 批
 - [ ] c13 第 12 批
-- [ ] c14 第 13 批
+- [ ] c14 第 13 批：重產後只有 12 批，本項取消
+
+現行帳本：TGOS run `r09-7b-20261018`，10-18 最新快照 `tgos-state-90a8ac39bd69d5e4b62c59e0`；之後的 `set-tgos-status` 與 `import-tgos` 都用這個 run ID，`--state` 指向該 run 最新快照。
 
 每天的操作程序。擁有者：上傳當天批次的 `addresses.csv`；下載回傳 `Address_Finish.csv` 原樣放回同一批次資料夾；告訴程式 session 已送出，不確定時說明不確定。程式：以 `set-tgos-status --status submitted` 記錄，不確定時記 `submission_unknown` 且之後不自動重送；`import-tgos` 匯入，必填 `--index`；重跑 b17 的 V-12 檢查腳本，把採用、查無、各類拒絕的計數寫進 R09-7 紀錄；本機提交。
 
