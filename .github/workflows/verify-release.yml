@@ -35,8 +35,6 @@ jobs:
     timeout-minutes: 120
     env:
       GH_TOKEN: ${{ github.token }}
-      WORK: ${{ runner.temp }}/r08-4
-      REPORTS: ${{ runner.temp }}/r08-4-reports
       # Inputs reach the shell only through the environment, never by template expansion.
       TAG: ${{ inputs.tag }}
       COMMIT: ${{ inputs.commit }}
@@ -51,6 +49,11 @@ jobs:
             /*
             !/data/output/
           sparse-checkout-cone-mode: false
+      # The runner context is not available in job-level env, so the paths are set here.
+      - name: Paths
+        run: |
+          echo "WORK=$RUNNER_TEMP/r08-4" >> "$GITHUB_ENV"
+          echo "REPORTS=$RUNNER_TEMP/r08-4-reports" >> "$GITHUB_ENV"
       - uses: astral-sh/setup-uv@v6
         with:
           version: '0.12.23'
@@ -125,7 +128,7 @@ jobs:
         if: always()
         with:
           name: verify-release-reports
-          path: ${{ runner.temp }}/r08-4-reports
+          path: ${{ env.REPORTS }}
           if-no-files-found: warn
       - name: Fail if a tier failed
         if: always()
