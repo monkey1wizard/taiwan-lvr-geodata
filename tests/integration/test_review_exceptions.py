@@ -97,7 +97,7 @@ def built(tmp_path_factory):
             writer.writerow({"Address": query["address"], "Response_Address": answer,
                              "Response_X": x, "Response_Y": y})
     # b14: the import snapshot holds the ledger only; review reads the merged state.
-    tgos_state = merge_ledger(import_tgos(submitted, work, batch_id, response), work, tmp_path / "merged")
+    tgos_state = merge_ledger(import_tgos(submitted, work, batch_id, response, index=index_of(submitted)), work, tmp_path / "merged")
     before = {name: _tree_hashes(path) for name, path in
               [("converted", converted), ("state", state), ("tgos", tgos_state)]}
     review = build_review(converted, state, tmp_path / "review-work", descriptor=descriptor,
@@ -115,7 +115,9 @@ def test_each_produced_reason_code_has_rows(built):
     found = {row["reason_code"] for row in built["rows"]}
     # R05-7: NO_ADMIN (road only, 測試路5號) is now looked up in its source county (member
     # letter a, 臺北市); no door 5 exists, so it is road_only_not_unique, not invalid_admin.
-    assert found == (set(PRODUCED_CODES) - {"invalid_admin"}) | {"road_only_not_unique"}
+    # The two base-group codes need an index group of several locations; test_tgos_neighbourhood_rules covers them.
+    group_codes = {"tgos_neighborhood_multi_location", "tgos_village_door_multi_location"}
+    assert found == (set(PRODUCED_CODES) - {"invalid_admin"} - group_codes) | {"road_only_not_unique"}
     assert set(PRODUCED_CODES) <= set(EXCEPTION_REASON_CODES)
     assert {"district_missing", "district_ambiguous"}.isdisjoint(found)
     report = json.loads((built["review"] / "quality.json").read_text(encoding="utf-8"))

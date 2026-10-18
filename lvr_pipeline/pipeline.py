@@ -251,6 +251,7 @@ def _run_offline_and_output(args):
             _tgos_run_dir(args),
             args.batch,
             args.response,
+            index=args.index,
             run_id=None,
         )
     elif command == "revoke-alias":
@@ -710,7 +711,7 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
                     raise ValueError(f"Run {run_id} has a tgos-state built from another TGOS ledger or response files; "
                                      "use a new run id")
 
-            tgos = stage("tgos-state", lambda: build_tgos_state(state, work, tgos_plan), same_tgos_inputs)
+            tgos = stage("tgos-state", lambda: build_tgos_state(state, work, tgos_plan, index=index), same_tgos_inputs)
             current["step"] = "review"
             decision_files = decision_binding(load_decisions(decisions_dir)) if decisions_dir is not None else []
 

@@ -80,7 +80,7 @@ def send(state, work, tmp, batch_id, answers, *, mode="submitted", name="respons
     response(path, [{"Address": q["address"], "Response_Address": answers.get(q["address"], ("", "", ""))[0],
                      "Response_X": answers.get(q["address"], ("", "", ""))[1],
                      "Response_Y": answers.get(q["address"], ("", "", ""))[2]} for q in queries])
-    return import_tgos(submitted, work, batch_id, path)
+    return import_tgos(submitted, work, batch_id, path, index=index_of(submitted))
 
 
 def merged(w, tgos):

@@ -24,13 +24,14 @@ sys.path.insert(0, str(ROOT))
 
 import pyarrow.parquet as pq  # noqa: E402
 
-from lvr_pipeline.addresses.identity import building_key, same_door  # noqa: E402
+from lvr_pipeline.addresses.identity import building_key  # noqa: E402
 from lvr_pipeline.contracts.validate import TAIWAN_BOUNDS  # noqa: E402
 from lvr_pipeline.results.reconcile import haversine_m  # noqa: E402
 
 # The 30 m adoption rule (地址規則「離線候選與定位」): a door with other evidence keeps the medoid.
 TOLERANCE_M = 30.0
 from lvr_pipeline.results.review import TGOS_REJECTION_CODES  # noqa: E402
+from lvr_pipeline.tgos.adopt import DOOR, NEIGHBORHOOD, VILLAGE_DOOR, adoption_route  # noqa: E402
 from lvr_pipeline.transactions.normalize import normalize_address  # noqa: E402
 
 # Copied from lvr_pipeline/tgos/validate.py (DISTRICT_FILL_REASON, KEYLESS_REASON, the differs text in
@@ -39,6 +40,12 @@ DISTRICT_FILL_REASON = "tgos_district_fill"
 KEYLESS_REASON = "TGOS query has no building key under the current rules"
 DIFFERS_REASON = "TGOS response address differs from submitted address"
 OUT_OF_BOUNDS_REASON = "TGOS coordinate is outside declared WGS84 Taiwan bounds"
+OUTSIDE_GROUP_REASON = "tgos_neighborhood_outside_base_group"
+# Rejection texts of the base group rules (lvr_pipeline/tgos/adopt.py) and the route each needs.
+GROUP_REJECTIONS = {
+    "TGOS neighbourhood differs and the base group has several locations": NEIGHBORHOOD,
+    "TGOS village and door have several locations in the base": VILLAGE_DOOR,
+}
 
 RESULT_STATUSES = {"succeeded", "failed", "rejected"}
 QUERY_KINDS = {"building_key", "district_missing", "keyless"}
@@ -162,8 +169,14 @@ def check_batch(batch_id: str, queries: list[dict], results: list[dict], index: 
         if (r["response_lng"], r["response_lat"]) != (lng, lat):
             c3.fail(view, "lng/lat differ from response_lng/response_lat")
         if kind == "building_key":
-            if not same_door(q.get("building_key"), response_key(r["response_address"])):
-                c3.fail(view, "same_door(query building_key, response key) is False")
+            route = adoption_route(q.get("building_key"), response_key(r["response_address"]))
+            if route is None:
+                c3.fail(view, "adoption_route(query building_key, response key) is None")
+            elif r["reason"] == OUTSIDE_GROUP_REASON:
+                if route != NEIGHBORHOOD:
+                    c3.fail(view, f"reason {OUTSIDE_GROUP_REASON}, but the route is {route}")
+            elif r["reason"] is not None:
+                c3.fail(view, f"building_key row has unexpected reason {r['reason']!r}")
         elif kind == "district_missing":
             if r["reason"] != DISTRICT_FILL_REASON:
                 c3.fail(view, f"reason is not {DISTRICT_FILL_REASON}")
@@ -183,8 +196,11 @@ def check_batch(batch_id: str, queries: list[dict], results: list[dict], index: 
                 c4.fail(view, "keyless reason on a query that is not keyless")
         elif reason in TGOS_REJECTION_CODES:
             if reason == DIFFERS_REASON and q.get("building_key") is not None:
-                if same_door(q["building_key"], response_key(r["response_address"])):
+                if adoption_route(q["building_key"], response_key(r["response_address"])) == DOOR:
                     c4.fail(view, "differs reason, but the response names the queried door")
+            if reason in GROUP_REJECTIONS:
+                if adoption_route(q.get("building_key"), response_key(r["response_address"])) != GROUP_REJECTIONS[reason]:
+                    c4.fail(view, "base group rejection, but the response is not of that rule's route")
             if reason == OUT_OF_BOUNDS_REASON:
                 x, y = r["response_lng"], r["response_lat"]
                 if x is None or y is None or in_bounds(x, y):

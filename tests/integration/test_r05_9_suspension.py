@@ -286,7 +286,7 @@ def tgos(built):
     response(path, [{"Address": q["address"], "Response_Address": q["address"],
                      "Response_X": answers[q["address"]][0], "Response_Y": answers[q["address"]][1]}
                     for q in queries])
-    imported = import_tgos(submitted, work, batch_id, path)
+    imported = import_tgos(submitted, work, batch_id, path, index=index_of(submitted))
     # b14: the import snapshot holds the ledger only; the tests read the merged state.
     return merge_ledger(imported, work, tmp_path / "merged")
 

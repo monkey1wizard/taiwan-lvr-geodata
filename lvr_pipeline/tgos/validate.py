@@ -9,13 +9,21 @@ from pathlib import Path
 from typing import NamedTuple
 
 from ..addresses import identity
-from ..addresses.identity import building_key, door_parts, same_door
+from ..addresses.identity import building_key, door_parts
 from ..addresses.pool import district_query
 from ..contracts.validate import within_taiwan_bounds
 from ..results.reconcile import DOOR_CROSS_CHECK, EXCEEDS_TOLERANCE, WITHIN_TOLERANCE
 from ..storage.parquet import rows
 from ..storage.runs import Stage, _identifier, bindings, digest, sha256_file
 from ..transactions.normalize import normalize_address
+from .adopt import (
+    NEIGHBORHOOD,
+    NEIGHBORHOOD_OUTSIDE_REASON,
+    VILLAGE_DOOR,
+    BaseGroups,
+    adoption_route,
+    base_town,
+)
 from .batches import (
     DAILY_LIMIT,
     Carried,
@@ -108,6 +116,24 @@ def _response_coordinate(x: str, y: str):
     return (lng, lat) if math.isfinite(lng) and math.isfinite(lat) else None
 
 
+def _group_towns(submitted: dict, returned: list[dict]) -> set:
+    """(county, town) of every row that can reach rule 2 or 4 of the adoption check."""
+    towns = set()
+    for row in returned:
+        query = submitted[row["Address"]]
+        if query["query_kind"] in {"district_missing", "keyless"} or not query["building_key"]:
+            continue
+        try:
+            if not row["Response_Address"].strip() or _tgos_coordinate(row["Response_X"], row["Response_Y"]) is None:
+                continue
+            target_key = building_key(normalize_address(row["Response_Address"]))
+        except (TypeError, ValueError):
+            continue
+        if target_key and adoption_route(query["building_key"], target_key) in {NEIGHBORHOOD, VILLAGE_DOOR}:
+            towns.add(base_town(query["building_key"]))
+    return towns
+
+
 def apply_response(
     batches: list[dict],
     queries: list[dict],
@@ -117,6 +143,7 @@ def apply_response(
     batch_id: str,
     response: Path,
     *,
+    base: BaseGroups,
     expected_sha256: str | None = None,
 ) -> str:
     """Import one response file into the in-memory ledger tables and the evidence list, in place.
@@ -124,6 +151,8 @@ def apply_response(
     ``current_rows`` are the address status rows before this response: they give the coordinates
     already located and the villages and neighbourhoods of the pool. Returns the response hash.
     ``expected_sha256`` is the hash recorded for a carried batch; a different file is refused.
+    ``base`` gives the offline-index groups that rules 2 and 4 of the adoption check need; it reads
+    the index once for the towns of the rows that reach those rules.
     """
     batch = next((row for row in batches if row["batch_id"] == batch_id), None)
     if not batch or batch["status"] not in {"submitted", "submission_unknown"}:
@@ -155,6 +184,7 @@ def apply_response(
             prior_coordinates[row["building_key"]] = (row["lng"], row["lat"])
         signature, village, neighborhood = door_parts(row["building_key"])
         door_layers.setdefault(signature, []).append((row["building_key"], village, neighborhood))
+    base.load(_group_towns(submitted, returned))
     new_results = []
     result_by_query = {}
     for line, row in enumerate(returned, 2):
@@ -181,8 +211,23 @@ def apply_response(
                     # A success flag or a shared district does not prove the same
                     # door number; only the same door is adopted. R04-12: a village or
                     # neighbourhood the query writes must not differ in the response.
-                    if not same_door(query["building_key"], target_key):
+                    route = adoption_route(query["building_key"], target_key)
+                    if route is None:
                         raise ValueError("TGOS response address differs from submitted address")
+                    if route == NEIGHBORHOOD:
+                        verdict = base.neighborhood_group(query["building_key"])
+                        if not verdict.present:
+                            raise ValueError("TGOS response address differs from submitted address")
+                        if not verdict.single:
+                            raise ValueError("TGOS neighbourhood differs and the base group has several locations")
+                        if json.loads(target_key[3:]).get("neighborhood") not in verdict.neighborhoods:
+                            reason = NEIGHBORHOOD_OUTSIDE_REASON
+                    elif route == VILLAGE_DOOR:
+                        verdict = base.village_door_group(query["building_key"])
+                        if not verdict.present:
+                            raise ValueError("TGOS response address differs from submitted address")
+                        if not verdict.single:
+                            raise ValueError("TGOS village and door have several locations in the base")
                     # R09-2: the same door under two villages or neighbourhoods is not decided here.
                     if _layer_is_ambiguous(query["building_key"], door_layers):
                         raise ValueError("TGOS response village or neighbourhood is ambiguous")
@@ -257,18 +302,27 @@ def _resolution_report(statuses, resolutions, suspension_counts, door_rule) -> d
     }
 
 
+def _open_base(index: Path, offline_report: dict) -> BaseGroups:
+    """The adoption base of an import: the offline index this state was built from (C-3, c23)."""
+    if sha256_file(Path(index) / "manifest.json") != offline_report["index_manifest_sha256"]:
+        raise ValueError("Offline index is not the one this state was built from")
+    return BaseGroups(index)
+
+
 def import_tgos(
     source: Path,
     work_dir: Path,
     batch_id: str,
     response: Path,
     *,
+    index: Path,
     run_id: str | None = None,
 ):
     """Import one response into a ledger-only TGOS state (b14).
 
     The merged address state is computed in memory for the same-door check and the report; only
-    the ledger tables are written.
+    the ledger tables are written. ``index`` is the offline-index snapshot the state was built from;
+    rules 2 and 4 of the adoption check read their base groups from it.
     """
     inp = open_input(source, work_dir)
     batches, queries, results, aliases, events = inp.ledger
@@ -283,9 +337,10 @@ def import_tgos(
         raise ValueError(f"TGOS batch {batch_id} was already imported with response {batch['response_sha256']}; refusing response {response_hash}")
     paths = _artifact_paths(inp.offline, inp.offline_manifest)
     report = inp.offline_report
+    base = _open_base(index, report)
     evidence = list(rows(paths["offline-row"])) + evidence_from_results(results, queries)
     current = current_address_rows(paths, report, results, queries)
-    apply_response(batches, queries, results, evidence, current, batch_id, response)
+    apply_response(batches, queries, results, evidence, current, batch_id, response, base=base)
     _, _, statuses, resolutions, suspension_counts = rebuild(paths, report, evidence)
     return _write_state(
         source,
@@ -299,6 +354,7 @@ def import_tgos(
         extra_report={
             "last_tgos_batch_id": batch_id,
             "last_tgos_response_sha256": response_hash,
+            "tgos_base_lookup_seconds": round(base.seconds, 3),
             "status_counts_before_import": inp.report["status_counts"],
             **_resolution_report(statuses, resolutions, suspension_counts, report.get("door_rule")),
         },
@@ -383,7 +439,7 @@ def plan_tgos_state(offline: Path, ledger: Path | None, exchange_dir: Path, runs
     return TgosPlan(ledger, ledger_hash, carried, responses, binding, record)
 
 
-def build_tgos_state(offline: Path, work_dir: Path, plan: TgosPlan, *, run_id: str | None = None):
+def build_tgos_state(offline: Path, work_dir: Path, plan: TgosPlan, *, index: Path, run_id: str | None = None):
     """The run-full tgos-state stage (b13): re-import every carried response under the current rules
     and write the full merged snapshot. Without a ledger the merged tables equal the offline ones."""
     stage = Stage(Path(work_dir) / "tgos-state", "tgos-state", plan.binding, run_id)
@@ -391,6 +447,7 @@ def build_tgos_state(offline: Path, work_dir: Path, plan: TgosPlan, *, run_id: s
         return stage.path
     manifest, report, _ = load_state(offline)
     paths = _artifact_paths(offline, manifest)
+    base = _open_base(index, report)
     batches, queries, rekeyed, keyless = [], [], 0, 0
     if plan.carried is not None:
         batches, queries, rekeyed, keyless = plan.carried.batches, plan.carried.queries, plan.carried.rekeyed, plan.carried.keyless
@@ -401,7 +458,9 @@ def build_tgos_state(offline: Path, work_dir: Path, plan: TgosPlan, *, run_id: s
         pool = list(rows(paths["address-pool"]))
         current = rows(paths["address-result"])
         for batch_id, file, response_hash in plan.responses:
-            apply_response(batches, queries, results, evidence, current, batch_id, file, expected_sha256=response_hash)
+            apply_response(
+                batches, queries, results, evidence, current, batch_id, file, base=base, expected_sha256=response_hash
+            )
             address_rows, unmatched, statuses, resolutions, suspension_counts = rebuild(paths, report, evidence, pool)
             current = address_rows
         replaced = {

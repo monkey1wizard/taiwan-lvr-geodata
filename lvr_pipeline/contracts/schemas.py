@@ -361,6 +361,9 @@ EXCEPTION_REASON_CODES = (
     "tgos_manual_conflict",
     # R10-1c
     "tgos_keyless_query",
+    # C-3, C-2 rule 4
+    "tgos_neighborhood_multi_location",
+    "tgos_village_door_multi_location",
 )
 OFFLINE_SCHEMAS["exception-address"] = _schema(
     "exception-address",

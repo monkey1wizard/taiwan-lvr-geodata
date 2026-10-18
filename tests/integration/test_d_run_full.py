@@ -95,7 +95,7 @@ def world(tmp_path_factory):
             {"Address": REJECT, "Response_Address": ROAD + "99號", "Response_X": "121.52", "Response_Y": "25.02"},
             {"Address": MISSING, "Response_Address": "", "Response_X": "", "Response_Y": ""},
         ])
-        ledger = import_tgos(submitted, work, batch_id, finish)
+        ledger = import_tgos(submitted, work, batch_id, finish, index=index)
         yield {"tmp": tmp, "inputs": inputs, "none_dir": none_dir, "ledger": ledger, "exchange": exchange}
     finally:
         admin.ADMIN_TOWNS_PATH = committed

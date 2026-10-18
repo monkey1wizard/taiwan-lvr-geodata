@@ -230,7 +230,7 @@ def test_tgos_import_keeps_the_tolerance_rule(tmp_path):
         result,
         [{"Address": other, "Response_Address": other, "Response_X": "121.51", "Response_Y": "25.01"}],
     )
-    imported = import_tgos(submitted, tmp_path / "work", batch_id, result)
+    imported = import_tgos(submitted, tmp_path / "work", batch_id, result, index=index_of(submitted))
     _, report, _ = load_state(imported)
     assert report["status_counts"]["located"] == 2
     assert report["coordinate_tolerance_m"] == TOLERANCE

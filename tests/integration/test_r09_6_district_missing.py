@@ -63,7 +63,7 @@ def _import(built, name, answers):
         ],
     )
     work = built["tmp"] / f"work-{name}"
-    imported = import_tgos(built["submitted"], work, built["batch_id"], path)
+    imported = import_tgos(built["submitted"], work, built["batch_id"], path, index=index_of(built["submitted"]))
     return imported, work, {r["address"]: r for r in rows(imported / "tgos_imports.parquet")}
 
 
@@ -158,7 +158,7 @@ def test_same_response_again_is_idempotent_and_review_skips_district_queries(bui
         built, "review", {PLAIN: ("臺北市大同區測試路99號", GOOD), KEY: (KEY, GOOD)}
     )
     path = built["tmp"] / "review.csv"
-    assert import_tgos(imported, work, built["batch_id"], path) == imported
+    assert import_tgos(imported, work, built["batch_id"], path, index=index_of(imported)) == imported
     review = build_review(
         built["converted"], built["state"], built["tmp"] / "work-review-out",
         descriptor=built["descriptor"], tgos_state=merge_ledger(imported, work, built["tmp"] / "merged-review"),

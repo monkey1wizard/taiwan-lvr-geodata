@@ -33,7 +33,7 @@ def _import(tmp_path, query, pool=(), answer=None, coordinate=GOOD, extra_rows=(
     values += list(extra_rows)
     result = tmp_path / "result.csv"
     response(result, values)
-    imported = import_tgos(submitted, tmp_path / "work", batch_id, result)
+    imported = import_tgos(submitted, tmp_path / "work", batch_id, result, index=index_of(submitted))
     return {r["address"]: r for r in rows(imported / "tgos_imports.parquet")}[query]
 
 
@@ -143,4 +143,5 @@ def test_every_recorded_rejection_reason_has_a_review_code():
     assert raised and raised <= set(TGOS_REJECTION_CODES)
     assert set(TGOS_REJECTION_CODES.values()) <= {
         "tgos_isolated", "tgos_response_incomplete", "tgos_coordinate_invalid", "tgos_village_ambiguous",
+        "tgos_neighborhood_multi_location", "tgos_village_door_multi_location",
     }

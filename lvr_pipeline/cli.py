@@ -132,6 +132,7 @@ def _add_offline_and_output_commands(sub):
     p.add_argument("--run-id", required=True, help="Run directory name under --runs-root")
     p = sub.add_parser("import-tgos")
     p.add_argument("--state", type=Path, required=True)
+    p.add_argument("--index", type=Path, required=True, help="Offline-index snapshot the state was built from")
     p.add_argument("--batch", required=True)
     p.add_argument("--response", type=Path, required=True)
     p.add_argument("--runs-root", type=Path, default=None, help="Run directories root (default data/runs)")

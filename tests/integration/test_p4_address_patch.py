@@ -31,7 +31,7 @@ def imported_state(tmp_path, response_address):
         ],
     )
     imported = import_tgos(
-        submitted, tmp_path / "work", query["batch_id"], result
+        submitted, tmp_path / "work", query["batch_id"], result, index=index_of(submitted)
     )
     # b14: an import snapshot holds the ledger only; the patch export reads the merged state.
     return merge_ledger(imported, tmp_path / "work", tmp_path / "merged")

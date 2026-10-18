@@ -46,7 +46,7 @@ def _argv(command, tmp_path, converted, state, run_id):
         "set-tgos-status": ["set-tgos-status", "--state", str(state), "--batch", "batch",
                             "--status", "cancelled", *common],
         "import-tgos": ["import-tgos", "--state", str(state), "--batch", "batch",
-                        "--response", str(tmp_path / "response.csv"), *common],
+                        "--response", str(tmp_path / "response.csv"), "--index", str(tmp_path / "index"), *common],
         "build-review": ["build-review", "--input", str(converted), "--state", str(state), *common],
     }[command]
 

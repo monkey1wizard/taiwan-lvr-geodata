@@ -21,7 +21,8 @@ stage produces the codes that existing snapshot data can decide:
   apart; ``related_json`` lists every coordinate and the largest pairwise
   haversine distance ``max_distance_m``.
 - ``tgos_isolated``, ``tgos_response_incomplete``, ``tgos_coordinate_invalid``,
-  ``tgos_village_ambiguous``: TGOS results rejected with the matching reason text
+  ``tgos_village_ambiguous``, ``tgos_neighborhood_multi_location``,
+  ``tgos_village_door_multi_location``: TGOS results rejected with the matching reason text
   recorded by ``import-tgos``.
 
 R04-12 codes (``R04_12_CODES``). Pairs need the same county, town, village and
@@ -95,6 +96,9 @@ TGOS_REJECTION_CODES = {
     "TGOS response village or neighbourhood is ambiguous": "tgos_village_ambiguous",
     # R09-6
     "TGOS response district is not a candidate district": "tgos_isolated",
+    # C-3
+    "TGOS neighbourhood differs and the base group has several locations": "tgos_neighborhood_multi_location",
+    "TGOS village and door have several locations in the base": "tgos_village_door_multi_location",
 }
 PRODUCED_CODES = (
     "invalid_admin",

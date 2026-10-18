@@ -102,7 +102,7 @@ def build_base(tmp, extra_records=()):
          "Response_X": ANSWERS.get(q["address"], ("", "", ""))[1],
          "Response_Y": ANSWERS.get(q["address"], ("", "", ""))[2]}
         for q in queries])
-    imported = import_tgos(submitted, work, batch_id, path)
+    imported = import_tgos(submitted, work, batch_id, path, index=index_of(submitted))
     # A ledger that carries a wrong response key, to show the review recomputes it.
     manifest, report, _ = load_state(imported)
     paths = _artifact_paths(imported, manifest)

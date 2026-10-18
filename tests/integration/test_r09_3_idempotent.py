@@ -57,21 +57,21 @@ def test_same_response_again_returns_same_snapshot(tmp_path):
     _, work, prepared, batch_id, addresses = _prepare(tmp_path)
     submitted = transition_batch(prepared, work, batch_id, "submitted")
     reply = _reply(tmp_path / "reply.csv", addresses)
-    imported = import_tgos(submitted, work, batch_id, reply)
+    imported = import_tgos(submitted, work, batch_id, reply, index=index_of(submitted))
     before = _counts(work, imported)
     assert before[1] == 2
-    assert import_tgos(imported, work, batch_id, reply) == imported
+    assert import_tgos(imported, work, batch_id, reply, index=index_of(imported)) == imported
     assert _counts(work, imported) == before
 
 
 def test_different_response_for_completed_batch_is_refused(tmp_path):
     _, work, prepared, batch_id, addresses = _prepare(tmp_path)
     submitted = transition_batch(prepared, work, batch_id, "submitted")
-    imported = import_tgos(submitted, work, batch_id, _reply(tmp_path / "reply.csv", addresses))
+    imported = import_tgos(submitted, work, batch_id, _reply(tmp_path / "reply.csv", addresses), index=index_of(submitted))
     before = _counts(work, imported)
     other = _reply(tmp_path / "other.csv", addresses, coordinate=OTHER)
     with pytest.raises(ValueError, match="already imported"):
-        import_tgos(imported, work, batch_id, other)
+        import_tgos(imported, work, batch_id, other, index=index_of(imported))
     assert _counts(work, imported) == before
 
 
@@ -110,7 +110,7 @@ def test_retry_of_submission_unknown_query_is_refused(tmp_path):
 def test_import_of_submission_unknown_batch_completes_it(tmp_path):
     _, work, prepared, batch_id, addresses = _prepare(tmp_path)
     unknown = transition_batch(prepared, work, batch_id, "submission_unknown")
-    imported = import_tgos(unknown, work, batch_id, _reply(tmp_path / "reply.csv", addresses))
+    imported = import_tgos(unknown, work, batch_id, _reply(tmp_path / "reply.csv", addresses), index=index_of(unknown))
     assert _batch(imported, batch_id)["status"] == "completed"
     assert {row["status"] for row in rows(imported / "tgos_imports.parquet")} == {"succeeded"}
 

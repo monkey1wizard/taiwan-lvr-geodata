@@ -52,7 +52,7 @@ def _imported(tmp_path):
         {"Address": REJECT, "Response_Address": ROAD + "99號", "Response_X": "121.52", "Response_Y": "25.02"},
         {"Address": MISSING, "Response_Address": "", "Response_X": "", "Response_Y": ""},
     ])
-    imported = import_tgos(submitted, work, batch_id, path)
+    imported = import_tgos(submitted, work, batch_id, path, index=index_of(submitted))
     return state, work, prepared, submitted, imported, batch_id
 
 

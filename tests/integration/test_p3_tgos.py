@@ -220,10 +220,10 @@ def test_strict_import_is_idempotent_and_rejects_axis_guessing(tmp_path):
             }
         ],
     )
-    imported = import_tgos(submitted, tmp_path / "work", batch_id, result)
+    imported = import_tgos(submitted, tmp_path / "work", batch_id, result, index=index_of(submitted))
     _, report, _ = load_state(imported)
     assert report["status_counts"]["located"] == 2
-    assert import_tgos(imported, tmp_path / "work", batch_id, result) == imported
+    assert import_tgos(imported, tmp_path / "work", batch_id, result, index=index_of(imported)) == imported
 
     other = tmp_path / "axis"
     other.mkdir()
@@ -242,7 +242,7 @@ def test_strict_import_is_idempotent_and_rejects_axis_guessing(tmp_path):
         bad,
         [{"Address": address, "Response_Address": address, "Response_X": "25.01", "Response_Y": "121.51"}],
     )
-    imported = import_tgos(unknown, other / "work", batch_id, bad)
+    imported = import_tgos(unknown, other / "work", batch_id, bad, index=index_of(unknown))
     assert list(rows(imported / "tgos_imports.parquet"))[0]["status"] == "rejected"
     assert load_state(imported)[1]["status_counts"]["unmatched"] == 1
 
@@ -269,7 +269,7 @@ def test_response_for_another_door_is_isolated(tmp_path, returned):
         result,
         [{"Address": query["address"], "Response_Address": returned, "Response_X": "121.51", "Response_Y": "25.01"}],
     )
-    imported = import_tgos(submitted, tmp_path / "work", query["batch_id"], result)
+    imported = import_tgos(submitted, tmp_path / "work", query["batch_id"], result, index=index_of(submitted))
     imports = list(rows(imported / "tgos_imports.parquet"))
     assert imports[0]["status"] == "rejected"
     assert imports[0]["reason"] == "TGOS response address differs from submitted address"
@@ -285,7 +285,7 @@ def test_ledger_prevents_resend_and_reopens_results_for_revalidation(tmp_path):
         result,
         [{"Address": first["address"], "Response_Address": first["address"], "Response_X": "121.51", "Response_Y": "25.01"}],
     )
-    old = import_tgos(submitted, tmp_path / "old", first["batch_id"], result)
+    old = import_tgos(submitted, tmp_path / "old", first["batch_id"], result, index=index_of(submitted))
 
     seeded, _ = prepare_tgos(
         state,
@@ -302,7 +302,7 @@ def test_ledger_prevents_resend_and_reopens_results_for_revalidation(tmp_path):
     assert list(rows(seeded / "tgos_imports.parquet")) == []
     assert load_state(seeded)[1]["status_counts"]["located"] == 1
 
-    reimported = import_tgos(seeded, tmp_path / "new", first["batch_id"], result)
+    reimported = import_tgos(seeded, tmp_path / "new", first["batch_id"], result, index=index_of(seeded))
     assert load_state(reimported)[1]["status_counts"]["located"] == 2
 
 
@@ -401,7 +401,7 @@ def test_import_of_carried_batch_with_changed_keys_succeeds(tmp_path):
         [{"Address": first["address"], "Response_Address": first["address"], "Response_X": "121.51", "Response_Y": "25.01"}],
     )
     seeded, _ = prepare_tgos(state, tmp_path / "new", tmp_path / "exchange", ledger=stale, index=index_of(state))
-    imported = import_tgos(seeded, tmp_path / "new", first["batch_id"], result)
+    imported = import_tgos(seeded, tmp_path / "new", first["batch_id"], result, index=index_of(seeded))
     assert load_state(imported)[1]["status_counts"]["located"] == 2
     assert [r["status"] for r in rows(imported / "tgos_imports.parquet")] == ["succeeded"]
 

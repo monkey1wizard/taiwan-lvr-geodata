@@ -17,6 +17,7 @@ from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.storage.runs import digest
 from lvr_pipeline.tgos import _write_state, import_tgos, merge_ledger, transition_batch
 from test_b4_ledger import ADOPT, MISSING, REJECT, ROAD, _world
+from test_p2_offline import index_of
 from test_p3_tgos import response
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "check_tgos_v12.py"
@@ -49,7 +50,7 @@ def merged(tmp_path_factory):
         {"Address": MISSING, "Response_Address": "", "Response_X": "", "Response_Y": ""},
         {"Address": UNKEYED, "Response_Address": ROAD + "25號", "Response_X": "121.53", "Response_Y": "25.03"},
     ])
-    ledger = import_tgos(submitted, work, batch_id, finish)
+    ledger = import_tgos(submitted, work, batch_id, finish, index=index_of(submitted))
     return merge_ledger(ledger, work, tmp_path / "merged")
 
 
