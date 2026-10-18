@@ -411,6 +411,14 @@ def district_query_text(county_code: str, parsed: tuple) -> str:
     return text
 
 
+def district_text_or_none(county_code: str, parsed: tuple) -> str | None:
+    """`district_query_text`, or None when the text does not give back its door (such an address is not sent)."""
+    try:
+        return district_query_text(county_code, parsed)
+    except ValueError:
+        return None
+
+
 def _district_door(county_code: str, parsed: tuple) -> tuple:
     return (county_code, *parsed[2:])
 
@@ -578,7 +586,12 @@ def select_district_candidates(
             if parsed is None:
                 eligible.append((county, address, None, None))
                 continue
-            text = district_query_text(county, parsed)
+            text = district_text_or_none(county, parsed)
+            if text is None:
+                # Like a key whose text does not round trip: not sent, counted, waits for a normalization fix.
+                if counts is not None:
+                    counts["text_not_round_trip"] += 1
+                continue
             if (county, text) in seen:
                 if counts is not None:
                     counts["merged"] += 1
@@ -720,7 +733,7 @@ def prepare_tgos(
     queried_keys -= retried_keys
     queried_doors -= retried_doors
     key_counts = {"already_queried": 0, "text_not_round_trip": 0}
-    district_counts = {"merged": 0, "already_queried": 0}
+    district_counts = {"merged": 0, "already_queried": 0, "text_not_round_trip": 0}
     candidates = select_unmatched_candidates(
         current_address_rows(paths, report, results, queries),
         retry_fingerprints=retry_fingerprints,
@@ -825,6 +838,7 @@ def prepare_tgos(
             "tgos_key_text_not_round_trip": key_counts["text_not_round_trip"],
             "tgos_district_text_merged": district_counts["merged"],
             "tgos_district_already_queried": district_counts["already_queried"],
+            "tgos_district_text_not_round_trip": district_counts["text_not_round_trip"],
             **(
                 {"tgos_suspended_candidates_excluded": suspended_excluded}
                 if suspension is not None

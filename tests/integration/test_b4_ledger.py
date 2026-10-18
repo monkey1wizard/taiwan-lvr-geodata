@@ -144,3 +144,41 @@ def test_prepare_skips_keys_already_adopted_from_the_ledger_without_copying_tabl
     with pytest.raises(ValueError, match="No eligible TGOS candidates"):
         prepare_tgos(imported, work, tmp_path / "exchange", index=index_of(state))
     assert len(list((work / "tgos-state" / "snapshots").iterdir())) == 3
+
+
+# B-4 follow-up: a pool address whose district text does not give back its door must not stop review or prepare.
+TWO_TOWNS = "臺東縣太麻里鄉卑南鄉溫泉村龍泉路53巷3號8樓之20"  # from the real b16 run; two town names, no town found
+
+
+def test_district_text_that_does_not_round_trip_is_none_for_a_real_pool_address():
+    from lvr_pipeline.addresses.pool import district_query
+    from lvr_pipeline.tgos.batches import district_query_text, district_text_or_none
+
+    parsed = district_query(TWO_TOWNS)
+    assert parsed is not None
+    with pytest.raises(ValueError, match="does not give back its door"):
+        district_query_text(parsed[0], parsed)
+    assert district_text_or_none(parsed[0], parsed) is None
+
+
+def test_prepare_counts_and_skips_a_district_address_whose_text_does_not_round_trip(tmp_path, monkeypatch):
+    from lvr_pipeline.tgos import batches
+
+    odd, fine = "臺北市測試路98號", "臺北市測試路99號"
+    *_, state = run(
+        tmp_path,
+        coordinates=[(ADDRESS, "63", "6300100", 121.5, 25.0),
+                     ("臺北市文山區測試路11號", "63", "6300800", 121.55, 25.02)],
+        records=[{"address": a, "date": "1150102"} for a in (ADDRESS, odd, fine)],
+    )
+    real = batches.district_query_text
+
+    def text(county, parsed):
+        if parsed[3] == "98":
+            raise ValueError("TGOS district query text does not give back its door: x")
+        return real(county, parsed)
+
+    monkeypatch.setattr(batches, "district_query_text", text)
+    prepared, _ = prepare_tgos(state, tmp_path / "work", tmp_path / "exchange", index=index_of(state))
+    assert [q["address"] for q in rows(prepared / "tgos_queries.parquet")] == [fine]
+    assert load_state(prepared)[1]["tgos_district_text_not_round_trip"] == 1
