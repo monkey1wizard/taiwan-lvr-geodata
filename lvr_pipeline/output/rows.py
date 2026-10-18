@@ -229,18 +229,23 @@ def open_sources(db, converted, state):
         raise ValueError("Duplicate address index key")
 
 
-def doors_select(results: str, overrides: str) -> str:
+def doors_select(results: str, overrides: str, occurrences: str) -> str:
     """SQL of the located doors: one row per address component with a coordinate.
 
-    ``results`` is a relation of address-result rows and ``overrides`` a relation with the columns
-    component_id, address, lng and lat (the final-state coordinate sources, or empty). A door with
-    an override takes its coordinate and address from it; a door without one needs a located result.
-    door_count counts ALL components of the record, located or not.
+    ``results`` is a relation of address-result rows, ``overrides`` a relation with the columns
+    component_id, address, lng and lat (the final-state coordinate sources, or empty) and
+    ``occurrences`` a relation of address-occurrence rows. The occurrence of a component (key_version,
+    building_key) is its key in the results; the pool may have remapped the key of the component, so
+    the key of the component itself is never used. A door with an override takes its coordinate and
+    address from it; a door without one needs a located result. door_count counts ALL components of
+    the record, located or not.
     """
     return f"""SELECT c.component_id, c.raw_record_id, c.ordinal, c.normalized_address, c.door_count,
                       coalesce(v.lng, r.lng) lng, coalesce(v.lat, r.lat) lat, v.address address_override
-               FROM (SELECT component_id, raw_record_id, ordinal, normalized_address, key_version, building_key,
-                            count(*) OVER (PARTITION BY raw_record_id) door_count FROM components) c
+               FROM (SELECT c.component_id, c.raw_record_id, c.ordinal, c.normalized_address,
+                            oc.key_version, oc.building_key,
+                            count(*) OVER (PARTITION BY c.raw_record_id) door_count
+                     FROM components c JOIN {occurrences} oc ON oc.component_id=c.component_id) c
                LEFT JOIN {results} r ON r.key_version=c.key_version AND r.building_key=c.building_key
                                     AND r.lng IS NOT NULL AND r.lat IS NOT NULL
                LEFT JOIN {overrides} v ON v.component_id=c.component_id
@@ -285,7 +290,7 @@ _MATERIALIZE = [
     "CREATE TABLE ob_key AS SELECT DISTINCT raw_record_id, k FROM ob",
     f"""CREATE TABLE doors AS
        SELECT m.k, d.raw_record_id, d.ordinal, d.normalized_address, d.door_count, d.lng, d.lat, d.address_override
-       FROM ({doors_select("results", "overrides")}) d
+       FROM ({doors_select("results", "overrides", "occurrences")}) d
        JOIN ob_key m USING(raw_record_id)
        ORDER BY m.k""",
     *(f"""CREATE TABLE d_{kind} AS

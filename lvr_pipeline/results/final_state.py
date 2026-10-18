@@ -61,7 +61,7 @@ def _one(snapshot: Path, manifest: dict, schema: str) -> Path:
     return Path(found[0])
 
 
-def _door_table(db, name: str, results: str, overrides: str) -> None:
+def _door_table(db, name: str, results: str, overrides: str, occurrences: str) -> None:
     """Located doors with their output address: the override, else the source rule of make_row."""
     db.execute(
         f"""CREATE TABLE {name} AS
@@ -69,7 +69,7 @@ def _door_table(db, name: str, results: str, overrides: str) -> None:
                CASE WHEN d.door_count = 1 THEN o.raw_address ELSE d.normalized_address END base_address,
                coalesce(d.address_override,
                         CASE WHEN d.door_count = 1 THEN o.raw_address ELSE d.normalized_address END) address
-        FROM ({doors_select(results, overrides)}) d JOIN observations o USING (raw_record_id)"""
+        FROM ({doors_select(results, overrides, occurrences)}) d JOIN observations o USING (raw_record_id)"""
     )
 
 
@@ -228,6 +228,19 @@ def build_final_state(
             view("observations", schema_paths(converted, converted_manifest, "observation"))
             view("components", schema_paths(converted, converted_manifest, "address-component"))
             view("off_results", schema_paths(state, state_manifest, "address-result"))
+
+            def occurrences(name, snapshot, manifest):
+                """The door-to-key map of a snapshot: component_id -> occurrence key_version and building_key."""
+                view(name, schema_paths(snapshot, manifest, "address-occurrence"))
+                if db.execute(
+                    f"SELECT count(*) FROM ((SELECT component_id, raw_record_id FROM components EXCEPT "
+                    f"SELECT component_id, raw_record_id FROM {name}) UNION ALL (SELECT component_id, raw_record_id "
+                    f"FROM {name} EXCEPT SELECT component_id, raw_record_id FROM components))"
+                ).fetchone()[0]:
+                    raise ValueError(f"Occurrences of {snapshot} do not match the components of this converted snapshot")
+
+            occurrences("off_occurrences", state, state_manifest)
+            occurrences("after_occurrences", status_snapshot, status_manifest)
             view("final_results", [writer.path])
             db.execute("CREATE VIEW no_overrides AS SELECT NULL::VARCHAR component_id, NULL::VARCHAR address, "
                        "NULL::DOUBLE lng, NULL::DOUBLE lat WHERE false")
@@ -296,12 +309,12 @@ def build_final_state(
             # A changed key whose TGOS response address is unknown keeps the door address of the source rule.
             db.execute(
                 """CREATE TABLE new_overrides AS
-                   SELECT c.component_id, k.address, k.lng, k.lat FROM components c
-                   JOIN key_over k ON k.building_key = c.building_key
+                   SELECT oc.component_id, k.address, k.lng, k.lat FROM after_occurrences oc
+                   JOIN key_over k ON k.building_key = oc.building_key
                    UNION ALL SELECT component_id, address, lng, lat FROM district_over"""
             )
-            _door_table(db, "after_doors", "final_results", "new_overrides")
-            _door_table(db, "off_doors", "off_results", "no_overrides")
+            _door_table(db, "after_doors", "final_results", "new_overrides", "after_occurrences")
+            _door_table(db, "off_doors", "off_results", "no_overrides", "off_occurrences")
             if baseline_kind == "final-state":
                 view("base_results", schema_paths(baseline, baseline_manifest, "final-address-result"))
                 view("base_sources", schema_paths(baseline, baseline_manifest, "coordinate-source"))
@@ -314,10 +327,12 @@ def build_final_state(
                                     o.src_batch || '/' || o.member_path || '/' || o.source_row_number transaction_id
                              FROM components c JOIN observations o USING (raw_record_id)) c
                          ON c.transaction_id = s.transaction_id AND c.door_index = s.door_index""")
-                _door_table(db, "base_doors", "base_results", "base_overrides")
+                # The baseline run has other components; its keys are read with this run's offline occurrences.
+                _door_table(db, "base_doors", "base_results", "base_overrides", "off_occurrences")
             else:
                 view("base_results", schema_paths(baseline or state, baseline_manifest, "address-result"))
-                _door_table(db, "base_doors", "base_results", "no_overrides")
+                occurrences("base_occurrences", baseline or state, baseline_manifest)
+                _door_table(db, "base_doors", "base_results", "no_overrides", "base_occurrences")
 
             # Door-level coordinate sources.
             names = ["component_id", "raw_record_id", "door_index", "lng", "lat", "address", "base_address",
@@ -328,7 +343,7 @@ def build_final_state(
                           o.lng, o.lat, c.building_key, ob.src_batch, ob.member_path, ob.source_row_number,
                           ob.category, ob.tx_date_raw
                    FROM after_doors n LEFT JOIN off_doors o ON o.component_id = n.component_id
-                   JOIN components c ON c.component_id = n.component_id
+                   JOIN after_occurrences c ON c.component_id = n.component_id
                    JOIN observations ob ON ob.raw_record_id = n.raw_record_id
                    WHERE o.component_id IS NULL OR o.lng <> n.lng OR o.lat <> n.lat OR n.address <> n.base_address"""
             ).fetchall()
@@ -342,8 +357,7 @@ def build_final_state(
                 door["period_year"], door["period_month"] = _period(door)
                 output.append(door)
             for door in sorted(output, key=lambda d: (d["transaction_id"], d["door_index"])):
-                found = info.get(door["building_key"]) if door["building_key"] is not None else district_doors.get(
-                    door["component_id"])
+                found = district_doors.get(door["component_id"]) or info.get(door["building_key"])
                 if found is None:
                     raise ValueError(f"Door {door['transaction_id']}#{door['door_index']} changed without a recorded source")
                 source_doors[found["source"]] += 1
@@ -366,7 +380,7 @@ def build_final_state(
                 db.executemany("INSERT INTO outcome_keys VALUES (?, ?)",
                                [(k, "kept_tgos") for k in kept] + [(k, "conflict") for k in dropped])
             outcome_doors = dict(db.execute(
-                "SELECT outcome, count(*) FROM outcome_keys k JOIN components c USING (building_key) "
+                "SELECT outcome, count(*) FROM outcome_keys k JOIN after_occurrences c USING (building_key) "
                 "JOIN observations o USING (raw_record_id) GROUP BY 1").fetchall())
 
             # Affected months against the baseline.
