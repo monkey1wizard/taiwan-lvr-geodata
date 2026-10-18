@@ -7,6 +7,8 @@ import json
 
 import pytest
 
+from lvr_pipeline.addresses.pool import district_query
+
 from lvr_pipeline.addresses.identity import building_key
 from lvr_pipeline.contracts.schemas import EXCEPTION_REASON_CODES
 from lvr_pipeline.offline.index import build_index
@@ -515,6 +517,24 @@ def test_district_address_without_a_parseable_door_enters_with_the_address_diges
     import lvr_pipeline.results.second_review as module
     real = module.district_query
     monkeypatch.setattr(module, "district_query", lambda text: None if text == NO_ROAD else real(text))
+    row = by_address(second(review(base)), NO_ROAD)
+    assert row["entry_reason"] == "district_no_candidate_town" and row["key_kind"] == "district_query"
+    assert row["review_key"] == digest(["district_missing", "63", NO_ROAD])
+    assert row["observation_count"] == 3
+
+
+def test_district_text_that_does_not_round_trip_enters_with_the_address_digest(base, monkeypatch):
+    """A door-level text that parses as another door is never sent; it is keyed by the address (b16 real run)."""
+    import lvr_pipeline.tgos.batches as batches
+    real = batches.district_query_text
+
+    def broken(county, parsed):
+        text = real(county, parsed)
+        if text == real("63", district_query(NO_ROAD)):
+            raise ValueError("TGOS district query text does not give back its door")
+        return text
+
+    monkeypatch.setattr(batches, "district_query_text", broken)
     row = by_address(second(review(base)), NO_ROAD)
     assert row["entry_reason"] == "district_no_candidate_town" and row["key_kind"] == "district_query"
     assert row["review_key"] == digest(["district_missing", "63", NO_ROAD])

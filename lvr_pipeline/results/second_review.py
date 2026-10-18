@@ -216,17 +216,21 @@ def _ledger(tgos: dict) -> tuple[dict, dict]:
 
 
 def _district_texts(db) -> dict:
-    """Door-level query text and fingerprint of every district_missing address (R09-6 formula)."""
+    """Door-level query text and fingerprint of every district_missing address (R09-6 formula).
+
+    An address with no parseable door, or whose door-level text does not give back its door (it is
+    never sent), is keyed by the address itself (owner decision 2026-10-18).
+    """
     found = {}
     for county, address in db.execute(
         "SELECT DISTINCT county_code, normalized_address FROM occurrence "
         "WHERE reason = 'district_missing' AND county_code <> '' ORDER BY 1, 2"
     ).fetchall():
         parsed = district_query(address)
-        if parsed is None:
+        text = tgos_batches.district_text_or_none(county, parsed) if parsed is not None else None
+        if text is None:
             found[(county, address)] = (address, digest(["district_missing", county, address]))
         else:
-            text = tgos_batches.district_query_text(county, parsed)
             found[(county, address)] = (text, digest(["district_missing", county, text]))
     return found
 
