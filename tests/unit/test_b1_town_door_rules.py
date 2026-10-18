@@ -25,7 +25,7 @@ def expected(county, town, road, door, village=None, neighborhood=None):
 
 
 def test_version():
-    assert NORMALIZATION_VERSION == "v2.7"
+    assert NORMALIZATION_VERSION == "v2.8"
 
 
 @pytest.mark.parametrize("address,want", [
@@ -160,3 +160,23 @@ def test_unparsable_floor_door_gives_no_key(address):
 ])
 def test_place_names_and_unchanged_negatives_keep_their_key(address, want):
     assert key_fields(address) == want
+
+
+@pytest.mark.parametrize("address,want", [
+    ("桃園市桃園區桃園市桃園區永順街99巷7號14樓", expected("桃園市", "桃園區", "永順街99巷", "7")),
+    ("桃園市桃園區桃園市桃園區南平路290號", expected("桃園市", "桃園區", "南平路", "290")),
+    ("新北市板橋區新北市板橋區文化路一段1號", expected("新北市", "板橋區", "文化路一段", "1")),
+    ("新北市板橋區臺北縣板橋市文化路一段1號", expected("新北市", "板橋區", "文化路一段", "1")),
+    ("桃園市桃園區桃園縣桃園市永順街99巷7號", expected("桃園市", "桃園區", "永順街99巷", "7")),
+])
+def test_repeated_county_and_town_are_dropped_and_query_text_round_trips(address, want):
+    from lvr_pipeline.tgos.batches import key_query_text
+
+    key = building_key(address)
+    assert json.loads(key[3:]) == want
+    text = key_query_text(key)
+    assert building_key(text) == key
+
+
+def test_city_plus_town_repeat_stays_invalid_admin():
+    assert building_key("臺南市東區市東區文聖里6鄰裕農一街186號八樓之8") is None

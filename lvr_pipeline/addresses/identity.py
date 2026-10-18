@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 
-from .admin import resolve_old_county, town_aliases, town_in_county, town_villages
+from .admin import OLD_COUNTY_PAIRS, county_name, resolve_old_county, town_aliases, town_in_county, town_villages
 from .parse import _COUNTY_CODE, _REJECT_RE, arab_to_cjk, is_garbled, norm
 
 KEY_VERSION = "v2"
@@ -13,7 +13,8 @@ KEY_VERSION = "v2"
 # v2.5 (R04-12): village and neighbourhood become sub-identifiers of the door; see building_key.
 # v2.6 (R07-6b): district must exist in its county; old county names mapped by admin_towns.json.
 # v2.7 (B-1): repeated town and unit dropped, other town invalid, CJK main number before 之N號, unparsable floor door gives no key.
-NORMALIZATION_VERSION = "v2.7"
+# v2.8 (B-1 follow-up): repeated county and town dropped.
+NORMALIZATION_VERSION = "v2.8"
 _COUNTIES = "|".join(sorted(_COUNTY_CODE, key=len, reverse=True))
 # Town names end in 市, 區, 鄉 or 鎮, never 里 (R04-12: 太麻里鄉 was rejected by the old 里 alternative).
 _COUNTY_RE = re.compile("^(" + _COUNTIES + ")")
@@ -122,12 +123,19 @@ def after_town(county_code: str, town: str, rest: str) -> str | None:
     B-1 (owner-approved 2026-10-18). Shared by building_key and AdministrativeNames.canonicalize, so the pool,
     the district fill and the keys agree. 市 plus the same town (臺南市東區市東區) and a different town of the
     county (苗栗市公館鄉) are not readable (invalid_admin). The same town again, or a name the admin tables
-    record for the same town code (頭份市頭份鎮, 中壢區中壢市), is dropped once, and so is a repeated 區, 鄉 or 鎮
+    record for the same town code (頭份市頭份鎮, 中壢區中壢市), is dropped once, as is a repeated county plus town (桃園市桃園區桃園市桃園區), and so is a repeated 區, 鄉 or 鎮
     when a village of the town follows it.
     """
     if rest.startswith("市" + town):
         return None
-    for name in sorted({town, *town_aliases(county_code, town)}, key=lambda n: -len(n)):
+    names = sorted({town, *town_aliases(county_code, town)}, key=lambda n: -len(n))
+    # The county and the town written again (桃園市桃園區桃園市桃園區, 新北市板橋區臺北縣板橋市) are dropped together.
+    counties = (county_name(county_code), *(old for old, new in OLD_COUNTY_PAIRS.items() if new == county_name(county_code)))
+    for county in counties:
+        for name in names:
+            if rest.startswith(county + name):
+                return rest[len(county + name):]
+    for name in names:
         if rest.startswith(name):
             return rest[len(name):]
     if rest[:1] == town[-1] and rest[:1] in "區鄉鎮":
