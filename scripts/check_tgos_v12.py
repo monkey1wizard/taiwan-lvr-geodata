@@ -26,6 +26,10 @@ import pyarrow.parquet as pq  # noqa: E402
 
 from lvr_pipeline.addresses.identity import building_key, same_door  # noqa: E402
 from lvr_pipeline.contracts.validate import TAIWAN_BOUNDS  # noqa: E402
+from lvr_pipeline.results.reconcile import haversine_m  # noqa: E402
+
+# The 30 m adoption rule (地址規則「離線候選與定位」): a door with other evidence keeps the medoid.
+TOLERANCE_M = 30.0
 from lvr_pipeline.results.review import TGOS_REJECTION_CODES  # noqa: E402
 from lvr_pipeline.transactions.normalize import normalize_address  # noqa: E402
 
@@ -205,7 +209,7 @@ def check_batch(batch_id: str, queries: list[dict], results: list[dict], index: 
     # 7. Merged snapshot only: succeeded building_key rows agree with address_index.
     c7 = Check(CHECK_NAMES[6])
     c7.extra = {"applicable": index is not None, "succeeded_building_key_rows": 0,
-                "located_matching": 0, "conflict_listed": 0}
+                "located_matching": 0, "located_with_other_evidence": 0, "conflict_listed": 0}
     if index is not None:
         for r, q in pairs:
             if r["status"] != "succeeded" or q.get("query_kind") != "building_key":
@@ -220,7 +224,13 @@ def check_batch(batch_id: str, queries: list[dict], results: list[dict], index: 
             elif row["status"] != "located":
                 c7.fail(view, f"address_index status is {row['status']!r}")
             elif (row["lng"], row["lat"]) != (r["lng"], r["lat"]):
-                c7.fail(view, "address_index coordinate differs from the TGOS coordinate")
+                # B-1 rekeyed doors can also be located offline; the TGOS point then joins the
+                # evidence and the 30 m rule picks the representative.
+                if (row["coordinate_count"] or 0) > 1 and haversine_m(
+                        (row["lng"], row["lat"]), (r["lng"], r["lat"])) <= TOLERANCE_M:
+                    c7.extra["located_with_other_evidence"] += 1
+                else:
+                    c7.fail(view, "address_index coordinate differs from the TGOS coordinate")
             else:
                 c7.extra["located_matching"] += 1
 
