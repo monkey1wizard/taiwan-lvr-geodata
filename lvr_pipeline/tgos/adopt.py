@@ -113,11 +113,12 @@ def same_door_for_adoption(query_key: str | None, response_key: str | None) -> b
 DOOR = "door"
 NEIGHBORHOOD = "neighborhood"
 VILLAGE_DOOR = "village_door"
+VILLAGE_AS_PLACE = "village_as_place"
 
 
 def adoption_route(query_key: str | None, response_key: str | None) -> str | None:
     """Which rule family names the queried door: DOOR (rules 1 and 3), NEIGHBORHOOD (rule 2),
-    VILLAGE_DOOR (rule 4) or None. NEIGHBORHOOD and VILLAGE_DOOR also need the base group check."""
+    VILLAGE_DOOR (rule 4), VILLAGE_AS_PLACE (rule 5) or None. The routes after DOOR also need the base group check."""
     if not query_key or not response_key:
         return None
     if same_door_for_adoption(query_key, response_key):
@@ -136,6 +137,15 @@ def adoption_route(query_key: str | None, response_key: str | None) -> str | Non
         and (neighborhood is None or neighborhood == response.get("neighborhood"))
     ):
         return VILLAGE_DOOR
+    if (
+        query["locality_road"] == ""
+        and query.get("village") is not None
+        and response["locality_road"] == query["village"]
+        and (query["county"], query["town"]) == (response["county"], response["town"])
+        and _door_notation(query["door"]) == _door_notation(response["door"])
+        and (neighborhood is None or neighborhood == response.get("neighborhood"))
+    ):
+        return VILLAGE_AS_PLACE
     return None
 
 
@@ -168,7 +178,7 @@ def _verdict(units: dict) -> GroupVerdict:
 
 
 class BaseGroups:
-    """The valid offline-index rows of the towns one import needs, grouped for rules 2 and 4.
+    """The valid offline-index rows of the towns one import needs, grouped for rules 2, 4 and 5.
 
     ``load`` reads ``offline_rows.parquet`` once for the towns not yet loaded; ``seconds`` is the
     total read time. Only rows with validity 'valid' and a building_key count.
@@ -180,6 +190,7 @@ class BaseGroups:
         self.seconds = 0.0
         self._neighborhood: dict = {}
         self._village_door: dict = {}
+        self._place_door: dict = {}
 
     def load(self, towns) -> None:
         needed = sorted(set(towns) - self.loaded)
@@ -206,6 +217,10 @@ class BaseGroups:
             self._neighborhood.setdefault((*town, value["locality_road"], door, village), {}).setdefault(
                 neighborhood, set()
             ).add(point)
+            if value["locality_road"] != "":
+                self._place_door.setdefault((*town, value["locality_road"], door), {}).setdefault(
+                    (village, neighborhood), set()
+                ).add(point)
             if village is not None:
                 self._village_door.setdefault((*town, village, door), {}).setdefault(
                     (value["locality_road"], neighborhood), set()
@@ -224,3 +239,9 @@ class BaseGroups:
         value = json.loads(query_key[3:])
         group = (value["county"], value["town"], value["village"], _door_notation(value["door"]))
         return _verdict(self._village_door.get(group, {}))
+
+    def place_door_group(self, query_key: str) -> GroupVerdict:
+        """Rule 5: the base group whose locality_road is the query's village text, same door, any village."""
+        value = json.loads(query_key[3:])
+        group = (value["county"], value["town"], value["village"], _door_notation(value["door"]))
+        return _verdict(self._place_door.get(group, {}))

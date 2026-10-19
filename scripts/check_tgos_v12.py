@@ -31,7 +31,7 @@ from lvr_pipeline.results.reconcile import haversine_m  # noqa: E402
 # The 30 m adoption rule (地址規則「離線候選與定位」): a door with other evidence keeps the medoid.
 TOLERANCE_M = 30.0
 from lvr_pipeline.results.review import TGOS_REJECTION_CODES  # noqa: E402
-from lvr_pipeline.tgos.adopt import DOOR, NEIGHBORHOOD, VILLAGE_DOOR, adoption_route  # noqa: E402
+from lvr_pipeline.tgos.adopt import DOOR, NEIGHBORHOOD, VILLAGE_AS_PLACE, VILLAGE_DOOR, adoption_route  # noqa: E402
 from lvr_pipeline.transactions.normalize import normalize_address  # noqa: E402
 
 # Copied from lvr_pipeline/tgos/validate.py (DISTRICT_FILL_REASON, KEYLESS_REASON, the differs text in
@@ -43,8 +43,8 @@ OUT_OF_BOUNDS_REASON = "TGOS coordinate is outside declared WGS84 Taiwan bounds"
 OUTSIDE_GROUP_REASON = "tgos_neighborhood_outside_base_group"
 # Rejection texts of the base group rules (lvr_pipeline/tgos/adopt.py) and the route each needs.
 GROUP_REJECTIONS = {
-    "TGOS neighbourhood differs and the base group has several locations": NEIGHBORHOOD,
-    "TGOS village and door have several locations in the base": VILLAGE_DOOR,
+    "TGOS neighbourhood differs and the base group has several locations": {NEIGHBORHOOD},
+    "TGOS village and door have several locations in the base": {VILLAGE_DOOR, VILLAGE_AS_PLACE},
 }
 
 RESULT_STATUSES = {"succeeded", "failed", "rejected"}
@@ -199,7 +199,7 @@ def check_batch(batch_id: str, queries: list[dict], results: list[dict], index: 
                 if adoption_route(q["building_key"], response_key(r["response_address"])) == DOOR:
                     c4.fail(view, "differs reason, but the response names the queried door")
             if reason in GROUP_REJECTIONS:
-                if adoption_route(q.get("building_key"), response_key(r["response_address"])) != GROUP_REJECTIONS[reason]:
+                if adoption_route(q.get("building_key"), response_key(r["response_address"])) not in GROUP_REJECTIONS[reason]:
                     c4.fail(view, "base group rejection, but the response is not of that rule's route")
             if reason == OUT_OF_BOUNDS_REASON:
                 x, y = r["response_lng"], r["response_lat"]

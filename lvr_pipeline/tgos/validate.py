@@ -19,6 +19,7 @@ from ..transactions.normalize import normalize_address
 from .adopt import (
     NEIGHBORHOOD,
     NEIGHBORHOOD_OUTSIDE_REASON,
+    VILLAGE_AS_PLACE,
     VILLAGE_DOOR,
     BaseGroups,
     adoption_route,
@@ -117,7 +118,7 @@ def _response_coordinate(x: str, y: str):
 
 
 def _group_towns(submitted: dict, returned: list[dict]) -> set:
-    """(county, town) of every row that can reach rule 2 or 4 of the adoption check."""
+    """(county, town) of every row that can reach rule 2, 4 or 5 of the adoption check."""
     towns = set()
     for row in returned:
         query = submitted[row["Address"]]
@@ -129,7 +130,7 @@ def _group_towns(submitted: dict, returned: list[dict]) -> set:
             target_key = building_key(normalize_address(row["Response_Address"]))
         except (TypeError, ValueError):
             continue
-        if target_key and adoption_route(query["building_key"], target_key) in {NEIGHBORHOOD, VILLAGE_DOOR}:
+        if target_key and adoption_route(query["building_key"], target_key) in {NEIGHBORHOOD, VILLAGE_DOOR, VILLAGE_AS_PLACE}:
             towns.add(base_town(query["building_key"]))
     return towns
 
@@ -151,7 +152,7 @@ def apply_response(
     ``current_rows`` are the address status rows before this response: they give the coordinates
     already located and the villages and neighbourhoods of the pool. Returns the response hash.
     ``expected_sha256`` is the hash recorded for a carried batch; a different file is refused.
-    ``base`` gives the offline-index groups that rules 2 and 4 of the adoption check need; it reads
+    ``base`` gives the offline-index groups that rules 2, 4 and 5 of the adoption check need; it reads
     the index once for the towns of the rows that reach those rules.
     """
     batch = next((row for row in batches if row["batch_id"] == batch_id), None)
@@ -224,6 +225,12 @@ def apply_response(
                             reason = NEIGHBORHOOD_OUTSIDE_REASON
                     elif route == VILLAGE_DOOR:
                         verdict = base.village_door_group(query["building_key"])
+                        if not verdict.present:
+                            raise ValueError("TGOS response address differs from submitted address")
+                        if not verdict.single:
+                            raise ValueError("TGOS village and door have several locations in the base")
+                    elif route == VILLAGE_AS_PLACE:
+                        verdict = base.place_door_group(query["building_key"])
                         if not verdict.present:
                             raise ValueError("TGOS response address differs from submitted address")
                         if not verdict.single:

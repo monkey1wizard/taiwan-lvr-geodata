@@ -1,4 +1,4 @@
-"""TGOS adoption rules 2 (only the neighbourhood differs) and 4 (query has no street), synthetic base."""
+"""TGOS adoption rules 2 (only the neighbourhood differs), 4 (query has no street) and 5 (village is a place name), synthetic base."""
 
 import csv
 import json
@@ -216,6 +216,59 @@ def test_village_and_door_with_a_different_written_neighbourhood_is_isolated(tmp
     query = HAMLET.format("15鄰278號")
     entries = [(HAMLET.format("13鄰大埔278號"), ORIGIN)]
     result, _, _ = run(tmp_path, query, HAMLET.format("13鄰大埔278號"), entries)
+    assert result["reason"] == DIFFERS
+
+
+# Rule 5: the query's village is a place name (locality) in the response.
+PLACE = "宜蘭縣羅東鎮{}"
+PLACE_QUERY = PLACE.format("鍾山新村1號")
+PLACE_ANSWER = PLACE.format("公正里18鄰鍾山新村1號")
+
+
+def test_village_as_place_single_location_adopts_and_keeps_the_query_key(tmp_path):
+    entries = [(PLACE_ANSWER, ORIGIN), (PLACE.format("公正里19鄰鍾山新村1號"), north(10))]
+    result, evidence, query = run(tmp_path, PLACE_QUERY, PLACE_ANSWER, entries)
+    assert result["status"] == "succeeded" and result["reason"] is None
+    assert evidence[0]["building_key"] == key_of(PLACE_QUERY) == query["building_key"]
+
+
+def test_village_as_place_another_door_is_isolated(tmp_path):
+    result, _, _ = run(tmp_path, PLACE_QUERY, PLACE.format("公正里18鄰鍾山新村2號"), [(PLACE_ANSWER, ORIGIN)])
+    assert result["reason"] == DIFFERS and code_of(result) == "tgos_isolated"
+
+
+def test_village_as_place_another_locality_is_isolated(tmp_path):
+    result, _, _ = run(tmp_path, PLACE_QUERY, PLACE.format("公正里18鄰枕山一村1號"), [(PLACE_ANSWER, ORIGIN)])
+    assert result["reason"] == DIFFERS and code_of(result) == "tgos_isolated"
+
+
+def test_village_as_place_multi_location_is_rejected(tmp_path):
+    entries = [(PLACE_ANSWER, ORIGIN), (PLACE.format("公正里19鄰鍾山新村1號"), north(100))]
+    result, _, _ = run(tmp_path, PLACE_QUERY, PLACE_ANSWER, entries)
+    assert result["reason"] == VILLAGE_DOOR_MULTI and code_of(result) == "tgos_village_door_multi_location"
+
+
+def test_village_as_place_not_in_the_base_is_isolated(tmp_path):
+    entries = [(PLACE.format("公正里18鄰鍾山新村2號"), ORIGIN)]
+    result, _, _ = run(tmp_path, PLACE_QUERY, PLACE_ANSWER, entries)
+    assert result["reason"] == DIFFERS and code_of(result) == "tgos_isolated"
+
+
+def test_village_as_place_door_notation_applies(tmp_path):
+    query, answer = PLACE.format("聖湖新村10之2號"), PLACE.format("公正里18鄰聖湖新村10號之2")
+    result, _, _ = run(tmp_path, query, answer, [(answer, ORIGIN)])
+    assert result["status"] == "succeeded" and result["reason"] is None
+
+
+def test_village_as_place_with_a_different_written_neighbourhood_is_isolated(tmp_path):
+    query = PLACE.format("鍾山新村15鄰1號")
+    result, _, _ = run(tmp_path, query, PLACE_ANSWER, [(PLACE_ANSWER, ORIGIN)])
+    assert result["reason"] == DIFFERS and code_of(result) == "tgos_isolated"
+
+
+def test_village_as_place_does_not_touch_a_query_with_a_street(tmp_path):
+    query = PLACE.format("公正里天祥路1號")
+    result, _, _ = run(tmp_path, query, PLACE_ANSWER, [(PLACE_ANSWER, ORIGIN)])
     assert result["reason"] == DIFFERS
 
 
