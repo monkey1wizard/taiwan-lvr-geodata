@@ -81,3 +81,28 @@ def test_same_name_in_another_town_is_not_the_same_village():
 
     assert not _same_village("10010", "民雄鄉", "豐收村", "雙福村")
     assert not _same_village("10010", "不存在鄉", "豐收村", "豊收村")
+
+
+# c41: a response without the final 號 is read with 號 appended; its key is not stored.
+def test_response_key_appends_the_missing_hao():
+    from lvr_pipeline.tgos.adopt import response_key
+
+    assert response_key("苗栗縣頭份市尖山里14鄰尖山141之25") == building_key("苗栗縣頭份市尖山里14鄰尖山141之25號")
+    assert response_key("苗栗縣頭份市尖山里14鄰尖山141之25號") == building_key("苗栗縣頭份市尖山里14鄰尖山141之25號")
+    assert response_key("苗栗縣頭份市尖山里14鄰尖山") is None
+    assert response_key(None) is None
+
+
+def test_second_review_response_key_uses_the_same_rule():
+    from lvr_pipeline.results.second_review import _response_key
+
+    key, why = _response_key("苗栗縣頭份市尖山里14鄰尖山141之25")
+    assert key == building_key("苗栗縣頭份市尖山里14鄰尖山141之25號") and why is None
+    assert _response_key("苗栗縣頭份市尖山里14鄰尖山") == (None, "building_key returned None")
+
+
+# c42: ㄧ (U+3127) is read as 一 (U+4E00) in adoption only; the keys differ.
+def test_bopomofo_one_is_read_as_the_numeral():
+    assert adopted("彰化縣二林鎮正知ㄧ街15號", "彰化縣二林鎮後厝里9鄰正知一街15號")
+    assert not adopted("彰化縣二林鎮正知ㄧ街15號", "彰化縣二林鎮後厝里9鄰正知二街15號")
+    assert building_key("彰化縣二林鎮正知ㄧ街15號") != building_key("彰化縣二林鎮正知一街15號")

@@ -12,13 +12,36 @@ from pathlib import Path
 import duckdb
 
 from ..addresses.admin import load_admin_towns
+from ..addresses.identity import building_key
 from ..results.reconcile import adopt_coordinates
+from ..transactions.normalize import normalize_address
 
 GROUP_TOLERANCE_M = 30.0
 NEIGHBORHOOD_OUTSIDE_REASON = "tgos_neighborhood_outside_base_group"
 
 _NOTATION = re.compile(r"^(?P<pre>[臨建特]?)(?P<n>[0-9]+)號之(?P<m>[0-9]+)$")
 _VILLAGE_SUFFIX = ("村", "里")
+
+
+def response_key(address: str | None) -> str | None:
+    """The door key of a TGOS response address, for adoption and review (c41).
+
+    ``address`` is the raw response text; it is normalised like a query address. When that has no
+    key and ends with an ASCII digit, TGOS left out the final 號: the key is tried once more with
+    "號" appended. The stored response address is not changed, and neither is ``building_key``.
+    """
+    if not address:
+        return None
+    text = normalize_address(address)
+    key = building_key(text)
+    if key is None and text[-1:].isascii() and text[-1:].isdigit():
+        key = building_key(text + "號")
+    return key
+
+
+def _text(value):
+    """Adoption comparisons read the bopomofo letter ㄧ (U+3127) as the numeral 一 (U+4E00) (c42)."""
+    return value.replace("ㄧ", "一") if isinstance(value, str) else value
 
 
 def _door_notation(door: str) -> str:
@@ -58,6 +81,7 @@ def _old_town_maps_to(row: dict, town: str) -> bool:
 
 def _same_village(county: str, town: str, query_village: str, response_village: str) -> bool:
     """Rule 1 and the county-reform extension; anything undecided is not the same village."""
+    query_village, response_village = _text(query_village), _text(response_village)
     if query_village == response_village:
         return True
     names = _village_index().get((county, town), {})
@@ -83,9 +107,11 @@ def _same_village(county: str, town: str, query_village: str, response_village: 
 
 def _door_and_village(query: dict, response: dict) -> bool:
     """Same county, town, road and door (rule 3); a written village matches as text or by code (rule 1)."""
-    for field in ("county", "town", "locality_road"):
+    for field in ("county", "town"):
         if query[field] != response[field]:
             return False
+    if _text(query["locality_road"]) != _text(response["locality_road"]):
+        return False
     if _door_notation(query["door"]) != _door_notation(response["door"]):
         return False
     village = query.get("village")
@@ -140,7 +166,7 @@ def adoption_route(query_key: str | None, response_key: str | None) -> str | Non
     if (
         query["locality_road"] == ""
         and query.get("village") is not None
-        and response["locality_road"] == query["village"]
+        and _text(response["locality_road"]) == _text(query["village"])
         and (query["county"], query["town"]) == (response["county"], response["town"])
         and _door_notation(query["door"]) == _door_notation(response["door"])
         and (neighborhood is None or neighborhood == response.get("neighborhood"))
@@ -211,19 +237,19 @@ class BaseGroups:
         for key, lng, lat in found:
             value = json.loads(key[3:])
             door = _door_notation(value["door"])
-            village, neighborhood = value.get("village"), value.get("neighborhood")
+            road, village, neighborhood = _text(value["locality_road"]), _text(value.get("village")), value.get("neighborhood")
             town = (value["county"], value["town"])
             point = (lng, lat)
-            self._neighborhood.setdefault((*town, value["locality_road"], door, village), {}).setdefault(
+            self._neighborhood.setdefault((*town, road, door, village), {}).setdefault(
                 neighborhood, set()
             ).add(point)
-            if value["locality_road"] != "":
-                self._place_door.setdefault((*town, value["locality_road"], door), {}).setdefault(
+            if road != "":
+                self._place_door.setdefault((*town, road, door), {}).setdefault(
                     (village, neighborhood), set()
                 ).add(point)
             if village is not None:
                 self._village_door.setdefault((*town, village, door), {}).setdefault(
-                    (value["locality_road"], neighborhood), set()
+                    (road, neighborhood), set()
                 ).add(point)
         self.loaded |= set(needed)
         self.seconds += time.perf_counter() - started
@@ -231,17 +257,17 @@ class BaseGroups:
     def neighborhood_group(self, query_key: str) -> GroupVerdict:
         """Rule 2: the base group of the query's signature and village."""
         value = json.loads(query_key[3:])
-        group = (value["county"], value["town"], value["locality_road"], _door_notation(value["door"]), value.get("village"))
+        group = (value["county"], value["town"], _text(value["locality_road"]), _door_notation(value["door"]), _text(value.get("village")))
         return _verdict(self._neighborhood.get(group, {}))
 
     def village_door_group(self, query_key: str) -> GroupVerdict:
         """Rule 4: the base group of the query's village and door in its county and town, any road."""
         value = json.loads(query_key[3:])
-        group = (value["county"], value["town"], value["village"], _door_notation(value["door"]))
+        group = (value["county"], value["town"], _text(value["village"]), _door_notation(value["door"]))
         return _verdict(self._village_door.get(group, {}))
 
     def place_door_group(self, query_key: str) -> GroupVerdict:
         """Rule 5: the base group whose locality_road is the query's village text, same door, any village."""
         value = json.loads(query_key[3:])
-        group = (value["county"], value["town"], value["village"], _door_notation(value["door"]))
+        group = (value["county"], value["town"], _text(value["village"]), _door_notation(value["door"]))
         return _verdict(self._place_door.get(group, {}))

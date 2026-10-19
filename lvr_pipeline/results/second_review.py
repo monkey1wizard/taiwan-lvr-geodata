@@ -40,7 +40,6 @@ import json
 from pathlib import Path
 import re
 
-from ..addresses.identity import building_key
 from ..addresses.pool import district_query
 from ..contracts.schemas import dataset_schema
 from ..contracts.validate import within_taiwan_bounds
@@ -48,6 +47,7 @@ from ..output.rows import make_transaction_id
 from ..storage.parquet import BatchWriter
 from ..storage.runs import digest
 from ..tgos import batches as tgos_batches
+from ..tgos.adopt import response_key
 
 # Entry reasons that exist only here (EXCEPTION_REASON_CODES holds the codes of the review table too).
 ENTRY_REASONS = (
@@ -151,7 +151,7 @@ def _response_key(address: str | None) -> tuple[str | None, str | None]:
     """The key of the response address under the current rules, or why there is none."""
     if not address:
         return None, "no response address"
-    key = building_key(address)
+    key = response_key(address)
     return (key, None) if key is not None else (None, "building_key returned None")
 
 

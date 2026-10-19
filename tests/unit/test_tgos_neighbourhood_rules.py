@@ -288,3 +288,45 @@ def test_review_codes_are_registered():
     from lvr_pipeline.contracts.schemas import EXCEPTION_REASON_CODES
 
     assert {"tgos_neighborhood_multi_location", "tgos_village_door_multi_location"} <= set(EXCEPTION_REASON_CODES)
+
+
+# c42: the bopomofo letter ㄧ is read as 一 in the group keys and lookups.
+BOPOMOFO_ROAD = "彰化縣彰化市南瑤里{}鄰ㄧ街30號"
+NUMERAL_ROAD = "彰化縣彰化市南瑤里{}鄰一街30號"
+
+
+def test_bopomofo_in_the_road_reaches_the_neighbourhood_group(tmp_path):
+    entries = [(NUMERAL_ROAD.format(15), ORIGIN), (NUMERAL_ROAD.format(17), ORIGIN)]
+    result, _, query = run(tmp_path, BOPOMOFO_ROAD.format(15), NUMERAL_ROAD.format(16), entries)
+    assert result["status"] == "succeeded" and result["reason"] == NEIGHBORHOOD_OUTSIDE_REASON
+    assert query["building_key"] == key_of(BOPOMOFO_ROAD.format(15)) != key_of(NUMERAL_ROAD.format(15))
+
+
+def test_bopomofo_in_the_village_text_reaches_rule_4(tmp_path):
+    result, _, _ = run(tmp_path, "嘉義縣大埔鄉ㄧ村278號", "嘉義縣大埔鄉一村13鄰大埔278號", [("嘉義縣大埔鄉一村13鄰大埔278號", ORIGIN)])
+    assert result["status"] == "succeeded", result["reason"]
+
+
+def test_bopomofo_in_the_village_text_reaches_rule_5(tmp_path):
+    answer = PLACE.format("公正里18鄰鍾山一村1號")
+    result, _, _ = run(tmp_path, PLACE.format("鍾山ㄧ村1號"), answer, [(answer, ORIGIN)])
+    assert result["status"] == "succeeded", result["reason"]
+
+
+C41_QUERY = "苗栗縣頭份市尖山里14鄰尖山141之25號"
+
+
+def test_response_without_the_final_hao_is_adopted(tmp_path):
+    result, _, _ = run(tmp_path, C41_QUERY, "苗栗縣頭份市尖山里14鄰尖山141之25", [])
+    assert result["status"] == "succeeded", result["reason"]
+    assert result["response_address"] == "苗栗縣頭份市尖山里14鄰尖山141之25"
+
+
+def test_truncated_door_without_hao_differs(tmp_path):
+    result, _, _ = run(tmp_path, "新竹縣寶山鄉寶新路147巷45號", "新竹縣寶山鄉雙新村4鄰寶新路1143", [])
+    assert result["reason"] == DIFFERS
+
+
+def test_response_without_a_door_is_not_a_complete_address(tmp_path):
+    result, _, _ = run(tmp_path, C41_QUERY, "苗栗縣頭份市尖山里14鄰尖山", [])
+    assert result["reason"] == "TGOS response is not a complete address"

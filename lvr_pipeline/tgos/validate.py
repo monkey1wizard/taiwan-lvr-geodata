@@ -9,13 +9,12 @@ from pathlib import Path
 from typing import NamedTuple
 
 from ..addresses import identity
-from ..addresses.identity import building_key, door_parts
+from ..addresses.identity import door_parts
 from ..addresses.pool import district_query
 from ..contracts.validate import within_taiwan_bounds
 from ..results.reconcile import DOOR_CROSS_CHECK, EXCEEDS_TOLERANCE, WITHIN_TOLERANCE
 from ..storage.parquet import rows
 from ..storage.runs import Stage, _identifier, bindings, digest, sha256_file
-from ..transactions.normalize import normalize_address
 from .adopt import (
     NEIGHBORHOOD,
     NEIGHBORHOOD_OUTSIDE_REASON,
@@ -25,6 +24,7 @@ from .adopt import (
     adoption_route,
     base_town,
 )
+from .adopt import response_key as adoption_response_key
 from .batches import (
     DAILY_LIMIT,
     Carried,
@@ -127,7 +127,7 @@ def _group_towns(submitted: dict, returned: list[dict]) -> set:
         try:
             if not row["Response_Address"].strip() or _tgos_coordinate(row["Response_X"], row["Response_Y"]) is None:
                 continue
-            target_key = building_key(normalize_address(row["Response_Address"]))
+            target_key = adoption_response_key(row["Response_Address"])
         except (TypeError, ValueError):
             continue
         if target_key and adoption_route(query["building_key"], target_key) in {NEIGHBORHOOD, VILLAGE_DOOR, VILLAGE_AS_PLACE}:
@@ -200,8 +200,7 @@ def apply_response(
             if coordinate and not row["Response_Address"].strip():
                 raise ValueError("Successful TGOS row lacks Response_Address")
             if coordinate:
-                response_address = normalize_address(row["Response_Address"])
-                target_key = building_key(response_address)
+                target_key = adoption_response_key(row["Response_Address"])
                 if not target_key:
                     raise ValueError("TGOS response is not a complete address")
                 if district:

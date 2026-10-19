@@ -32,7 +32,7 @@ from lvr_pipeline.results.reconcile import haversine_m  # noqa: E402
 TOLERANCE_M = 30.0
 from lvr_pipeline.results.review import TGOS_REJECTION_CODES  # noqa: E402
 from lvr_pipeline.tgos.adopt import DOOR, NEIGHBORHOOD, VILLAGE_AS_PLACE, VILLAGE_DOOR, adoption_route  # noqa: E402
-from lvr_pipeline.transactions.normalize import normalize_address  # noqa: E402
+from lvr_pipeline.tgos.adopt import response_key as adopt_response_key  # noqa: E402
 
 # Copied from lvr_pipeline/tgos/validate.py (DISTRICT_FILL_REASON, KEYLESS_REASON, the differs text in
 # apply_response). Copied, not imported, so this check does not load the adoption module.
@@ -99,7 +99,7 @@ def response_key(text: str | None) -> str | None:
     """Door key of a response address, normalised the way the adoption step normalises it."""
     if not text:
         return None
-    return building_key(normalize_address(text))
+    return adopt_response_key(text)
 
 
 def view_of(result: dict, query: dict) -> dict:
