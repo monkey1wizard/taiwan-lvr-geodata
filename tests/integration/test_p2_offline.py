@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 
-from lvr_pipeline.addresses import admin
+from lvr_pipeline.addresses import admin, identity
 from lvr_pipeline.addresses.pool import build_pool
 from lvr_pipeline.results.reconcile import load_p2, resolve_offline
 from lvr_pipeline.offline.index import build_index
@@ -275,3 +275,35 @@ def test_official_profile_rejects_unknown_crs_and_hash(tmp_path):
     official["sha256"] = "0" * 64
     with pytest.raises(ValueError, match="hash"):
         build_index(root, d, tmp_path / "work", official=official)
+
+
+def test_offline_state_records_the_rule_version_it_was_made_under(tmp_path):
+    *_, state = run(tmp_path)
+    report = json.loads((state / "quality.json").read_text(encoding="utf-8"))
+    assert report["producer_config"]["parameters"]["normalization_version"] == identity.NORMALIZATION_VERSION
+
+
+def test_offline_state_of_another_rule_version_is_rejected_by_load_p2(tmp_path, monkeypatch):
+    *_, state = run(tmp_path)
+    monkeypatch.setattr(identity, "NORMALIZATION_VERSION", "v2.9-other")
+    with pytest.raises(ValueError, match="made under address rule"):
+        load_p2(state, "offline-state")
+
+
+def test_offline_state_of_another_rule_version_is_rejected_by_tgos_open_input(tmp_path, monkeypatch):
+    from lvr_pipeline.tgos import open_input
+
+    *_, state = run(tmp_path)
+    monkeypatch.setattr(identity, "NORMALIZATION_VERSION", "v2.9-other")
+    with pytest.raises(ValueError, match="made under address rule"):
+        open_input(state, tmp_path / "work")
+
+
+def test_ledger_carry_is_not_judged_by_rule_version_after_change(tmp_path, monkeypatch):
+    from test_b4_ledger import _imported
+    from lvr_pipeline.tgos.batches import _carry_ledger
+
+    *_, imported, _ = _imported(tmp_path)
+    monkeypatch.setattr(identity, "NORMALIZATION_VERSION", "v2.9-other")
+    carried = _carry_ledger(imported)
+    assert len(carried.batches) == 1 and len(carried.queries) == 3

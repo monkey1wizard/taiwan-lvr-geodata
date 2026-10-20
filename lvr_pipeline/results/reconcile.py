@@ -41,6 +41,7 @@ import tomllib
 
 import duckdb
 
+from ..addresses import identity
 from ..addresses.identity import door_signature_sql, sub_identity_sql
 from ..contracts.schemas import dataset_schema
 from ..offline.index import EARTH_RADIUS_M
@@ -377,6 +378,7 @@ def resolve_offline(
             "coordinate_tolerance_m": tolerance,
             "door_rule": DOOR_RULE,
             "earth_radius_m": EARTH_RADIUS_M,
+            "normalization_version": identity.NORMALIZATION_VERSION,
             "prior_state": bool(prior_state),
             "county_suspension_rule": SUSPENSION_RULE,
             "suspended_counties": suspended,
