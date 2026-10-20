@@ -45,6 +45,58 @@ def evidence_from_results(results: list[dict], queries: list[dict]) -> list[dict
     return found
 
 
+def district_fill_of(query: dict, result: dict):
+    """(filled address, building_key) a succeeded district-fill result stands for, else None.
+
+    The key is that of the queried text with the answered town after its county (village and
+    neighbourhood come from the query only), the key the address pool gives the filled occurrences.
+    """
+    from ..addresses.pool import district_fill_key
+
+    if query["query_kind"] != "district_missing" or result["status"] != "succeeded" or not result["response_building_key"]:
+        return None
+    return district_fill_key(query["county_code"], query["address"], json.loads(result["response_building_key"][3:])["town"])
+
+
+def district_fill_evidence(results: list[dict], queries: list[dict], pool_keys) -> list[dict]:
+    """The evidence rows of succeeded district-fill results whose filled key is a pool key (E-00).
+
+    ``pool_keys`` is a callable giving the building keys of the address pool; it is called only when a
+    district-fill result exists. A fill whose key the pool does not hold (the pool was built without
+    this ledger) adds nothing. The row is a TGOS evidence row of the filled key, mapped by the query's
+    fingerprint, not by the key of the TGOS response address.
+    """
+    by_query = {(q["batch_id"], q["query_fingerprint"]): q for q in queries}
+    fills = []
+    for result in results:
+        query = by_query[(result["batch_id"], result["query_fingerprint"])]
+        found = district_fill_of(query, result)
+        if found is not None:
+            fills.append((query, result, *found))
+    if not fills:
+        return []
+    known = set(pool_keys())
+    return [
+        {
+            "evidence_id": digest(["tgos", result["result_id"]]),
+            "key_version": "v2",
+            "building_key": key,
+            "normalized_address": address,
+            "county_code": query["county_code"],
+            "town_code": json.loads(key[3:])["town"],
+            "lng": result["lng"],
+            "lat": result["lat"],
+            "validity": "valid",
+            "source_kind": "tgos_result",
+            "source_ref": result["batch_id"],
+            "input_sha256": result["response_sha256"],
+            "source_row_number": result["source_row_number"],
+        }
+        for query, result, address, key in fills
+        if key in known
+    ]
+
+
 def _rebuild_resolution(
     pool_rows: list[dict],
     evidence_rows: list[dict],

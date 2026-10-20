@@ -304,6 +304,7 @@ PRIMARY["coordinate-resolution"] = ["key_version", "building_key"]
 DISTRICT_FILL_REASONS = (
     "road_unique_in_county",
     "road_only_unique",
+    "tgos_district_fill",
     "district_ambiguous",
     "district_missing",
     "road_only_not_unique",

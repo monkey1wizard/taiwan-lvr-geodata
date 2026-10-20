@@ -172,7 +172,8 @@ def test_rerun_reuses_the_tgos_state_but_not_with_another_ledger(world, carried)
     before = checkpoints(run_dir)
     other = run_full(run_id="withledger", exchange_dir=world["exchange"], **world["inputs"])
     assert other["completed"] is False
-    assert [(f["step"], "another TGOS ledger" in f["detail"]) for f in other["failures"]] == [("tgos-state", True)]
+    # E-00: the address-pool stage also reads the ledger (district fills), so it is the first to refuse another one.
+    assert [(f["step"], "another TGOS ledger" in f["detail"]) for f in other["failures"]] == [("address-pool", True)]
     assert checkpoints(run_dir) == before
 
 

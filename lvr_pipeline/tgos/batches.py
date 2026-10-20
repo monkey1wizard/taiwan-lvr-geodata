@@ -15,7 +15,7 @@ from ..addresses.identity import building_key
 from ..addresses.pool import district_query, lane_free_road
 from ..results.reconcile import check_suspended_counties, load_p2
 from ..storage.parquet import BatchWriter, rows
-from .resolution import current_address_rows
+from .resolution import current_address_rows, district_fill_evidence, rebuild
 from ..storage.runs import SnapshotStore, Stage, _identifier, bindings, digest, sha256_file
 from .exchange import _csv_bytes, _write_exchange
 
@@ -270,6 +270,21 @@ def _write_merged_state(
     manifest, report, _ = load_state(offline)
     offline_hash = sha256_file(Path(offline) / "manifest.json")
     source_artifacts = _artifact_paths(offline, manifest)
+    # E-00: a district-fill answer locates the filled key of the pool; validate.apply_response adds no
+    # evidence for it, so the evidence and the address tables are completed here, once, for every caller.
+    from .validate import _resolution_report
+
+    fill_evidence = district_fill_evidence(
+        results, queries, lambda: (row["building_key"] for row in rows(source_artifacts["address-pool"])))
+    if fill_evidence:
+        evidence_rows = (list(evidence_rows) if evidence_rows is not None else list(rows(source_artifacts["offline-row"]))) + fill_evidence
+        address_rows, unmatched_rows, statuses, resolution_rows, suspension_counts = rebuild(
+            source_artifacts, report, evidence_rows)
+        extra_report = {
+            **(extra_report or {}),
+            **_resolution_report(statuses, resolution_rows, suspension_counts, report.get("door_rule")),
+            "tgos_district_fill_evidence_rows": len(fill_evidence),
+        }
     artifacts = []
     replacements = {
         "address-result": address_rows,

@@ -21,7 +21,7 @@
 
 這幾項是 B 段延後與 C 段累積的程式修改，都會改離線結果或門牌鍵，必須在 e02 重跑前一次做完。
 
-- [ ] e00 地址池讀帳本中 `tgos_district_fill` 的採用結果補區，原 b13 後半。第 1 批沒有缺區查詢，目前只有第 14 批 4,314 筆缺區查詢會用到
+- [x] e00 地址池讀帳本中 `tgos_district_fill` 的採用結果補區，原 b13 後半。第 1 批沒有缺區查詢，目前只有第 14 批 4,314 筆缺區查詢會用到。10-20 完成：`run-full --tgos-ledger` 把帳本交給地址池，地址池以現行規則判定缺區回傳，採用時以交易文字補上回傳的區重算鍵，村里與鄰不取自 TGOS，原因記 `tgos_district_fill`；綁定只加採用清單摘要；`tgos-state` 以查詢指紋把回傳座標給補區鍵。規則見[地址規則](../地址規則.md)缺區補區第 9 至 12 條。缺區回傳的證據目前在 `tgos/batches.py` 的 `_write_merged_state` 補上，因 `validate.py` 由 C 段維護，C 段可改放 `apply_response`
 - [x] e07 offline-state 的 `quality.json` 記錄規則版本，使 R07-6a 護欄能拒絕其他規則版本的離線狀態。10-20 完成：`lvr_pipeline/results/reconcile.py` 綁定參數加 `normalization_version`；`load_p2`、`prepare-tgos` 與 `import-tgos` 讀到不同版本時拒絕，未記錄版本的舊狀態照舊可讀；`run-full --tgos-ledger` 帶入帳本仍不判規則版本
 - [x] e08 `code_commit` 取值：原本 `lvr_pipeline/storage/runs.py:502` 以 `git -C ROOT rev-parse HEAD` 取值，從 `git archive` 凍結複本執行時會讀到主 repo 當時的 HEAD。10-20 改為 `current_code_commit()`：`git archive` 以 `export-subst` 把提交寫進 `lvr_pipeline/_commit.txt`，凍結複本讀這個檔；git 工作區只在頂層等於 ROOT 時取 HEAD；兩者都給不出時拒絕。凍結複本的 `working_tree_source_dirty` 記為 false
 - [ ] e09 C 段 c26 累積的解析修正：村里名重複如 `廣盛村廣盛村`、`斗煥里斗煥里`；眷村或地名被解析成村里如 `石門新村18號`、`民享村17號`。會改門牌鍵，依 R07-6b 方式寫正反案例進地址規則，規則版本升版

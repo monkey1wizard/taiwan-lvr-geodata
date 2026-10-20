@@ -42,6 +42,7 @@ from ..output.rows import doors_select, make_transaction_id, roc_date
 from ..storage.parquet import BatchWriter, duckdb_config, rows
 from ..storage.runs import PRODUCER_CONFIGS, Stage, bindings, digest, load_snapshot, sha256_file
 from ..storage.spill import measured_spill
+from ..tgos.resolution import district_fill_of
 from .reconcile import haversine_m, load_coordinate_tolerance, load_p2
 from .review import _paths
 
@@ -181,6 +182,12 @@ def build_final_state(
                     key_results.setdefault(query["building_key"], []).append(result)
                     if result["status"] == "succeeded":
                         tgos_results.setdefault(query["building_key"], []).append(result)
+                else:
+                    # E-00: a succeeded district fill stands at the filled key of the pool, found by the query.
+                    found = district_fill_of(query, result)
+                    if found is not None:
+                        key_results.setdefault(found[1], []).append(result)
+                        tgos_results.setdefault(found[1], []).append(result)
 
     scratch = Path(work_dir) / "final-state-scratch"
     with measured_spill(scratch, "final-state") as spill:

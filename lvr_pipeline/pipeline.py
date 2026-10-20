@@ -674,6 +674,7 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
                       for row in sources["batches"] for failure in row["failures"]),
                     *({"step": "verify-sources", **failure} for failure in sources["manifest_failures"])]
                 return result
+            ledger_hash = None
             if tgos_ledger is not None:
                 # Contract rule 4: only the ledger's own integrity and rebuild epoch, and the response file of
                 # every completed batch, are checked before any stage is built.
@@ -698,7 +699,16 @@ def run_full(*, run_id: str, cutoff: int, address_dir: Path, runs_root: Path | N
             if coverage:
                 result["failures"] = [{"step": "coverage", **failure} for failure in coverage]
                 return result
-            pool = stage("address-pool", lambda: build_pool(converted, address_dir, descriptor, work, index_path=index))
+
+            def same_pool_ledger(path):
+                """E-00: a reused address pool must have read this ledger (or none) for its TGOS district fills."""
+                recorded = _read(Path(path) / "quality.json").get("tgos_district_fill", {}).get("ledger_manifest_sha256")
+                if recorded != ledger_hash:
+                    raise ValueError(f"Run {run_id} has an address pool built with another TGOS ledger; use a new run id")
+
+            pool = stage("address-pool", lambda: build_pool(
+                converted, address_dir, descriptor, work, index_path=index, tgos_ledger=tgos_ledger,
+                exchange_dir=exchange_dir), same_pool_ledger)
             state = stage("offline-state", lambda: resolve_offline(
                 pool, index, work, coordinate_tolerance_m=load_coordinate_tolerance(config),
                 suspended_counties=load_suspended_counties(config)))
