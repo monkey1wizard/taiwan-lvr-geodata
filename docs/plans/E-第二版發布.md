@@ -26,7 +26,7 @@
 - [x] e08 `code_commit` 取值：原本 `lvr_pipeline/storage/runs.py:502` 以 `git -C ROOT rev-parse HEAD` 取值，從 `git archive` 凍結複本執行時會讀到主 repo 當時的 HEAD。10-20 改為 `current_code_commit()`：`git archive` 以 `export-subst` 把提交寫進 `lvr_pipeline/_commit.txt`，凍結複本讀這個檔；git 工作區只在頂層等於 ROOT 時取 HEAD；兩者都給不出時拒絕。凍結複本的 `working_tree_source_dirty` 記為 false
 - [x] e09 C 段 c26 累積的解析修正：村里名重複如 `廣盛村廣盛村`、`斗煥里斗煥里`；眷村或地名被解析成村里如 `石門新村18號`、`民享村17號`。會改門牌鍵，依 R07-6b 方式寫正反案例進地址規則，規則版本升版。10-20 完成，與 C 段採用第 8 條一起提交為 `717ec29`，`v2.9`。量測（過渡基線 `b16-20261018b`）：村里名重複 14 鍵；不在村里表的村里接門牌 1,104 鍵，全部 unmatched，其中以街路等於該名稱對地址基底粗估單一座標 1,317 個（較寬條件）。案例見[地址規則](../地址規則.md)「村里名重複與地名」
 - [x] e10 V-10b 第 4 項改為獨立計算：以地址出現鍵算已定位門牌數，再與輸出列數比，不得沿用輸出程式的對應。寫成檢查腳本的一部分。10-20 完成，腳本 `data/tmp/e/e10/check.py`，第一版基線報出應有 3,931,858、輸出 3,551,724、缺 380,134，第 4 項 fail。缺漏的成因以補區門牌為主：`road_only_unique` 263,618、`road_unique_in_county` 104,616，地址池改名只占 10,310，另有 `coordinate_confirmed_candidate` 1,495 與無原鍵 96；集合比對另有 1 列輸出不在離線定位內：`106q3/e_lvr_land_a.csv/27`，地址 `高雄市新興區民主路38號（曾?號）`，地址池記 `candidate_review` 不給鍵，舊輸出以成員原鍵寫出，是第一版的真實錯誤，`7d969c2` 已不再寫出。e12 用此腳本
-- [ ] e11 全套測試在 `git archive HEAD` 乾淨複本跑，紀錄，提交
+- [x] e11 全套測試在 `git archive HEAD` 乾淨複本跑，紀錄，提交。10-20 完成，1,103 passed、3 個已知環境失敗在 repo 內通過，見 [E-0 紀錄](../records/E-0重跑前程式收尾.md)
 
 ### E-1 擁有者同意
 
