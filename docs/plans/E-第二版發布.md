@@ -25,7 +25,7 @@
 - [ ] e07 offline-state 的 `quality.json` 記錄規則版本，使 R07-6a 護欄能拒絕其他規則版本的離線狀態
 - [x] e08 `code_commit` 取值：原本 `lvr_pipeline/storage/runs.py:502` 以 `git -C ROOT rev-parse HEAD` 取值，從 `git archive` 凍結複本執行時會讀到主 repo 當時的 HEAD。10-20 改為 `current_code_commit()`：`git archive` 以 `export-subst` 把提交寫進 `lvr_pipeline/_commit.txt`，凍結複本讀這個檔；git 工作區只在頂層等於 ROOT 時取 HEAD；兩者都給不出時拒絕。凍結複本的 `working_tree_source_dirty` 記為 false
 - [ ] e09 C 段 c26 累積的解析修正：村里名重複如 `廣盛村廣盛村`、`斗煥里斗煥里`；眷村或地名被解析成村里如 `石門新村18號`、`民享村17號`。會改門牌鍵，依 R07-6b 方式寫正反案例進地址規則，規則版本升版
-- [x] e10 V-10b 第 4 項改為獨立計算：以地址出現鍵算已定位門牌數，再與輸出列數比，不得沿用輸出程式的對應。寫成檢查腳本的一部分。10-20 完成，腳本 `data/tmp/e/e10/check.py`，第一版基線報出應有 3,931,858、輸出 3,551,724、缺 380,134，第 4 項 fail。缺漏的成因以補區門牌為主：`road_only_unique` 263,618、`road_unique_in_county` 104,616，地址池改名只占 10,310，另有 `coordinate_confirmed_candidate` 1,495 與無原鍵 96；集合比對另有 1 列輸出不在離線定位內。e12 用此腳本
+- [x] e10 V-10b 第 4 項改為獨立計算：以地址出現鍵算已定位門牌數，再與輸出列數比，不得沿用輸出程式的對應。寫成檢查腳本的一部分。10-20 完成，腳本 `data/tmp/e/e10/check.py`，第一版基線報出應有 3,931,858、輸出 3,551,724、缺 380,134，第 4 項 fail。缺漏的成因以補區門牌為主：`road_only_unique` 263,618、`road_unique_in_county` 104,616，地址池改名只占 10,310，另有 `coordinate_confirmed_candidate` 1,495 與無原鍵 96；集合比對另有 1 列輸出不在離線定位內：`106q3/e_lvr_land_a.csv/27`，地址 `高雄市新興區民主路38號（曾?號）`，地址池記 `candidate_review` 不給鍵，舊輸出以成員原鍵寫出，是第一版的真實錯誤，`7d969c2` 已不再寫出。e12 用此腳本
 - [ ] e11 全套測試在 `git archive HEAD` 乾淨複本跑，紀錄，提交
 
 ### E-1 擁有者同意
@@ -35,7 +35,7 @@
 ### E-2 全量重跑與驗收
 
 - [ ] e02 全量 `run-full` 帶入帳本：`--tgos-ledger` 指 `data/runs/r09-7b-20261018/tgos-state/` 最新快照，`--review-decisions` 指 `data/review-decisions/`，新 run ID，`--cutoff` 與 DuckDB 上限依總表。階段表 offline-index 到 run-report 含 `tgos-state` 與 `final-state`。程式必含 `7d969c2` 門牌對應修正。帳本中全部已完成批次以當時規則重新匯入，紀錄各批採用數與 C 段逐批匯入時的差異
-- [ ] e12 重做 V-10b 九項，第 4 項依 e10。輸出列數應為離線定位加 TGOS 採用的門牌數，寫明與第一版 3,551,724 的差異來源：380,134 漏掉的門牌、TGOS 回補、解析修正造成的增減
+- [ ] e12 重做 V-10b 九項，第 4 項依 e10，集合比對兩方向都要為 0，並核對輸出不含地址池沒有給鍵的門牌。輸出列數應為離線定位加 TGOS 採用的門牌數，寫明與第一版 3,551,724 的差異來源：380,134 漏掉的門牌、TGOS 回補、解析修正造成的增減
 - [ ] e13 重做 R08-2a：`scripts/maintenance.py export --run-id <新 run>` 匯出維護包；乾淨 Windows 環境重產 556 檔逐檔相同；Linux 容器重產逐檔相同。Linux 相符才算 B-2 距離精度 b10 通過，也就是 R08-2b 結案
 - [ ] e14 新 run 記為新基線，更新 00 與總表的基線、V-10b、R08-2a、R08-2b
 
