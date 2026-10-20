@@ -25,7 +25,7 @@ def expected(county, town, road, door, village=None, neighborhood=None):
 
 
 def test_version():
-    assert NORMALIZATION_VERSION == "v2.8"
+    assert NORMALIZATION_VERSION == "v2.9"
 
 
 @pytest.mark.parametrize("address,want", [
@@ -147,7 +147,8 @@ def test_unparsable_floor_door_gives_no_key(address):
     # Place names that contain 樓 keep their key; floors after the door are still ignored.
     ("屏東縣里港鄉塔樓路1530號", expected("屏東縣", "里港鄉", "塔樓路", "1530")),
     ("屏東縣里港鄉塔樓路15之5號", expected("屏東縣", "里港鄉", "塔樓路", "15之5")),
-    ("新北市蘆洲區樓厝村71號", expected("新北市", "蘆洲區", "", "71", "樓厝村")),
+    # v2.9 (e09 rule 2): 樓厝村 is not a village of 蘆洲區 in the admin table, so it is the place name.
+    ("新北市蘆洲區樓厝村71號", expected("新北市", "蘆洲區", "樓厝村", "71")),
     ("臺南市北區中樓里7鄰東豐路133巷9號", expected("臺南市", "北區", "東豐路133巷", "9", "中樓里", "7")),
     ("臺南市北區中樓里開元路90巷67之11號", expected("臺南市", "北區", "開元路90巷", "67之11", "中樓里")),
     ("桃園市中壢區福里15鄰五光二街8號10樓", expected("桃園市", "中壢區", "五光二街", "8", "福里", "15")),

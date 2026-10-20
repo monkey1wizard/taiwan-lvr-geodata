@@ -11,8 +11,8 @@ from pathlib import Path
 
 import duckdb
 
-from ..addresses.admin import load_admin_towns
-from ..addresses.identity import building_key
+from ..addresses.admin import load_admin_towns, town_villages
+from ..addresses.identity import _split_village, building_key
 from ..results.reconcile import adopt_coordinates
 from ..transactions.normalize import normalize_address
 
@@ -48,6 +48,23 @@ def _door_notation(door: str) -> str:
     """Rule 3: ``N號之M`` is read as ``N之M``; every other door is unchanged."""
     found = _NOTATION.match(door)
     return f"{found['pre']}{found['n']}之{found['m']}" if found else door
+
+
+def _place_from_village(value: dict) -> str | None:
+    """The place name of a key whose locality_road the address rules moved from the village (e09 rule 2).
+
+    Such a key writes no village and no neighbourhood, its whole locality_road is what the address rules
+    read as a village token right before the door, and that name is not a village of the town. A road
+    that only ends in 村 or 里 (東崎路五段雪山一村) is not such a name. Any other key gives None.
+    Adoption reads that name as the query's village text.
+    """
+    road = value["locality_road"]
+    if value.get("village") is not None or value.get("neighborhood") is not None or road[-1:] not in _VILLAGE_SUFFIX:
+        return None
+    valid, village, neighborhood, _ = _split_village(road + value["door"] + "號")
+    if not valid or village != road or neighborhood is not None:
+        return None
+    return None if road in town_villages(value["county"], value["town"]) else road
 
 
 @lru_cache(maxsize=1)
@@ -130,7 +147,7 @@ def same_door_for_adoption(query_key: str | None, response_key: str | None) -> b
     if not query_key or not response_key:
         return False
     query, response = json.loads(query_key[3:]), json.loads(response_key[3:])
-    if not _door_and_village(query, response):
+    if _place_from_village(query) is not None or not _door_and_village(query, response):
         return False
     neighborhood = query.get("neighborhood")
     return neighborhood is None or neighborhood == response.get("neighborhood")
@@ -150,6 +167,9 @@ def adoption_route(query_key: str | None, response_key: str | None) -> str | Non
     if same_door_for_adoption(query_key, response_key):
         return DOOR
     query, response = json.loads(query_key[3:]), json.loads(response_key[3:])
+    place = _place_from_village(query)
+    if place is not None:
+        return _place_route(place, query, response)
     neighborhood = query.get("neighborhood")
     if neighborhood is not None and response.get("neighborhood") != neighborhood and _door_and_village(query, response):
         return NEIGHBORHOOD
@@ -171,6 +191,23 @@ def adoption_route(query_key: str | None, response_key: str | None) -> str | Non
         and _door_notation(query["door"]) == _door_notation(response["door"])
         and (neighborhood is None or neighborhood == response.get("neighborhood"))
     ):
+        return VILLAGE_AS_PLACE
+    return None
+
+
+def _place_route(place: str, query: dict, response: dict) -> str | None:
+    """Rules 4 and 5 for a query whose place name came from the village text (e09 rule 2).
+
+    The response must name the same county, town and door. It may write the name as its village
+    (rule 4) or as its locality_road (rule 5); both routes need the base group check.
+    """
+    if (query["county"], query["town"]) != (response["county"], response["town"]):
+        return None
+    if _door_notation(query["door"]) != _door_notation(response["door"]):
+        return None
+    if _text(response.get("village")) == _text(place):
+        return VILLAGE_DOOR
+    if _text(response["locality_road"]) == _text(place):
         return VILLAGE_AS_PLACE
     return None
 
@@ -260,14 +297,27 @@ class BaseGroups:
         group = (value["county"], value["town"], _text(value["locality_road"]), _door_notation(value["door"]), _text(value.get("village")))
         return _verdict(self._neighborhood.get(group, {}))
 
+    def _place_group(self, value: dict, place: str) -> GroupVerdict:
+        """The base rows that write the place name as their village or as their locality_road, same door."""
+        group = (value["county"], value["town"], _text(place), _door_notation(value["door"]))
+        units = {("village", *unit): points for unit, points in self._village_door.get(group, {}).items()}
+        units.update({("place", *unit): points for unit, points in self._place_door.get(group, {}).items()})
+        return _verdict(units)
+
     def village_door_group(self, query_key: str) -> GroupVerdict:
         """Rule 4: the base group of the query's village and door in its county and town, any road."""
         value = json.loads(query_key[3:])
+        place = _place_from_village(value)
+        if place is not None:
+            return self._place_group(value, place)
         group = (value["county"], value["town"], _text(value["village"]), _door_notation(value["door"]))
         return _verdict(self._village_door.get(group, {}))
 
     def place_door_group(self, query_key: str) -> GroupVerdict:
         """Rule 5: the base group whose locality_road is the query's village text, same door, any village."""
         value = json.loads(query_key[3:])
+        place = _place_from_village(value)
+        if place is not None:
+            return self._place_group(value, place)
         group = (value["county"], value["town"], _text(value["village"]), _door_notation(value["door"]))
         return _verdict(self._place_door.get(group, {}))

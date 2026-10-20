@@ -330,3 +330,45 @@ def test_truncated_door_without_hao_differs(tmp_path):
 def test_response_without_a_door_is_not_a_complete_address(tmp_path):
     result, _, _ = run(tmp_path, C41_QUERY, "苗栗縣頭份市尖山里14鄰尖山", [])
     assert result["reason"] == "TGOS response is not a complete address"
+
+
+DAPU = "嘉義縣大埔鄉{}"
+
+
+def test_place_written_as_village_in_the_response_multi_location_is_rejected(tmp_path):
+    entries = [(DAPU.format("一村13鄰大埔278號"), ORIGIN), (DAPU.format("一村14鄰茄苳278號"), north(100))]
+    result, _, _ = run(tmp_path, DAPU.format("一村278號"), DAPU.format("一村13鄰大埔278號"), entries)
+    assert result["reason"] == VILLAGE_DOOR_MULTI and code_of(result) == "tgos_village_door_multi_location"
+
+
+def test_place_written_as_village_in_the_response_another_door_is_isolated(tmp_path):
+    entries = [(DAPU.format("一村13鄰大埔279號"), ORIGIN)]
+    result, _, _ = run(tmp_path, DAPU.format("一村278號"), DAPU.format("一村13鄰大埔279號"), entries)
+    assert result["reason"] == DIFFERS and code_of(result) == "tgos_isolated"
+
+
+def test_place_group_counts_base_rows_written_either_way(tmp_path):
+    entries = [(DAPU.format("一村278號"), ORIGIN), (DAPU.format("一村13鄰大埔278號"), north(10))]
+    result, _, _ = run(tmp_path, DAPU.format("一村278號"), DAPU.format("一村13鄰大埔278號"), entries)
+    assert result["status"] == "succeeded", result["reason"]
+
+
+def test_place_group_is_several_locations_when_the_two_writings_are_apart(tmp_path):
+    entries = [(DAPU.format("一村278號"), ORIGIN), (DAPU.format("一村13鄰大埔278號"), north(100))]
+    result, _, _ = run(tmp_path, DAPU.format("一村278號"), DAPU.format("一村13鄰大埔278號"), entries)
+    assert result["reason"] == VILLAGE_DOOR_MULTI
+
+
+def test_a_listed_village_before_the_door_is_not_a_place(tmp_path):
+    query = "雲林縣虎尾鎮興南里548號"
+    answer = "雲林縣虎尾鎮興南里5鄰興南548號"
+    result, _, _ = run(tmp_path, query, answer, [(answer, ORIGIN)])
+    assert json.loads(key_of(query)[3:])["village"] == "興南里"
+    assert result["status"] == "succeeded", result["reason"]
+
+
+def test_a_road_that_only_ends_in_cun_is_not_a_place_from_the_village(tmp_path):
+    query = "臺中市東勢區東崎路五段雪山一村4號"
+    answer = "臺中市東勢區泰昌里20鄰東崎路五段雪山一村4號"
+    result, _, _ = run(tmp_path, query, answer, [])
+    assert result["status"] == "succeeded", result["reason"]

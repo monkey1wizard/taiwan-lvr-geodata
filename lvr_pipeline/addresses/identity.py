@@ -14,7 +14,8 @@ KEY_VERSION = "v2"
 # v2.6 (R07-6b): district must exist in its county; old county names mapped by admin_towns.json.
 # v2.7 (B-1): repeated town and unit dropped, other town invalid, CJK main number before 之N號, unparsable floor door gives no key.
 # v2.8 (B-1 follow-up): repeated county and town dropped.
-NORMALIZATION_VERSION = "v2.8"
+# v2.9 (e09): a repeated village name is dropped once; a place name read as a village before the door is locality_road.
+NORMALIZATION_VERSION = "v2.9"
 _COUNTIES = "|".join(sorted(_COUNTY_CODE, key=len, reverse=True))
 # Town names end in 市, 區, 鄉 or 鎮, never 里 (R04-12: 太麻里鄉 was rejected by the old 里 alternative).
 _COUNTY_RE = re.compile("^(" + _COUNTIES + ")")
@@ -155,11 +156,25 @@ def _arabic_door(match: re.Match) -> str:
     return str(cjk_number(main) or main) + subs
 
 
+def _drop_repeated_village(village: str, rest: str) -> str:
+    """rest without one copy of the village name written again right after it (e09 rule 1).
+
+    Only an exact full repeat counts, and only when the text after the copy does not continue a road
+    name (中里 followed by 中里路 keeps the road).
+    """
+    if rest.startswith(village) and not _ROAD_CONTINUES.match(rest[len(village):]):
+        return rest[len(village):]
+    return rest
+
+
 def _split_village(rest: str):
     """(valid, village, neighbourhood, remainder) for the address text after the town."""
     match = _NEIGHBORHOOD.match(rest)
     if match:
         village = match.group("village")
+        half = len(village) // 2
+        if half >= 2 and len(village) == 2 * half and village[:half] == village[half:] and village[-1] in "村里":
+            village = village[:half]
         if village and (village[-1] not in "村里" or len(village) < 2):
             return False, None, None, rest
         number = match.group("number")
@@ -175,7 +190,7 @@ def _split_village(rest: str):
             continue
         if _ROAD_CONTINUES.match(rest[end:]):
             continue
-        return True, prefix, None, rest[end:]
+        return True, prefix, None, _drop_repeated_village(prefix, rest[end:])
     return True, None, None, rest
 
 
@@ -214,6 +229,9 @@ def building_key(address: str) -> str | None:
     if door.group("before") and door.group("after"):
         return None
     locality_road = rest[:door.start()]
+    # e09 rule 2: a village token that is not a village of the town and is followed directly by the door is a place name.
+    if village and not neighborhood and not locality_road and village not in town_villages(county_code, town):
+        village, locality_road = None, village
     if "號" in locality_road or "鄰" in locality_road or _UNPARSABLE_FLOOR_DOOR.search(locality_road):
         return None
     # A number not followed by a unit (測試路10一1號) is an unparsed door, not a place name.
