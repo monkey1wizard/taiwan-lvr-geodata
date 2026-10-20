@@ -497,13 +497,48 @@ def peak_rss_bytes() -> int:
     return int(rss if sys.platform == "darwin" else rss * 1024)
 
 
+def current_code_commit() -> str:
+    """Commit of the code that is running; ValueError when it cannot be proven.
+
+    `git archive` writes the full commit id into _commit.txt (export-subst), so a frozen copy
+    inside another repo never asks that repo. A git checkout keeps the placeholder and asks git,
+    but only when ROOT itself is the work tree top level."""
+    marker = ROOT / "lvr_pipeline" / "_commit.txt"
+    try:
+        text = marker.read_text(encoding="ascii").strip()
+    except (OSError, UnicodeDecodeError):
+        text = None
+    if text is not None and re.fullmatch(r"[0-9a-f]{40}", text):
+        return text
+    if text == "$Format:%H$":
+        try:
+            top = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "--show-toplevel"], text=True,
+                                          stderr=subprocess.DEVNULL).strip()
+            if os.path.normcase(str(Path(top).resolve())) == os.path.normcase(str(ROOT.resolve())):
+                return subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True,
+                                               stderr=subprocess.DEVNULL).strip()
+        except (OSError, subprocess.CalledProcessError):
+            pass
+    raise ValueError(f"Cannot determine the code commit: {marker} is missing, malformed, or an "
+                     f"unsubstituted placeholder outside a git work tree whose top level is {ROOT}")
+
+
+def _archived() -> bool:
+    try:
+        return re.fullmatch(r"[0-9a-f]{40}", (ROOT / "lvr_pipeline" / "_commit.txt").read_text(encoding="ascii").strip()) is not None
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
 def bindings(stage: str, parameters: dict, input_hashes: list[str], code_commit: str | None = None) -> dict:
     if code_commit is None:
-        code_commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
+        code_commit = current_code_commit()
     files = [*sorted((ROOT / "lvr_pipeline").glob("*.py")), *sorted((ROOT / "lvr_pipeline" / "addresses").glob("*.py")), *sorted((ROOT / "lvr_pipeline" / "offline").glob("*.py")), *sorted((ROOT / "lvr_pipeline" / "results").glob("*.py")), *sorted((ROOT / "lvr_pipeline" / "tgos").glob("*.py")), *sorted((ROOT / "lvr_pipeline" / "transactions").glob("*.py")), *sorted((ROOT / "lvr_pipeline" / "output").glob("*.py")), *sorted((ROOT / "lvr_pipeline" / "storage").glob("*.py")), *sorted((ROOT / "lvr_pipeline" / "contracts").glob("*.py")), *sorted((ROOT / "lvr_pipeline" / "contracts" / "json").glob("*.json")), ROOT / "uv.lock"]
     # Text normalization makes source fingerprints portable across CRLF/LF checkouts.
     code = {file.relative_to(ROOT).as_posix(): hashlib.sha256(file.read_text(encoding="utf-8").encode("utf-8")).hexdigest() for file in files}
-    dirty = bool(subprocess.check_output(["git", "-C", str(ROOT), "status", "--porcelain", "--", "lvr_pipeline", "uv.lock"], text=True).strip())
+    # An archive copy (commit id substituted in _commit.txt) is the committed tree by definition, and
+    # git status there would read the enclosing repo, so it is never dirty. A checkout asks git.
+    dirty = False if _archived() else bool(subprocess.check_output(["git", "-C", str(ROOT), "status", "--porcelain", "--", "lvr_pipeline", "uv.lock"], text=True).strip())
     config = {"stage": stage, "parameters": parameters, "producer_files": code, "working_tree_source_dirty": dirty}
     fingerprint = digest(config)
     PRODUCER_CONFIGS[fingerprint] = config

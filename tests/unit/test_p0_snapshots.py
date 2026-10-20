@@ -159,3 +159,60 @@ def test_replace_waits_out_short_windows_lock(monkeypatch, tmp_path):
     with pytest.raises(PermissionError):
         snapshots._replace(tmp_path / "a", tmp_path / "b")
     assert len(calls) == 1
+
+
+def _fake_root(tmp_path, content):
+    root = tmp_path / "root"
+    (root / "lvr_pipeline").mkdir(parents=True)
+    if content is not None:
+        (root / "lvr_pipeline" / "_commit.txt").write_text(content, encoding="ascii")
+    return root
+
+
+def _fake_git(monkeypatch, top, head="c" * 40):
+    import subprocess
+    from lvr_pipeline.storage import runs
+
+    def check_output(args, **kwargs):
+        if args[-1] == "--show-toplevel":
+            return str(top) + "\n"
+        if args[-1] == "HEAD":
+            return head + "\n"
+        raise subprocess.CalledProcessError(1, args)
+    monkeypatch.setattr(runs.subprocess, "check_output", check_output)
+
+
+def test_code_commit_placeholder_in_checkout_asks_git(tmp_path, monkeypatch):
+    from lvr_pipeline.storage import runs
+    root = _fake_root(tmp_path, "$Format:%H$\n")
+    monkeypatch.setattr(runs, "ROOT", root)
+    _fake_git(monkeypatch, root)
+    assert runs.current_code_commit() == "c" * 40
+
+
+def test_code_commit_substituted_value_is_used_without_git(tmp_path, monkeypatch):
+    from lvr_pipeline.storage import runs
+    root = _fake_root(tmp_path, "d" * 40 + "\n")
+    monkeypatch.setattr(runs, "ROOT", root)
+    _fake_git(monkeypatch, tmp_path)  # an enclosing repo must be ignored
+    assert runs.current_code_commit() == "d" * 40
+    assert runs._archived()
+
+
+def test_code_commit_placeholder_inside_another_repo_is_refused(tmp_path, monkeypatch):
+    from lvr_pipeline.storage import runs
+    root = _fake_root(tmp_path, "$Format:%H$\n")
+    monkeypatch.setattr(runs, "ROOT", root)
+    _fake_git(monkeypatch, tmp_path)
+    with pytest.raises(ValueError, match="Cannot determine the code commit"):
+        runs.current_code_commit()
+
+
+@pytest.mark.parametrize("content", [None, "", "abc123\n", "D" * 40 + "\n", "d" * 39 + "\n", "d" * 41 + "\n"])
+def test_code_commit_missing_or_malformed_is_refused(tmp_path, monkeypatch, content):
+    from lvr_pipeline.storage import runs
+    root = _fake_root(tmp_path, content)
+    monkeypatch.setattr(runs, "ROOT", root)
+    _fake_git(monkeypatch, root)
+    with pytest.raises(ValueError, match="Cannot determine the code commit"):
+        runs.current_code_commit()

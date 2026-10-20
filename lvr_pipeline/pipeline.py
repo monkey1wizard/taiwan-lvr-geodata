@@ -44,6 +44,7 @@ from .storage.spill import DEFAULT_INTERVAL_SECONDS, peak_bytes, reset_peak
 from .storage.runs import (
     REBUILD_EPOCH,
     ROOT,
+    current_code_commit,
     RunStore,
     DEFAULT_RUNS_ROOT,
     SnapshotStore,
@@ -370,7 +371,7 @@ def quarantine_residue(run_root: Path) -> list[dict]:
 def run_bindings(manifest_path: Path, address_source: Path, rules_path: Path, config: Path, cutoff: int,
                  char_fixes_sha256: str) -> dict:
     """The RunStore bindings of a full run; any change needs a new run id."""
-    commit = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
+    commit = current_code_commit()
     return {"code_commit": commit, "raw_manifest_sha256": sha256_file(Path(manifest_path)),
             "address_source_sha256": sha256_file(Path(address_source)),
             "admin_towns_sha256": admin_towns_sha256(),

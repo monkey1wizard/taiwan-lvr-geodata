@@ -23,7 +23,7 @@
 
 - [ ] e00 地址池讀帳本中 `tgos_district_fill` 的採用結果補區，原 b13 後半。第 1 批沒有缺區查詢，目前只有第 14 批 4,314 筆缺區查詢會用到
 - [ ] e07 offline-state 的 `quality.json` 記錄規則版本，使 R07-6a 護欄能拒絕其他規則版本的離線狀態
-- [ ] e08 `code_commit` 取值：`lvr_pipeline/storage/runs.py:502` 以 `git -C ROOT rev-parse HEAD` 取值，從 `git archive` 凍結複本執行時會讀到主 repo 當時的 HEAD。改為以凍結複本自己的提交或明確參數為準；修好前全量 run 用 `git clone --shared` 加 detached HEAD 執行
+- [x] e08 `code_commit` 取值：原本 `lvr_pipeline/storage/runs.py:502` 以 `git -C ROOT rev-parse HEAD` 取值，從 `git archive` 凍結複本執行時會讀到主 repo 當時的 HEAD。10-20 改為 `current_code_commit()`：`git archive` 以 `export-subst` 把提交寫進 `lvr_pipeline/_commit.txt`，凍結複本讀這個檔；git 工作區只在頂層等於 ROOT 時取 HEAD；兩者都給不出時拒絕。凍結複本的 `working_tree_source_dirty` 記為 false
 - [ ] e09 C 段 c26 累積的解析修正：村里名重複如 `廣盛村廣盛村`、`斗煥里斗煥里`；眷村或地名被解析成村里如 `石門新村18號`、`民享村17號`。會改門牌鍵，依 R07-6b 方式寫正反案例進地址規則，規則版本升版
 - [ ] e10 V-10b 第 4 項改為獨立計算：以地址出現鍵算已定位門牌數，再與輸出列數比，不得沿用輸出程式的對應。寫成檢查腳本的一部分
 - [ ] e11 全套測試在 `git archive HEAD` 乾淨複本跑，紀錄，提交
