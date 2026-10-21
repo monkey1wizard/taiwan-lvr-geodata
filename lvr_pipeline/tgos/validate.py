@@ -18,6 +18,7 @@ from ..storage.runs import Stage, _identifier, bindings, digest, sha256_file
 from .adopt import (
     NEIGHBORHOOD,
     NEIGHBORHOOD_OUTSIDE_REASON,
+    ROAD_SECTION,
     VILLAGE_AS_PLACE,
     VILLAGE_DOOR,
     BaseGroups,
@@ -130,7 +131,7 @@ def _group_towns(submitted: dict, returned: list[dict]) -> set:
             target_key = adoption_response_key(row["Response_Address"])
         except (TypeError, ValueError):
             continue
-        if target_key and adoption_route(query["building_key"], target_key) in {NEIGHBORHOOD, VILLAGE_DOOR, VILLAGE_AS_PLACE}:
+        if target_key and adoption_route(query["building_key"], target_key) in {NEIGHBORHOOD, VILLAGE_DOOR, VILLAGE_AS_PLACE, ROAD_SECTION}:
             towns.add(base_town(query["building_key"]))
     return towns
 
@@ -234,6 +235,12 @@ def apply_response(
                             raise ValueError("TGOS response address differs from submitted address")
                         if not verdict.single:
                             raise ValueError("TGOS village and door have several locations in the base")
+                    elif route == ROAD_SECTION:
+                        verdict = base.section_group(query["building_key"], target_key)
+                        if not verdict.present:
+                            raise ValueError("TGOS response address differs from submitted address")
+                        if not verdict.single:
+                            raise ValueError("TGOS road section added and the base has several locations")
                     # R09-2: the same door under two villages or neighbourhoods is not decided here.
                     if _layer_is_ambiguous(query["building_key"], door_layers):
                         raise ValueError("TGOS response village or neighbourhood is ambiguous")

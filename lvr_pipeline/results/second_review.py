@@ -58,6 +58,7 @@ ENTRY_REASONS = (
     "tgos_village_ambiguous",
     "tgos_neighborhood_multi_location",
     "tgos_village_door_multi_location",
+    "tgos_road_section_multi_location",
     "tgos_key_text_not_round_trip",
     "district_no_candidate_town",
     "conflict",

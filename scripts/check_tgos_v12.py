@@ -31,7 +31,7 @@ from lvr_pipeline.results.reconcile import haversine_m  # noqa: E402
 # The 30 m adoption rule (地址規則「離線候選與定位」): a door with other evidence keeps the medoid.
 TOLERANCE_M = 30.0
 from lvr_pipeline.results.review import TGOS_REJECTION_CODES  # noqa: E402
-from lvr_pipeline.tgos.adopt import DOOR, NEIGHBORHOOD, VILLAGE_AS_PLACE, VILLAGE_DOOR, adoption_route  # noqa: E402
+from lvr_pipeline.tgos.adopt import DOOR, NEIGHBORHOOD, ROAD_SECTION, VILLAGE_AS_PLACE, VILLAGE_DOOR, adoption_route  # noqa: E402
 from lvr_pipeline.tgos.adopt import response_key as adopt_response_key  # noqa: E402
 
 # Copied from lvr_pipeline/tgos/validate.py (DISTRICT_FILL_REASON, KEYLESS_REASON, the differs text in
@@ -45,6 +45,7 @@ OUTSIDE_GROUP_REASON = "tgos_neighborhood_outside_base_group"
 GROUP_REJECTIONS = {
     "TGOS neighbourhood differs and the base group has several locations": {NEIGHBORHOOD},
     "TGOS village and door have several locations in the base": {VILLAGE_DOOR, VILLAGE_AS_PLACE},
+    "TGOS road section added and the base has several locations": {ROAD_SECTION},
 }
 
 RESULT_STATUSES = {"succeeded", "failed", "rejected"}

@@ -143,5 +143,5 @@ def test_every_recorded_rejection_reason_has_a_review_code():
     assert raised and raised <= set(TGOS_REJECTION_CODES)
     assert set(TGOS_REJECTION_CODES.values()) <= {
         "tgos_isolated", "tgos_response_incomplete", "tgos_coordinate_invalid", "tgos_village_ambiguous",
-        "tgos_neighborhood_multi_location", "tgos_village_door_multi_location",
+        "tgos_neighborhood_multi_location", "tgos_village_door_multi_location", "tgos_road_section_multi_location",
     }

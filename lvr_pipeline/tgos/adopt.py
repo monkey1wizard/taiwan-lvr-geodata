@@ -21,6 +21,7 @@ NEIGHBORHOOD_OUTSIDE_REASON = "tgos_neighborhood_outside_base_group"
 
 _NOTATION = re.compile(r"^(?P<pre>[臨建特]?)(?P<n>[0-9]+)號之(?P<m>[0-9]+)$")
 _VILLAGE_SUFFIX = ("村", "里")
+_SECTION = re.compile(r"^(?P<road>.*?[路街道])(?P<section>[一二三四五六七八九十]+段)(?P<rest>.*)$")
 
 
 def response_key(address: str | None) -> str | None:
@@ -65,6 +66,12 @@ def _place_from_village(value: dict) -> str | None:
     if not valid or village != road or neighborhood is not None:
         return None
     return None if road in town_villages(value["county"], value["town"]) else road
+
+
+def _without_section(road: str) -> str:
+    """Rule 9: the road with its section (一段, 二段, ...) removed; a road without a section is unchanged."""
+    found = _SECTION.match(road)
+    return found["road"] + found["rest"] if found else road
 
 
 @lru_cache(maxsize=1)
@@ -157,11 +164,13 @@ DOOR = "door"
 NEIGHBORHOOD = "neighborhood"
 VILLAGE_DOOR = "village_door"
 VILLAGE_AS_PLACE = "village_as_place"
+ROAD_SECTION = "road_section"
 
 
 def adoption_route(query_key: str | None, response_key: str | None) -> str | None:
     """Which rule family names the queried door: DOOR (rules 1 and 3), NEIGHBORHOOD (rule 2),
-    VILLAGE_DOOR (rule 4), VILLAGE_AS_PLACE (rule 5) or None. The routes after DOOR also need the base group check."""
+    VILLAGE_DOOR (rule 4), VILLAGE_AS_PLACE (rule 5), ROAD_SECTION (rule 9) or None. The routes after DOOR also
+    need the base group check."""
     if not query_key or not response_key:
         return None
     if same_door_for_adoption(query_key, response_key):
@@ -192,6 +201,16 @@ def adoption_route(query_key: str | None, response_key: str | None) -> str | Non
         and (neighborhood is None or neighborhood == response.get("neighborhood"))
     ):
         return VILLAGE_AS_PLACE
+    if (
+        not _SECTION.match(query["locality_road"])
+        and _SECTION.match(response["locality_road"])
+        and _text(_without_section(response["locality_road"])) == _text(query["locality_road"])
+        and (query["county"], query["town"]) == (response["county"], response["town"])
+        and _door_notation(query["door"]) == _door_notation(response["door"])
+        and (query.get("village") is None or _same_village(query["county"], query["town"], query["village"], response.get("village") or ""))
+        and (neighborhood is None or neighborhood == response.get("neighborhood"))
+    ):
+        return ROAD_SECTION
     return None
 
 
@@ -241,7 +260,7 @@ def _verdict(units: dict) -> GroupVerdict:
 
 
 class BaseGroups:
-    """The valid offline-index rows of the towns one import needs, grouped for rules 2, 4 and 5.
+    """The valid offline-index rows of the towns one import needs, grouped for rules 2, 4, 5 and 9.
 
     ``load`` reads ``offline_rows.parquet`` once for the towns not yet loaded; ``seconds`` is the
     total read time. Only rows with validity 'valid' and a building_key count.
@@ -254,6 +273,7 @@ class BaseGroups:
         self._neighborhood: dict = {}
         self._village_door: dict = {}
         self._place_door: dict = {}
+        self._section_door: dict = {}
 
     def load(self, towns) -> None:
         needed = sorted(set(towns) - self.loaded)
@@ -284,6 +304,9 @@ class BaseGroups:
                 self._place_door.setdefault((*town, road, door), {}).setdefault(
                     (village, neighborhood), set()
                 ).add(point)
+            self._section_door.setdefault((*town, _without_section(road), door), {}).setdefault(
+                (road, village, neighborhood), set()
+            ).add(point)
             if village is not None:
                 self._village_door.setdefault((*town, village, door), {}).setdefault(
                     (road, neighborhood), set()
@@ -321,3 +344,14 @@ class BaseGroups:
             return self._place_group(value, place)
         group = (value["county"], value["town"], _text(value["village"]), _door_notation(value["door"]))
         return _verdict(self._place_door.get(group, {}))
+
+    def section_group(self, query_key: str, response_key: str) -> GroupVerdict:
+        """Rule 9: the base rows of the query's town and door whose road without its section is the query road,
+        any section, village or neighbourhood; each unit is (road, village, neighbourhood). The group counts as
+        not present when no row writes the response's road."""
+        value = json.loads(query_key[3:])
+        group = (value["county"], value["town"], _text(value["locality_road"]), _door_notation(value["door"]))
+        units = self._section_door.get(group, {})
+        if _text(json.loads(response_key[3:])["locality_road"]) not in {unit[0] for unit in units}:
+            return _verdict({})
+        return _verdict(units)

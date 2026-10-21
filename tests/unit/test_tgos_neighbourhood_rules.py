@@ -372,3 +372,57 @@ def test_a_road_that_only_ends_in_cun_is_not_a_place_from_the_village(tmp_path):
     answer = "臺中市東勢區泰昌里20鄰東崎路五段雪山一村4號"
     result, _, _ = run(tmp_path, query, answer, [])
     assert result["status"] == "succeeded", result["reason"]
+
+
+SECTION = "臺北市大安區{}"
+SECTION_QUERY = SECTION.format("安和路149號")
+SECTION_ANSWER = SECTION.format("全安里14鄰安和路二段149號")
+SECTION_MULTI = "TGOS road section added and the base has several locations"
+
+
+def test_rule_9_single_location_adopts_the_added_section(tmp_path):
+    result, evidence, query = run(tmp_path, SECTION_QUERY, SECTION_ANSWER, [(SECTION_ANSWER, ORIGIN)])
+    assert result["status"] == "succeeded" and result["reason"] is None
+    assert evidence[0]["building_key"] == key_of(SECTION_QUERY) == query["building_key"]
+
+
+def test_rule_9_two_sections_with_the_same_door_far_apart_are_rejected(tmp_path):
+    entries = [(SECTION.format("安和路一段149號"), ORIGIN), (SECTION_ANSWER, north(100))]
+    result, _, _ = run(tmp_path, SECTION_QUERY, SECTION_ANSWER, entries)
+    assert result["reason"] == SECTION_MULTI and code_of(result) == "tgos_road_section_multi_location"
+
+
+def test_rule_9_base_rows_within_30_m_are_one_location(tmp_path):
+    entries = [(SECTION_ANSWER, ORIGIN), (SECTION.format("全安里15鄰安和路二段149號"), north(10)), (SECTION_QUERY, north(20))]
+    result, _, _ = run(tmp_path, SECTION_QUERY, SECTION_ANSWER, entries)
+    assert result["status"] == "succeeded", result["reason"]
+
+
+def test_rule_9_not_in_the_base_is_isolated(tmp_path):
+    result, _, _ = run(tmp_path, SECTION_QUERY, SECTION_ANSWER, [(SECTION.format("安和路二段151號"), ORIGIN)])
+    assert result["reason"] == DIFFERS and code_of(result) == "tgos_isolated"
+
+
+def test_rule_9_base_with_only_another_section_is_isolated(tmp_path):
+    result, _, _ = run(tmp_path, SECTION_QUERY, SECTION_ANSWER, [(SECTION.format("安和路一段149號"), ORIGIN)])
+    assert result["reason"] == DIFFERS and code_of(result) == "tgos_isolated"
+
+
+def test_rule_9_does_not_apply_to_a_query_that_writes_a_section(tmp_path):
+    query = SECTION.format("安和路一段149號")
+    result, _, _ = run(tmp_path, query, SECTION_ANSWER, [(SECTION_ANSWER, ORIGIN)])
+    assert result["reason"] == DIFFERS
+
+
+def test_rule_9_another_door_or_road_is_rejected(tmp_path):
+    for number, answer in enumerate((SECTION.format("全安里14鄰安和路二段151號"), SECTION.format("全安里14鄰安和街二段149號"))):
+        folder = tmp_path / str(number)
+        folder.mkdir()
+        result, _, _ = run(folder, SECTION_QUERY, answer, [(answer, ORIGIN)])
+        assert result["reason"] == DIFFERS, answer
+
+
+def test_rule_9_a_written_neighbourhood_must_match(tmp_path):
+    query = SECTION.format("全安里13鄰安和路149號")
+    result, _, _ = run(tmp_path, query, SECTION_ANSWER, [(SECTION_ANSWER, ORIGIN)])
+    assert result["reason"] == DIFFERS
