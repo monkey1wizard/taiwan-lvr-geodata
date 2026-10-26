@@ -29,7 +29,7 @@ TGOS 採用規則，也就是匯入回傳時怎麼判定同址，不影響送什
 
 ### B-2 距離精度
 
-- [x] b10 `haversine_m` 與 `_haversine_sql` 的距離、`math.fsum` 總和都四捨五入到 0.001 m 後儲存與比較；`contracts/validate.py` 以同一函式重算，維持完全相等比對。單元測試含 30.0004 與 30.0006 公尺邊界。Linux 容器逐檔相符的驗收在 E 段第二版的 R08-2a 重做
+- [x] b10 `haversine_m` 與 `_haversine_sql` 的距離、`math.fsum` 總和都四捨五入到 0.001 m 後儲存與比較；`contracts/validate.py` 以同一函式重算，維持完全相等比對。單元測試含 30.0004 與 30.0006 公尺邊界。Linux 容器逐檔相符的驗收在 E 段第二版的 R08-2a 重做。10-26 e13 Linux 557 檔相同，通過
 
 ### B-3 行政區表擴充到村里層級
 
