@@ -30,7 +30,7 @@ B 段完成，送查檔已從過渡基線重產。
 | 12 | `tgos-d2a1ae09f4d7` | 10,000 | 當天以 `repair-tgos-exchange` 重建 | 未送出 | 未匯入 | 未匯入 |
 | 13 | `tgos-44a3ac8759da` | 10,000 | `data/tgos/20261027-44a3ac87`，作廢 | 10-27 取消，未送出 | 不適用 | 不適用 |
 | 14 | `tgos-2e40ae1d2c64` | 6,834，門牌鍵 2,520、缺區 4,314 | 未產生 | 10-27 取消，未送出 | 不適用 | 不適用 |
-| 13 | `tgos-68b7c5f72cb9` | 10,000，門牌鍵 | `data/tgos/20261027-68b7c5f7` | 未送出 | 未匯入 | 未匯入 |
+| 13 | `tgos-68b7c5f72cb9` | 10,000，門牌鍵 | `data/tgos/20261027-68b7c5f7` | 10-27 | 10-27 | 5,591 |
 | 14 | `tgos-5470ab597ff5` | 6,636，門牌鍵 2,302 含 c45 重送 38、缺區 4,334 | `data/tgos/20261028-5470ab59` | 未送出 | 未匯入 | 未匯入 |
 
 10-27 擁有者決定取消原第 13、14 批，從第二版基線 `e02-20261026` 重新準備到新帳本 run `r09-7c-20261027`，見[重新準備紀錄](../records/C-第13批重新準備.md)。原第 13 批有 161 筆、第 14 批有 209 筆在 `v2.9` 下已離線定位，另補 116 個未排入批次的門牌。
@@ -51,11 +51,12 @@ B 段完成，送查檔已從過渡基線重產。
 - [ ] c45 第 9 批 38 筆回傳門牌與送查相同，但座標都是 `118.754566, 0.000000`，依規則記 `tgos_coordinate_invalid`。10-23 擁有者決定加入最後一批。第 14 批 `tgos-2e40ae1d2c64` 已是 prepared，不重產，所以在 10-27 重建第 14 批交換檔時，另以 `prepare-tgos --limit 38 --retry-query-fingerprint <38 筆> --retry-reason` 準備一個只含這 38 筆的批次，日期 10-28，與第 14 批同日上傳，合計 6,872 筆。指紋清單 `data/tmp/c/c45-retry-38.csv`。第 10 批又有 57 筆座標無效：56 筆是同一錯誤值，1 筆是 `135.812889, 22.420797`，回傳門牌都與送查相同，清單 `data/tmp/c/c45-b10-57.csv`。是否同樣加入最後一批待擁有者決定。10-27 第 9 批的 38 筆改為併入重新準備的第 14 批 `tgos-5470ab597ff5`，不另建批次，見[重新準備紀錄](../records/C-第13批重新準備.md)
 - [x] c10 第 11 批，10-25 匯入，採用 8,180。交換檔 10-24 已重建
 - [x] c11 第 12 批，10-26 匯入，採用 6,993。交換檔 10-25 已重建
-- [ ] c12 第 13 批，交換檔 10-26 已重建，待 10-27 上傳
-- [ ] c13 第 14 批
+- [x] c12 第 13 批 `tgos-68b7c5f72cb9`，10-27 匯入，採用 5,591
+- [ ] c13 第 14 批 `tgos-5470ab597ff5`，交換檔已由 E 段準備，待 10-28 上傳。這是最後一批，匯入後不再重建下一批
+- [ ] c48 第 13 批澎湖 24 筆、臺東 2 筆回傳座標超出臺灣範圍，依規則拒絕。澎湖 24 筆經度約 117.6，比實際小約 2 度。臺東 2 筆是 `118.7556, 0.0002` 附近，與 c45 同型。回傳門牌都是同一門牌。清單 `data/tmp/c/c48-b13-26.csv`。第 14 批已是最後一批，是否另準備重送批待擁有者決定
 - [x] c14 取消：重產後的批次編號到第 14 批為止
 
-現行帳本：10-27 起為 TGOS run `r09-7c-20261027`，最新快照 `tgos-state-862554a24a413fd19c50140f`，由第二版基線的 tgos-state 開始，用 `v2.9` 規則。每日的 `set-tgos-status`、`import-tgos` 與 `repair-tgos-exchange` 改用 `v2.9` 程式，例如第二版基線的凍結複本 `data/tmp/e/e02/repo`，`import-tgos` 的 `--index` 用 `data/runs/e02-20261026/offline-index/snapshots/offline-index-c728e2d708eb38eb3e7af57f`，並以 `--runs-root` 指向本 repo 的 `data/runs`。舊帳本 `r09-7b-20261018` 最後快照 `tgos-state-5d2151e2781b8885ac716550` 是 `v2.8`，不再寫入。之後的 `set-tgos-status` 與 `import-tgos` 都用這個 run ID，`--state` 指向該 run 最新快照。
+現行帳本：10-27 起為 TGOS run `r09-7c-20261027`，10-27 最新快照 `tgos-state-245ec9c702a60a506d9065b3`，共 6 個快照，由第二版基線的 tgos-state 開始，用 `v2.9` 規則。每日的 `set-tgos-status`、`import-tgos` 與 `repair-tgos-exchange` 改用 `v2.9` 程式，例如第二版基線的凍結複本 `data/tmp/e/e02/repo`，`import-tgos` 的 `--index` 用 `data/runs/e02-20261026/offline-index/snapshots/offline-index-c728e2d708eb38eb3e7af57f`，並以 `--runs-root` 指向本 repo 的 `data/runs`。舊帳本 `r09-7b-20261018` 最後快照 `tgos-state-5d2151e2781b8885ac716550` 是 `v2.8`，不再寫入。之後的 `set-tgos-status` 與 `import-tgos` 都用這個 run ID，`--state` 指向該 run 最新快照。
 
 每天的操作程序。程式：早上對下一個 prepared 批次執行 `repair-tgos-exchange`，`--date-file` 指向寫有當天日期的檔，核對 `addresses.csv` 雜湊等於帳本 `csv_sha256`，把路徑告訴擁有者。擁有者：上傳當天批次的 `addresses.csv`。下載回傳 `Address_Finish.csv` 原樣放回同一批次資料夾。告訴程式 session 已送出，不確定時說明不確定。程式：以 `set-tgos-status --status submitted` 記錄，不確定時記 `submission_unknown` 且之後不自動重送。`import-tgos` 匯入，c23 完成後必填 `--index`。重跑 b17 的 V-12 檢查腳本，把採用、查無、各類拒絕的計數寫進 R09-7 紀錄。本機提交。
 
