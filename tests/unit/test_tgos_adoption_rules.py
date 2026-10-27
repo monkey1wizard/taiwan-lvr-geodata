@@ -65,7 +65,6 @@ def test_county_reform_codes_are_the_real_ones():
 @pytest.mark.parametrize(
     ("query", "response"),
     [
-        ("雲林縣麥寮鄉瓦傜村霄仁86號", "雲林縣麥寮鄉瓦磘村12鄰霄仁86號"),
         ("彰化縣彰化市南瑤里天祥路30巷1號", "彰化縣彰化市南瑶里22鄰天祥路30巷2號"),
         ("彰化縣彰化市南瑤里天祥路30巷1號", "彰化縣彰化市天祥路30巷1號"),
         ("彰化縣彰化市南瑤里22鄰天祥路30巷1號", "彰化縣彰化市南瑶里23鄰天祥路30巷1號"),
@@ -106,3 +105,37 @@ def test_bopomofo_one_is_read_as_the_numeral():
     assert adopted("彰化縣二林鎮正知ㄧ街15號", "彰化縣二林鎮後厝里9鄰正知一街15號")
     assert not adopted("彰化縣二林鎮正知ㄧ街15號", "彰化縣二林鎮後厝里9鄰正知二街15號")
     assert building_key("彰化縣二林鎮正知ㄧ街15號") != building_key("彰化縣二林鎮正知一街15號")
+
+
+# c46, rule 10: 台 is read as 臺 in adoption only; the keys differ.
+def test_tai_is_read_as_the_standard_character():
+    assert adopted("臺中市西屯區台灣大道三段282號", "臺中市西屯區惠來里1鄰臺灣大道三段282號")
+    assert adopted("彰化縣彰化市台化街2之4號", "彰化縣彰化市中庄里1鄰臺化街2號之4")
+    assert not adopted("彰化縣彰化市台化街2之4號", "彰化縣彰化市中庄里1鄰臺化街2號之5")
+    assert building_key("彰化縣彰化市台化街2號") != building_key("彰化縣彰化市臺化街2號")
+
+
+# c47, rule 11: a village one character away from the TGOS village, which is a current village of the
+# town while the query village is not, is the same village.
+@pytest.mark.parametrize(
+    ("query", "response"),
+    [
+        ("彰化縣伸港鄉泉卅村中山路244號", "彰化縣伸港鄉泉州村16鄰中山路244號"),
+        ("雲林縣麥寮鄉瓦傜村霄仁86號", "雲林縣麥寮鄉瓦磘村12鄰霄仁86號"),
+        ("桃園市平鎮區北勢村11鄰和平路31巷35號", "桃園市平鎮區北勢里11鄰和平路31巷35號"),
+    ],
+)
+def test_one_character_village_takes_the_tgos_name(query, response):
+    assert adopted(query, response)
+
+
+@pytest.mark.parametrize(
+    ("query", "response"),
+    [
+        ("臺南市下營區茅港里茅港尾235之12號", "臺南市下營區茅營里5鄰茅港尾235之12號"),
+        ("桃園市平鎮區北勢村11鄰和平路31巷35號", "桃園市平鎮區南勢里11鄰和平路31巷35號"),
+        ("彰化縣伸港鄉泉卅村中山路244號", "彰化縣伸港鄉泉州村16鄰中山路245號"),
+    ],
+)
+def test_one_character_village_rejected(query, response):
+    assert not adopted(query, response)

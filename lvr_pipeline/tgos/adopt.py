@@ -41,8 +41,9 @@ def response_key(address: str | None) -> str | None:
 
 
 def _text(value):
-    """Adoption comparisons read the bopomofo letter ㄧ (U+3127) as the numeral 一 (U+4E00) (c42)."""
-    return value.replace("ㄧ", "一") if isinstance(value, str) else value
+    """Adoption comparisons read the bopomofo letter ㄧ (U+3127) as the numeral 一 (U+4E00) (c42)
+    and 台 as 臺 (rule 10, c46)."""
+    return value.replace("ㄧ", "一").replace("台", "臺") if isinstance(value, str) else value
 
 
 def _door_notation(door: str) -> str:
@@ -76,7 +77,7 @@ def _without_section(road: str) -> str:
 
 @lru_cache(maxsize=1)
 def _village_index() -> dict:
-    """(county, town) -> village name -> {code: row}, for current and old-county rows alike.
+    """(county, town) -> village name read by ``_text`` -> {code: row}, for current and old-county rows alike.
 
     An old-county row belongs to the current town its old town name maps to.
     """
@@ -92,7 +93,7 @@ def _village_index() -> dict:
             mapping = document["old_counties"].get(old_county, {}).get("towns", {})
             towns |= {mapping[name] for name in names if name in mapping}
         for town in towns:
-            index.setdefault((county, town), {}).setdefault(row["name"], {})[row["code"]] = row
+            index.setdefault((county, town), {}).setdefault(_text(row["name"]), {})[row["code"]] = row
     return index
 
 
@@ -103,12 +104,32 @@ def _old_town_maps_to(row: dict, town: str) -> bool:
     return any(mapping.get(name) == town for name in names)
 
 
+def _current_rows(names: dict, village: str) -> list:
+    return [row for row in names.get(village, {}).values() if not row.get("old_county")]
+
+
+def _one_character_village(names: dict, query_village: str, response_village: str) -> bool:
+    """Rule 11 (c47): the TGOS village is the standard name when the two names differ in one character.
+
+    Both names have the same length and differ in exactly one character. The response name is one
+    current village of the town and the query name is no current village of the town, so a query
+    that names another real village (明南里 and 明和里) still fails.
+    """
+    if len(query_village) != len(response_village):
+        return False
+    if sum(a != b for a, b in zip(query_village, response_village)) != 1:
+        return False
+    return len(_current_rows(names, response_village)) == 1 and not _current_rows(names, query_village)
+
+
 def _same_village(county: str, town: str, query_village: str, response_village: str) -> bool:
     """Rule 1 and the county-reform extension; anything undecided is not the same village."""
     query_village, response_village = _text(query_village), _text(response_village)
     if query_village == response_village:
         return True
     names = _village_index().get((county, town), {})
+    if _one_character_village(names, query_village, response_village):
+        return True
     codes = [names.get(query_village, {}), names.get(response_village, {})]
     if any(len(rows) != 1 for rows in codes):
         return False
