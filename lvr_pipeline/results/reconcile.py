@@ -22,6 +22,10 @@ distinct coordinates from several doors are not located (status ``conflict``,
 basis ``door_cross_check``); the tolerance is never applied between doors, and
 the key goes to the manual cross-check list of the review stage.
 
+Door cross-check (c53, owner decision 2026-10-28): only coordinates that carry a
+door count. A TGOS result carries no door, so when the doors share one coordinate
+a TGOS coordinate follows the tolerance rule above (rule ``..._v2``).
+
 The tolerance comes from ``coordinate_tolerance_m`` in the pipeline config and
 is part of the stage bindings, so changing it makes the stage not reusable.
 
@@ -55,7 +59,7 @@ DEFAULT_CONFIG = ROOT / "config" / "pipeline.example.toml"
 WITHIN_TOLERANCE = "within_tolerance_medoid"
 EXCEEDS_TOLERANCE = "exceeds_tolerance"
 DOOR_CROSS_CHECK = "door_cross_check"
-DOOR_RULE = "village_neighborhood_subid_v1"
+DOOR_RULE = "village_neighborhood_subid_v2"
 SUSPENDED = "address_source_suspended"
 SUSPENSION_RULE = "county_suspension_v1"
 
@@ -189,6 +193,15 @@ def door_list(doors) -> list[dict]:
     ]
 
 
+def is_door_cross_check(door_lists) -> bool:
+    """R04-12 with c53: several doors over several coordinates that carry a door.
+
+    ``door_lists`` holds the doors of each distinct coordinate; a TGOS coordinate has none.
+    """
+    with_doors = [doors for doors in door_lists if doors]
+    return len(with_doors) > 1 and len({tuple(door) for doors in with_doors for door in doors}) > 1
+
+
 def resolution_row(key_version, building_key, points: dict, tolerance_m: float) -> dict:
     """The coordinate-resolution row of a key with several distinct coordinates.
 
@@ -197,8 +210,7 @@ def resolution_row(key_version, building_key, points: dict, tolerance_m: float) 
     """
     adoption = adopt_coordinates(points, tolerance_m)
     door_aware = any("doors" in value for value in points.values())
-    doors = {tuple(door) for value in points.values() for door in value.get("doors", [])}
-    if door_aware and len(doors) > 1:
+    if door_aware and is_door_cross_check(value.get("doors", []) for value in points.values()):
         adoption = {
             **adoption,
             "status": "conflict",

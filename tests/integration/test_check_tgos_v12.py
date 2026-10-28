@@ -83,7 +83,26 @@ def test_merged_snapshot_passes_with_expected_counts(merged, tmp_path):
     assert batch["keyless_queries"] == 1
     assert all(check["pass"] for check in batch["checks"].values())
     assert batch["checks"]["7_address_index"]["located_matching"] == 1
+    assert batch["checks"]["4_rejected_rows"]["base_check_candidates"] == {}
     assert report["checks"]["0_orphan_results"]["pass"] is True
+
+
+def test_differs_row_on_a_base_route_is_a_candidate_not_a_failure(merged, tmp_path):
+    # e15: a response that adds a road section needs the base group, which this script does not read.
+    copy = tmp_path / "base_route"
+    shutil.copytree(merged, copy)
+    path = copy / "tgos_imports.parquet"
+    table = pq.read_table(path)
+    data = table.to_pylist()
+    rejected = next(r for r in data if r["status"] == "rejected" and r["reason"] == DIFFERS)
+    rejected["response_address"] = ROAD.replace("測試路", "測試路一段") + "22號"
+    pq.write_table(pa.Table.from_pylist(data, schema=table.schema), path)
+    out = tmp_path / "report.json"
+    proc = run_check(copy, "--out", str(out))
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    [batch] = json.loads(out.read_text(encoding="utf-8"))["batches"]
+    check = batch["checks"]["4_rejected_rows"]
+    assert check["pass"] is True and check["base_check_candidates"] == {"road_section": 1}
 
 
 def test_stored_query_key_that_differs_from_current_rules_fails_check_8(merged, tmp_path):

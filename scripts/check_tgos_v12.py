@@ -186,6 +186,9 @@ def check_batch(batch_id: str, queries: list[dict], results: list[dict], index: 
 
     # 4. rejected rows.
     c4 = Check(CHECK_NAMES[3])
+    # e15: a differs row on a base-group route is adopted only when the base group is single. This
+    # script reads no base, so these rows are counted as candidates, not as failures.
+    c4.extra = {"base_check_candidates": Counter()}
     for r, q in pairs:
         if r["status"] != "rejected":
             continue
@@ -197,8 +200,11 @@ def check_batch(batch_id: str, queries: list[dict], results: list[dict], index: 
                 c4.fail(view, "keyless reason on a query that is not keyless")
         elif reason in TGOS_REJECTION_CODES:
             if reason == DIFFERS_REASON and q.get("building_key") is not None:
-                if adoption_route(q["building_key"], response_key(r["response_address"])) == DOOR:
+                route = adoption_route(q["building_key"], response_key(r["response_address"]))
+                if route == DOOR:
                     c4.fail(view, "differs reason, but the response names the queried door")
+                elif route is not None:
+                    c4.extra["base_check_candidates"][route] += 1
             if reason in GROUP_REJECTIONS:
                 if adoption_route(q.get("building_key"), response_key(r["response_address"])) not in GROUP_REJECTIONS[reason]:
                     c4.fail(view, "base group rejection, but the response is not of that rule's route")
