@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lvr_pipeline.addresses.identity import building_key  # noqa: E402
 from lvr_pipeline.storage.parquet import rows  # noqa: E402
 from lvr_pipeline.storage.runs import SnapshotStore, digest  # noqa: E402
-from lvr_pipeline.tgos import _write_state, load_state, prepare_tgos  # noqa: E402
+from lvr_pipeline.tgos import _write_state, load_state, prepare_tgos, transition_batch  # noqa: E402
 from lvr_pipeline.tgos.batches import read_retry_file  # noqa: E402
 from test_d3_edge_cases import batch_of, send, world  # noqa: E402
 from test_p2_offline import index_of  # noqa: E402
@@ -110,6 +110,32 @@ def test_retried_door_whose_text_changed_is_sent_with_the_current_text(tmp_path)
     [new] = [q for q in rows(second / "tgos_queries.parquet") if q["batch_id"] == batch_row["batch_id"]]
     assert new["address"] == address and new["query_fingerprint"] == digest([key, address])
     assert batch_row["predecessor_batch_id"] == batch
+
+
+def test_retried_door_whose_current_text_is_in_a_cancelled_batch_is_sent(tmp_path):
+    """e17b case: the current text was prepared once in a batch that was cancelled, the old text was sent."""
+    address, old = T + "38號", "台北市中正區測試路38號"
+    key = building_key(address)
+    w = world(tmp_path, sales=[{"address": address, "date": "1150102"}])
+    cancelled_batch = batch_of(w["prepared"])
+    cancelled = transition_batch(w["prepared"], w["work"], cancelled_batch, "cancelled", reason="x")
+    batches = list(rows(cancelled / "tgos_batches.parquet"))
+    queries = list(rows(cancelled / "tgos_queries.parquet"))
+    [query] = [q for q in queries if q["batch_id"] == cancelled_batch]
+    assert query["address"] == address and query["status"] == "cancelled"
+    sent_batch = "tgos-c33oldtext0"
+    batches.append({**batches[0], "batch_id": sent_batch, "status": "prepared", "address_count": 1, "reason": None})
+    queries.append({**query, "batch_id": sent_batch, "address": old, "query_fingerprint": digest([key, old]),
+                    "status": "prepared"})
+    old_text = _write_state(cancelled, w["work"], action="old-text", batches=batches, queries=queries,
+                            results=[], aliases=[], alias_events=[])
+    first = send(old_text, w["work"], w["tmp"], sent_batch, {}, name="old")
+    second, _ = prepare_tgos(first, w["work"], w["tmp"] / "exchange-retry", retry_reason="owner approved",
+                             retry_file=retry_csv(w["tmp"], [digest([key, old])]), index=index_of(w["state"]))
+    batch_row = list(rows(second / "tgos_batches.parquet"))[-1]
+    [new] = [q for q in rows(second / "tgos_queries.parquet") if q["batch_id"] == batch_row["batch_id"]]
+    assert new["address"] == address and new["query_fingerprint"] == query["query_fingerprint"]
+    assert batch_row["predecessor_batch_id"] == sent_batch
 
 
 def _review_area(tmp_path):

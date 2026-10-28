@@ -775,6 +775,18 @@ def prepare_tgos(
             retry_door[row["query_fingerprint"]] = door
     queried_keys -= retried_keys
     queried_doors -= retried_doors
+    # A retried door may already have a retryable query with its current text (a cancelled batch, say):
+    # that fingerprint must not block the retry either.
+    for row in queries:
+        if row["status"] not in retryable:
+            continue
+        if row["query_kind"] == "district_missing":
+            parsed = district_query(row["address"])
+            retried = parsed is not None and _district_door(row["county_code"], parsed) in retried_doors
+        else:
+            retried = row["building_key"] in retried_keys
+        if retried:
+            prior.discard(row["query_fingerprint"])
     key_counts = {"already_queried": 0, "text_not_round_trip": 0}
     district_counts = {"merged": 0, "already_queried": 0, "text_not_round_trip": 0}
     candidates = select_unmatched_candidates(
