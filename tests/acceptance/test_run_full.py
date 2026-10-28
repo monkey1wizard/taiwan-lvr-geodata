@@ -37,6 +37,13 @@ def setup_inputs(tmp_path):
             "runs_root": tmp_path / "runs", "cutoff": 202610, "batch_rows": 2}
 
 
+def no_decisions(tmp_path):
+    """An empty decision directory for a CLI start, which otherwise reads data/review-decisions of the working directory (c56)."""
+    directory = tmp_path / "review-decisions"
+    directory.mkdir(exist_ok=True)
+    return directory
+
+
 def files(directory):
     return {p.relative_to(directory).as_posix(): p.read_bytes() for p in sorted(Path(directory).rglob("*")) if p.is_file()}
 
@@ -51,7 +58,8 @@ def test_full_run_cross_batch_three_categories_known_empty_and_duplicate_serials
     code = main(["run-full", "--run-id", "full1", "--cutoff", "202610", "--address-dir", str(inputs["address_dir"]),
                  "--runs-root", str(inputs["runs_root"]), "--raw-dir", str(inputs["raw_dir"]),
                  "--manifest", str(inputs["manifest_path"]), "--address-source", str(inputs["address_source"]),
-                 "--garbled-rules", str(inputs["rules_path"]), "--batch-rows", "2"])
+                 "--garbled-rules", str(inputs["rules_path"]), "--batch-rows", "2",
+                 "--review-decisions", str(no_decisions(tmp_path))])
     result = json.loads(capsys.readouterr().out)
     assert code == 0 and result["completed"] is True and result["failures"] == []
     run_dir = inputs["runs_root"] / "full1"
@@ -87,7 +95,7 @@ def test_full_run_cross_batch_three_categories_known_empty_and_duplicate_serials
 
     # A second start reuses every checkpoint and writes nothing new.
     before = {name: files(run_dir / name / "snapshots") for name in RUN_FULL_STAGES}
-    again = run_full(run_id="full1", **inputs)
+    again = run_full(run_id="full1", review_decisions=no_decisions(tmp_path), **inputs)
     assert again["completed"] is True
     assert all(step["reused_checkpoint"] for step in again["steps"] if step["step"] in RUN_FULL_STAGES)
     assert {name: files(run_dir / name / "snapshots") for name in RUN_FULL_STAGES} == before
@@ -147,7 +155,7 @@ def test_missing_zip_is_incomplete_and_runs_no_stage(tmp_path, missing, capsys):
     code = main(["run-full", "--run-id", "miss", "--cutoff", "202610", "--address-dir", str(inputs["address_dir"]),
                  "--runs-root", str(inputs["runs_root"]), "--raw-dir", str(inputs["raw_dir"]),
                  "--manifest", str(inputs["manifest_path"]), "--address-source", str(inputs["address_source"]),
-                 "--garbled-rules", str(inputs["rules_path"])])
+                 "--garbled-rules", str(inputs["rules_path"]), "--review-decisions", str(no_decisions(tmp_path))])
     result = json.loads(capsys.readouterr().out)
     assert code == 1 and result["completed"] is False
     # A missing file is never an empty batch, even for the known-empty 101q1.
@@ -233,7 +241,8 @@ def test_coverage_gate_failure_blocks_completion(tmp_path, monkeypatch, capsys):
     argv = ["run-full", "--run-id", "gate", "--cutoff", "202610", "--address-dir", str(inputs["address_dir"]),
             "--runs-root", str(inputs["runs_root"]), "--raw-dir", str(inputs["raw_dir"]),
             "--manifest", str(inputs["manifest_path"]), "--address-source", str(inputs["address_source"]),
-            "--garbled-rules", str(inputs["rules_path"]), "--batch-rows", "2"]
+            "--garbled-rules", str(inputs["rules_path"]), "--batch-rows", "2",
+            "--review-decisions", str(no_decisions(tmp_path))]
     monkeypatch.setattr("lvr_pipeline.pipeline.coverage_failures",
                         lambda manifest, report: [{"code": "member_accounting", "detail": "synthetic"}])
     code = main(argv)
