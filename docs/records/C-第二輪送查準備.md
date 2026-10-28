@@ -61,3 +61,20 @@ c34 從第二版基線 `e17b-20261028` 準備第二輪第 1 批送查檔，並�
 | 刪除 `data/tgos/20261029-fec1eef6` | 依 10-18 規則刪除從未送出的交換資料夾 | 已刪除。刪除前 `addresses.csv` `589ee46d…`、`manifest.json` `1dfe956f…` | 0 | pass | 本紀錄 |
 | `git archive` 修正前的 HEAD，放入 c55 測試 | 證明修正前的行為 | 3 個失敗：補區鍵仍 `unmatched`、`prepare-tgos` 沒有拋出無候選、匯入記 `succeeded` | 1 | pass | `data/tmp/c34/c55-before.log` |
 | 修正後的程式，只拿掉 run-full 計入補區那段 | 證明 run-full 那段必要 | run-full 的斷言失敗，記 `succeeded` | 1 | pass | `data/tmp/c34/c55-loop-before.log` |
+
+## 10-29 文字已改的 949 筆
+
+程式提交 `99f0075`，含 c55、c56、c57。擁有者指示只送文字已改的 949 筆，文字相同的 13,875 筆暫不送，清單保留在 `data/tmp/tgos-round2/retry-candidates.csv`。
+
+| 命令與工作目錄 | 預期 | 實際 | 結束代碼 | pass／fail／not-run | 證據位置與雜湊 |
+| --- | --- | --- | --- | --- | --- |
+| 從 `retry-candidates.csv` 取 `text_changed = yes` | 949 列 | 949 列 | 0 | pass | `data/tmp/tgos-round2/retry-text-changed.csv` `1d2d767f…` |
+| c57 之前：`prepare-tgos --state <c34 tgos-state-b7fee12f…> --retry-file retry-text-changed.csv --retry-reason c32 文字已改 --run-id c34-20261029` | 準備 949 筆 | 拒絕：27 筆的現行文字曾排入已取消的批次，指紋擋住候選。沒有寫入 | 1 | fail | 修正見 C 子企劃 c57 |
+| c57 之後同一命令 | 準備 949 筆，沒有新門牌 | 批次 `tgos-4dc936da434d`，949 筆，全是核准重送。試跑 `data/tmp/c34/dry_run_949.py` 結果相同 | 0 | pass | 快照 `tgos-state-350b11adba5fb0c5c850e515`，manifest `761b3020…`。`prepare-949.log` `909e46fc…` |
+
+送查檔在 `data/tgos/20261029-4dc936da/`：`addresses.csv` 949 列加表頭，SHA-256 `706a0828b36700e2b550041bf1999aec19f010f3b8d50623b7731fbc84be9adf`，等於帳本 `csv_sha256`。`manifest.json` `46243e75e81a0a8f997790cabce0b929d5d5a4b7f1fb573b878d02c1a80e7525`。
+
+- 批次 `reason` 記 `c32 文字已改`，另含清單檔雜湊 `1d2d767f…`。949 筆的前一批不只一個，所以 `predecessor_batch_id` 是空值。
+- 949 筆中有 1 筆，`花蓮縣花蓮市北昌五街14巷8號`，現行文字已送過一次而查無。這次仍以同一文字送出。
+- 缺區補區已定位的 3,125 個門牌鍵沒有再被選入，新門牌 0 筆。
+- 未上傳。送出後 `set-tgos-status --status submitted`，再 `import-tgos`，都用 run `c34-20261029`。
