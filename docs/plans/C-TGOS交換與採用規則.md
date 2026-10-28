@@ -127,7 +127,15 @@ B 段完成，送查檔已從過渡基線重產。
 
 - [x] c32 建議採 A 並加 C 的檢查作為報告：清單中送查文字與上次相同的筆數寫入報告，由擁有者決定是否仍重送。10-29 擁有者照建議裁定。實作：`prepare-tgos --retry-file <CSV>` 取代每個指紋一個旗標的 `--retry-query-fingerprint`，清單檔要有 `query_fingerprint` 欄，空清單或重複指紋拒絕。清單檔 SHA-256 與 `--retry-reason` 寫入批次的 `reason`，也寫入狀態報告的 `tgos_retry_file_sha256`。清單中任一筆不可重送時整批拒絕，不寫快照與交換檔。清單列出的是上次送出的指紋。門牌在現行規則下的送查文字已改變時，以新文字送出，前一批記為 `predecessor_batch_id`。清單由唯讀腳本 `scripts/tgos_retry_list.py` 從第二類人工查核區產生：預設只列 `tgos_not_found`，只列 `pending` 與 `deferred`，`rejected` 與 `adopted` 不列。門牌還有等待中的查詢時不列，包括 `submission_unknown`。每列記上次送出文字、現行文字與 `text_changed`，報告分別計數
 - [x] c33 合成案例：清單檔重送、清單含不可重送狀態時整批拒絕、`rejected` 判定不被選、`submission_unknown` 不被選、清單雜湊寫入批次紀錄。10-29 完成：`tests/integration/test_c33_retry_file.py` 9 個測試，另含清單格式錯誤與文字改變的門牌以新文字送出。原有重送測試改用清單檔
-- [ ] c34 從最新未定位池建立新一輪送查檔，進度表另開一節，操作程序同 C-1
+- [x] c34 從最新未定位池建立新一輪送查檔，進度表另開一節，操作程序同 C-1。10-29 從 `e17b-20261028` 準備第二輪第 1 批，帳本 run `c34-20261029`，見下表與[第二輪送查準備紀錄](../records/C-第二輪送查準備.md)
+
+### 第二輪進度
+
+帳本從 `e17b-20261028` 的 tgos-state 接續到 run `c34-20261029`。之後的 `set-tgos-status`、`import-tgos` 與 `prepare-tgos` 都用這個 run 的最新快照。重送清單 `data/tmp/tgos-round2/retry-candidates.csv` `792a0818…` 列出查無門牌 14,824 筆，送查文字與上次相同 13,875 筆，由擁有者決定是否重送。
+
+| 批次 | `batch_id` | 筆數 | 交換資料夾 | 送出 | 匯入 | 採用 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | `tgos-fec1eef6ca7b` | 3,125，門牌鍵，嘉義市 2,602、新竹市 523，不含重送 | `data/tgos/20261029-fec1eef6` | 未送出 | 未匯入 | 未匯入 |
 
 ## 程式事實與行號
 
