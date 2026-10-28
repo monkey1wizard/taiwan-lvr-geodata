@@ -59,6 +59,17 @@ def fixture_two_unmatched(tmp_path):
     return converted, state, addresses
 
 
+def retry_csv(directory, fingerprints):
+    """An approved retry list for prepare_tgos(retry_file=...) (c32)."""
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"retry-{len(list(directory.glob('retry-*.csv')))}.csv"
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["query_fingerprint"])
+        writer.writerows([fingerprint] for fingerprint in fingerprints)
+    return path
+
+
 def response(path, values):
     with path.open("w", encoding="utf-8-sig", newline="") as stream:
         writer = csv.DictWriter(
@@ -190,11 +201,11 @@ def test_ten_thousand_cap_fairness_and_cancellation_state(tmp_path):
         cancelled,
         tmp_path / "work",
         tmp_path / "exchange",
-        retry_fingerprints=[fingerprint],
+        retry_file=retry_csv(tmp_path, [fingerprint]),
         retry_reason="operator approved corrected retry", index=index_of(cancelled))
     batches = list(rows(retried / "tgos_batches.parquet"))
     assert batches[-1]["predecessor_batch_id"] == batch_id
-    assert batches[-1]["reason"] == "operator approved corrected retry"
+    assert batches[-1]["reason"].startswith("operator approved corrected retry (retry file sha256 ")
 
 
 def test_strict_import_is_idempotent_and_rejects_axis_guessing(tmp_path):
@@ -444,7 +455,7 @@ def test_cancelled_batch_addresses_are_eligible_again_with_approved_retry(tmp_pa
         tmp_path / "new",
         tmp_path / "exchange",
         ledger=cancelled,
-        retry_fingerprints=[digest([query["building_key"], query["address"]])],
+        retry_file=retry_csv(tmp_path, [digest([query["building_key"], query["address"]])]),
         retry_reason="regenerated", index=index_of(state))
     new_batch = [r for r in rows(seeded / "tgos_queries.parquet") if r["batch_id"] != query["batch_id"]]
     assert query["address"] in [r["address"] for r in new_batch]

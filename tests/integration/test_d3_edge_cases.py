@@ -33,7 +33,7 @@ from lvr_pipeline.transactions.read import ingest  # noqa: E402
 from test_final_state import affected_of, decisions_dir, fresh, manual_decision, sources_of  # noqa: E402
 from test_p1_conversion import CODE, add_members, make_source, no_char_fixes, rules  # noqa: E402
 from test_p2_offline import index_of, register_index, source as offline_source  # noqa: E402
-from test_p3_tgos import response  # noqa: E402
+from test_p3_tgos import response, retry_csv  # noqa: E402
 from test_second_review import by_address, second  # noqa: E402
 
 RENT_HEADER = ["土地位置建物門牌", "交易標的", "租賃年月日", "總額元", "建物總面積平方公尺", "編號", "new_field"]
@@ -189,7 +189,7 @@ def test_not_found_then_approved_retry_locates_the_key(tmp_path):
     query = next(q for q in rows(first / "tgos_queries.parquet") if q["address"] == address)
     assert query["status"] == "failed"
     retry, _ = prepare_tgos(first, w["work"], w["tmp"] / "exchange-retry",
-                            retry_fingerprints=[query["query_fingerprint"]],
+                            retry_file=retry_csv(w["tmp"], [query["query_fingerprint"]]),
                             retry_reason="operator approved retry", index=index_of(w["state"]))
     tgos = send(retry, w["work"], w["tmp"], batch_of(retry), {address: (address, "121.57", "25.07")}, name="batch2")
     assert not [r for r in second(review(w, tgos)) if r["canonical_address"] == address]
@@ -233,7 +233,7 @@ def test_a_succeeded_key_never_gets_a_second_result(tmp_path):
     assert {r["building_key"]: r for r in rows(merged(w, first) / "address_index.parquet")}[query["building_key"]]["status"] == "located"
     with pytest.raises(ValueError, match="not in a retryable state"):
         prepare_tgos(first, w["work"], w["tmp"] / "exchange-retry", index=index_of(w["state"]),
-                     retry_fingerprints=[query["query_fingerprint"]], retry_reason="late different coordinate")
+                     retry_file=retry_csv(w["tmp"], [query["query_fingerprint"]]), retry_reason="late different coordinate")
     second_batch, _ = prepare_tgos(first, w["work"], w["tmp"] / "exchange-next", index=index_of(w["state"]))
     chosen = [q["building_key"] for q in rows(second_batch / "tgos_queries.parquet") if q["batch_id"] != batch]
     assert query["building_key"] not in chosen

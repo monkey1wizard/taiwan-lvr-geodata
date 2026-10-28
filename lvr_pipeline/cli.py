@@ -105,7 +105,7 @@ def _add_offline_and_output_commands(sub):
         help="Date log used only for the exchange folder name",
     )
     p.add_argument("--limit", type=int, default=10_000)
-    p.add_argument("--retry-query-fingerprint", action="append", default=[])
+    p.add_argument("--retry-file", type=Path, help="CSV with a query_fingerprint column: approved retries (c32)")
     p.add_argument("--retry-reason")
     p.add_argument("--ledger", type=Path, help="Earlier TGOS state whose sent queries must not be resent")
     p.add_argument("--runs-root", type=Path, default=None, help="Run directories root (default data/runs)")

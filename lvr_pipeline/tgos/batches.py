@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
+import io
 import json
 from pathlib import Path
 from typing import NamedTuple
@@ -523,6 +525,25 @@ def _carry_ledger(ledger: Path) -> Carried:
     return Carried(batches, queries, rekeyed, reopened, keyless)
 
 
+def read_retry_file(path: Path) -> tuple[list[str], str]:
+    """c32 (owner decision 2026-10-29, option A): the approved retries of one batch, and the file SHA-256.
+
+    A UTF-8 CSV with a ``query_fingerprint`` column, one row per approved query of the ledger; other
+    columns (the retry list script writes the review key and both texts) are ignored. An empty list or
+    a repeated fingerprint is refused.
+    """
+    data = Path(path).read_bytes()
+    reader = csv.DictReader(io.StringIO(data.decode("utf-8-sig"), newline=""))
+    if "query_fingerprint" not in (reader.fieldnames or []):
+        raise ValueError("TGOS retry file has no query_fingerprint column")
+    fingerprints = [row["query_fingerprint"].strip() for row in reader]
+    if not fingerprints or not all(fingerprints):
+        raise ValueError("TGOS retry file lists no fingerprint or has an empty one")
+    if len(set(fingerprints)) != len(fingerprints):
+        raise ValueError("TGOS retry file repeats a fingerprint")
+    return fingerprints, hashlib.sha256(data).hexdigest()
+
+
 def select_unmatched_candidates(
     address_rows,
     *,
@@ -671,12 +692,16 @@ def prepare_tgos(
     *,
     index: Path,
     limit: int = DAILY_LIMIT,
-    retry_fingerprints: list[str] | None = None,
+    retry_file: Path | None = None,
     retry_reason: str | None = None,
     ledger: Path | None = None,
     exchange_date: str | None = None,
     run_id: str | None = None,
 ):
+    """Prepare the next batch. ``retry_file`` lists approved retries (``read_retry_file``); its SHA-256 and
+    ``retry_reason`` go into the batch record. A retried door whose query text changed under the current
+    rules is sent with the new text (c32).
+    """
     if isinstance(limit, bool) or not 1 <= limit <= DAILY_LIMIT:
         raise ValueError("TGOS file limit must be between 1 and 10000")
     inp = open_input(source, work_dir)
@@ -708,7 +733,8 @@ def prepare_tgos(
     )
     suspended_excluded = {code: 0 for code in sorted(suspended_codes)}
     available = limit
-    retry_fingerprints = set(retry_fingerprints or [])
+    retry_fingerprints, retry_sha256 = read_retry_file(retry_file) if retry_file is not None else ([], None)
+    retry_fingerprints = set(retry_fingerprints)
     if retry_fingerprints and not retry_reason:
         raise ValueError("Approved TGOS retries require a reason")
     query_history = {}
@@ -731,6 +757,7 @@ def prepare_tgos(
     sent_text = {row["address"] for row in queries if row["status"] not in retryable or row["query_kind"] == "keyless"}
     # R09-7a: a door already queried under any text is not queried again, unless an approved retry names it.
     queried_keys, retried_keys, queried_doors, retried_doors = set(), set(), set(), set()
+    retry_door = {}
     for row in queries:
         if row["query_kind"] == "district_missing":
             parsed = district_query(row["address"])
@@ -745,6 +772,7 @@ def prepare_tgos(
             queried.add(door)
         if row["query_fingerprint"] in retry_fingerprints:
             retried.add(door)
+            retry_door[row["query_fingerprint"]] = door
     queried_keys -= retried_keys
     queried_doors -= retried_doors
     key_counts = {"already_queried": 0, "text_not_round_trip": 0}
@@ -774,15 +802,25 @@ def prepare_tgos(
     candidates = [
         {**row, "query_kind": "building_key", "candidate_towns": None} for row in candidates
     ] + district
+    def door_of(row):
+        if row["building_key"] is not None:
+            return row["building_key"] if row["building_key"] in retried_keys else None
+        parsed = district_query(row["query_text"])
+        door = _district_door(row["county_code"], parsed) if parsed else None
+        return door if door in retried_doors else None
+
+    # A retried door is found by its old fingerprint, or by the door when its text changed.
     retry_candidates = [
-        row for row in candidates if row["query_fingerprint"] in retry_fingerprints
+        row for row in candidates if row["query_fingerprint"] in retry_fingerprints or door_of(row) is not None
     ]
-    if {row["query_fingerprint"] for row in retry_candidates} != retry_fingerprints:
+    covered = {door_of(row) for row in retry_candidates}
+    if any(retry_door.get(fingerprint) not in covered for fingerprint in retry_fingerprints):
         raise ValueError("Approved TGOS retry is no longer an eligible candidate")
+    retry_selected = {row["query_fingerprint"] for row in retry_candidates}
     if len(retry_candidates) > available:
         raise ValueError("Remaining TGOS quota cannot fit all approved retries")
     new_candidates = [
-        row for row in candidates if row["query_fingerprint"] not in retry_fingerprints
+        row for row in candidates if row["query_fingerprint"] not in retry_selected
     ]
     # R09-6: district_missing candidates follow the key candidates, sorted by county and address;
     # they take no part in the family round-robin.
@@ -832,7 +870,7 @@ def prepare_tgos(
         "csv_sha256": hashlib.sha256(payload).hexdigest(),
         "response_sha256": None,
         "predecessor_batch_id": next(iter(predecessors)) if len(predecessors) == 1 else None,
-        "reason": retry_reason,
+        "reason": f"{retry_reason} (retry file sha256 {retry_sha256})" if retry_sha256 else None,
     }
     state = _write_state(
         source,
@@ -845,6 +883,8 @@ def prepare_tgos(
         alias_events=events,
         extra_report={
             "last_tgos_batch_id": batch_id,
+            **({"tgos_retry_file_sha256": retry_sha256, "tgos_retry_count": len(retry_fingerprints)}
+               if retry_sha256 else {}),
             "carried_query_keys_recomputed": rekeyed,
             "tgos_carried_keyless_queries": keyless,
             "tgos_district_missing_without_candidates": without_candidates,

@@ -75,7 +75,7 @@
 | TGOS 拒絕訊息對待查核碼 8 對 | `review.py:86-97` |
 | 回傳列狀態 succeeded、failed、rejected；晚到成功座標與先前不同記 `conflict` | `lvr_pipeline/tgos/validate.py:282`、`:305`、`:349-352` |
 | 可重送狀態；核准重送要全部合格且排在最前 | `lvr_pipeline/tgos/batches.py:498`、`:489-504`、`:553-555` |
-| `--retry-query-fingerprint` 每個指紋一個旗標 | `lvr_pipeline/cli.py:98`、傳入 `pipeline.py:207` |
+| `--retry-file` 重送清單檔，c32 取代每個指紋一個旗標 | `lvr_pipeline/cli.py:108`、傳入 `pipeline.py:214` |
 | 缺區地址沒有門牌鍵，不進 `unique_addresses`，留在出現列 | `lvr_pipeline/addresses/pool.py:354`、`:372`、過濾 `:267` |
 | `catalog.json` 每檔記 `rows`、`size_bytes`、`sha256` | `lvr_pipeline/output/catalog.py:45-47` |
 | 每月 CSV 路徑 `csv/YYYY/taiwanlvr_YYYYMM_<類別>.csv`；GeoParquet 在 `release/taiwanlvr.parquet`，release 目錄必須為空 | `lvr_pipeline/output/build.py:74`、`:55`、`:47` |
@@ -91,4 +91,4 @@
 - `data/runs/` 的基線 run 只讀，回補使用新的 run ID。
 - 合成測試若因新檢查失敗，改用正確夾具，不加繞過旗標。
 - 被拒絕回傳列的原始座標由B 段 B-4（`f56558c`）存入 `tgos-result` 的 `response_lng`、`response_lat`，`accept_tgos_response` 判定讀這兩欄。
-- `rejected` 判定的門牌不進下一輪 TGOS 自動候選（契約轉換規則 4）要改 `prepare-tgos`，屬C 段 c32 到 c34 的範圍。
+- `rejected` 判定的門牌不進下一輪 TGOS 自動候選（契約轉換規則 4）。10-29 c32 查核：門牌要先有 TGOS 回傳才進第二類人工查核區，已送查的門牌不會自動再選，所以不必改自動候選。重送清單腳本 `scripts/tgos_retry_list.py` 不列 `rejected` 判定。

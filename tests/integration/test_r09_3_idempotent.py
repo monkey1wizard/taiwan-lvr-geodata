@@ -6,7 +6,7 @@ from lvr_pipeline.storage.parquet import rows
 from lvr_pipeline.storage.runs import digest
 from lvr_pipeline.tgos import import_tgos, prepare_tgos, transition_batch
 from lvr_pipeline.tgos.resolution import evidence_from_results
-from test_p3_tgos import fixture_two_unmatched, response
+from test_p3_tgos import fixture_two_unmatched, response, retry_csv
 from test_p2_offline import index_of
 
 ONE = ("121.51", "25.01")
@@ -103,7 +103,7 @@ def test_retry_of_submission_unknown_query_is_refused(tmp_path):
             unknown,
             work,
             tmp_path / "exchange",
-            retry_fingerprints=[query["query_fingerprint"]],
+            retry_file=retry_csv(tmp_path, [query["query_fingerprint"]]),
             retry_reason="x", index=index_of(unknown))
 
 
@@ -125,7 +125,7 @@ def test_cancelled_unknown_batch_is_selected_again_with_approved_retry(tmp_path)
         tmp_path / "new",
         tmp_path / "exchange",
         ledger=cancelled,
-        retry_fingerprints=[query["query_fingerprint"]],
+        retry_file=retry_csv(tmp_path, [query["query_fingerprint"]]),
         retry_reason="regenerated after cancellation", index=index_of(state))
     new_batch = [row for row in rows(seeded / "tgos_batches.parquet") if row["batch_id"] != batch_id][-1]
     selected = [row["address"] for row in _queries(seeded, new_batch["batch_id"])]

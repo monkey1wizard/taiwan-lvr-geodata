@@ -18,6 +18,7 @@ from lvr_pipeline.tgos import (
 )
 from test_p1_conversion import ADDRESS
 from test_p2_offline import run, index_of
+from test_p3_tgos import retry_csv
 from test_r05_9_suspension import KINMEN_NONE, TAIPEI_TGOS, built  # noqa: F401  built is a fixture
 
 UNKEYED = "臺北市中正區測試路7鄰鄰21號"  # county and town parse, the door text yields no key
@@ -69,7 +70,7 @@ def test_ledger_query_without_a_key_is_kept_as_evidence_and_never_resent(ledger)
     # Not even an approved retry can bring it back.
     with pytest.raises(ValueError, match="evidence only"):
         prepare_tgos(ledger["state"], ledger["tmp"] / "new2", ledger["tmp"] / "exchange", ledger=ledger["ledger"],
-                     retry_fingerprints=[keyless["query_fingerprint"]], retry_reason="x",
+                     retry_file=retry_csv(ledger["tmp"], [keyless["query_fingerprint"]]), retry_reason="x",
                      index=index_of(ledger["state"]))
 
 
@@ -97,4 +98,4 @@ def test_approved_retry_of_a_suspended_key_is_refused(built):  # noqa: F811
     cancelled = transition_batch(prepared, old, kinmen["batch_id"], "cancelled", reason="x")
     with pytest.raises(ValueError, match="no longer an eligible candidate"):
         prepare_tgos(built["state"], tmp_path / "r09-retry-new", tmp_path / "r09-retry-exchange",
-                     ledger=cancelled, retry_fingerprints=[kinmen["query_fingerprint"]], retry_reason="x", index=index_of(built["state"]))
+                     ledger=cancelled, retry_file=retry_csv(tmp_path, [kinmen["query_fingerprint"]]), retry_reason="x", index=index_of(built["state"]))
