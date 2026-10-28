@@ -58,8 +58,8 @@ TGOS 做到一半就重跑的好處：一是 `v2.9` 可能使約 1,300 個地名
 - [x] e16 擁有者同意發布第二版並定日期，見上方「發布時機」。前提是 e12、e13 通過。Claude 先報告：新基線列數、與第一版的差異（補齊的門牌、TGOS 回補筆數、解析修正的增減）、尚未回傳的批次。擁有者回答「發布」並給日期，或「等第 N 批回補後再發」。同意後才做 e03。10-29 擁有者同意以 `e17b-20261028` 發第二版，c54 留到第三版，日期未另定，見[總表](擁有者決定與驗收總表.md)決定表
 - [x] e03 以新基線的 `public/` 與 `release/` 複製到 `data/output/`，逐檔核對 SHA-256、大小、列數等於 catalog 與 `output.json`，`verify_output` 通過。第一版檔案被覆寫，依月份分批提交，每個提交小於 2 GB。變更內容寫在 release 說明草稿：補齊 380,134 列、TGOS 回補筆數、規則版本。10-29 完成：`e17b-20261028` 的 556 檔覆寫到 `data/output/`，逐檔核對與 `verify_output` 8 項通過，4,076,309 列。依月份 21 個提交加 catalog 提交 `74745c0`，見[E-3 紀錄](../records/E-3第二版發布.md)
 - [x] e04 擁有者建 release、上傳 GeoParquet、推送本機提交，tag 由擁有者定。10-29 擁有者要求 Claude 以 CLI 執行：推送到 `ad5a44d`，release `v20261029`，附件雜湊相符，見[E-3 紀錄](../records/E-3第二版發布.md)
-- [ ] e05 R08-4 第二版：`scripts/verify_release.py --tag <tag> --code-commit <新基線程式提交> --code-python <絕對路徑>` 完整核對，再觸發 `verify-release.yml`。核對用的程式提交是產生第二版的那個，不是當時 HEAD
-- [ ] e06 V-11 第二版：R08-2a、R08-3、R08-4 第二版都有紀錄且通過才寫 pass。更新總表與 00
+- [ ] e05 R08-4 第二版：`scripts/verify_release.py --tag <tag> --code-commit <新基線程式提交> --code-python <絕對路徑>` 完整核對，再觸發 `verify-release.yml`。核對用的程式提交是產生第二版的那個，不是當時 HEAD。10-29 本機完整核對 10 項 pass、`complete=true`，資料提交需指定 `--commit ad5a44d…`，因為預設值仍是第一版的 `b21217e`。GitHub 核對 not-run，擁有者選擇不觸發，所以本卡未勾，見[R08-4 第二版紀錄](../records/R08-4第二版下載核對.md)
+- [ ] e06 V-11 第二版：R08-2a、R08-3、R08-4 第二版都有紀錄且通過才寫 pass。更新總表與 00。10-29 狀態：R08-2a、R08-3 即 e03、R08-4 本機層都通過，R08-4 GitHub 層 not-run，所以 V-11 第二版未寫 pass
 
 ### E-4 發布後的回補節奏
 
