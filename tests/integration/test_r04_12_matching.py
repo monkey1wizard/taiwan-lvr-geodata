@@ -64,8 +64,9 @@ TRADES = {
     "lin_only": T + "2鄰測試路23號",
     "annex_before": T + "測試路30附1號",
     "annex_after": T + "測試路30號附1",
-    "lane_cjk": T + "測試路十二巷5號",
-    "lane_arabic": T + "測試路12巷5號",
+    # c50 reads 十二巷 after a road as 12巷, so the pair uses a number inside a lane name.
+    "lane_cjk": T + "測試路中二巷5號",
+    "lane_arabic": T + "測試路中2巷5號",
     "lane_named": T + "測試路豐二巷52號",
     "lane_plain": T + "測試路52號",
     "note": T + "測試路40號(店面)",

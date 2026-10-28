@@ -15,7 +15,8 @@ KEY_VERSION = "v2"
 # v2.7 (B-1): repeated town and unit dropped, other town invalid, CJK main number before 之N號, unparsable floor door gives no key.
 # v2.8 (B-1 follow-up): repeated county and town dropped.
 # v2.9 (e09): a repeated village name is dropped once; a place name read as a village before the door is locality_road.
-NORMALIZATION_VERSION = "v2.9"
+# v2.10 (c50, c52): a CJK lane or alley number after a road unit or digit is Arabic; a road written twice is kept once.
+NORMALIZATION_VERSION = "v2.10"
 _COUNTIES = "|".join(sorted(_COUNTY_CODE, key=len, reverse=True))
 # Town names end in 市, 區, 鄉 or 鎮, never 里 (R04-12: 太麻里鄉 was rejected by the old 里 alternative).
 _COUNTY_RE = re.compile("^(" + _COUNTIES + ")")
@@ -53,6 +54,9 @@ _CJK_DOOR = re.compile(
 )
 _CJK_RUN = re.compile("[一二三四五六七八九十百]+")
 _UNIT = re.compile("[路街道段巷弄衖衕]")
+# c50: a lane or alley number right after a road unit, lane, alley or digit (大勇路一巷, 90巷一弄); 清水一巷 is a name.
+_LANE_NUMBER = re.compile("(?<=[路街道段巷弄0-9])([〇零一二三四五六七八九十百]+)(?=[巷弄])")
+_DIGIT = {c: str(i) for i, c in enumerate("〇一二三四五六七八九")} | {"零": "0"}
 
 
 def cjk_number(text: str) -> int | None:
@@ -156,6 +160,24 @@ def _arabic_door(match: re.Match) -> str:
     return str(cjk_number(main) or main) + subs
 
 
+def _lane_number(match: re.Match) -> str:
+    """c50: 一二巷 is read digit by digit, 十二巷 and 一百零五巷 by place value; any other text is kept."""
+    text = match.group(1)
+    if "十" not in text and "百" not in text:
+        return "".join(_DIGIT[c] for c in text)
+    value = cjk_number(re.sub("(?<=百)[〇零](?=[一二三四五六七八九]$)", "", text))
+    return str(value) if value is not None else text
+
+
+def _drop_doubled_road(locality_road: str) -> str:
+    """c52: a road or section written twice in full (信義路五段信義路五段) is kept once."""
+    half = len(locality_road) // 2
+    if half and len(locality_road) == 2 * half and locality_road[:half] == locality_road[half:] \
+            and locality_road[half - 1] in "路街道段":
+        return locality_road[:half]
+    return locality_road
+
+
 def _drop_repeated_village(village: str, rest: str) -> str:
     """rest without one copy of the village name written again right after it (e09 rule 1).
 
@@ -200,7 +222,8 @@ def building_key(address: str) -> str | None:
     R04-12 (owner-approved rule of 2026-10-09): floors, rooms and basements are not part of the door.
     A village and a neighbourhood written in the address are kept as separate fields, so two doors that
     differ only in village or neighbourhood never share a key. Notations are never merged: 10之1號 and
-    10號之1, 30附1號 and 30號附1, 十二巷 and 12巷 give different keys. Bracketed notes are ignored.
+    10號之1, 30附1號 and 30號附1 give different keys. Bracketed notes are ignored. A lane number after a road
+    unit is read as Arabic (c50: 十二巷 and 12巷 give one key); a number inside a lane name (豐二巷) is kept.
     """
     if not isinstance(address, str) or not address.strip():
         return None
@@ -228,7 +251,7 @@ def building_key(address: str) -> str | None:
         return None
     if door.group("before") and door.group("after"):
         return None
-    locality_road = rest[:door.start()]
+    locality_road = _LANE_NUMBER.sub(_lane_number, _drop_doubled_road(rest[:door.start()]))
     # e09 rule 2: a village token that is not a village of the town and is followed directly by the door is a place name.
     if village and not neighborhood and not locality_road and village not in town_villages(county_code, town):
         village, locality_road = None, village

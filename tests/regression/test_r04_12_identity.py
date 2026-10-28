@@ -23,7 +23,7 @@ def fields(address):
 
 
 def test_version_is_bumped():
-    assert NORMALIZATION_VERSION == "v2.9"  # e09
+    assert NORMALIZATION_VERSION == "v2.10"  # c50, c52
 
 
 # Section 4 and 5.1: village and neighbourhood are sub-identifiers, never deleted.
@@ -169,8 +169,9 @@ def test_door_notations_are_not_merged(a, b, door_a, door_b):
 
 
 def test_lane_numerals_and_named_lane_are_not_merged():
-    # 4 / 5.2: 十二巷 and 12巷; 1.4: with and without a text lane name.
-    assert building_key("臺北市中山區中山北路十二巷2號") != building_key("臺北市中山區中山北路12巷2號")
+    # 4 / 5.2: a number inside a lane name, 中二巷 and 中2巷 (c50 merges 十二巷 and 12巷 after a road);
+    # 1.4: with and without a text lane name.
+    assert building_key("臺北市中山區中山北路中二巷2號") != building_key("臺北市中山區中山北路中2巷2號")
     assert building_key("新北市新莊區豐年街豐二巷52號") != building_key("新北市新莊區豐年街52號")
 
 

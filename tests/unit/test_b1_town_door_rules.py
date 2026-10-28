@@ -25,7 +25,7 @@ def expected(county, town, road, door, village=None, neighborhood=None):
 
 
 def test_version():
-    assert NORMALIZATION_VERSION == "v2.9"
+    assert NORMALIZATION_VERSION == "v2.10"
 
 
 @pytest.mark.parametrize("address,want", [
@@ -105,8 +105,8 @@ def _names(tmp_path):
     # b06: the CJK numeral before 之N號 is the main door number, whatever notation follows 之.
     ("宜蘭縣五結鄉國民中路七之1號", expected("宜蘭縣", "五結鄉", "國民中路", "7之1")),
     ("宜蘭縣五結鄉國民中路七之一號", expected("宜蘭縣", "五結鄉", "國民中路", "7之1")),
-    ("宜蘭縣五結鄉國光里國興街一巷一之3號", expected("宜蘭縣", "五結鄉", "國興街一巷", "1之3", "國光里")),
-    ("宜蘭縣五結鄉國光里國興街一巷一之三號", expected("宜蘭縣", "五結鄉", "國興街一巷", "1之3", "國光里")),
+    ("宜蘭縣五結鄉國光里國興街一巷一之3號", expected("宜蘭縣", "五結鄉", "國興街1巷", "1之3", "國光里")),
+    ("宜蘭縣五結鄉國光里國興街一巷一之三號", expected("宜蘭縣", "五結鄉", "國興街1巷", "1之3", "國光里")),
     ("宜蘭縣五結鄉國民中路十二之十號", expected("宜蘭縣", "五結鄉", "國民中路", "12之10")),
     # b06 negatives: a road number stays a road name, 十二巷 and 12巷 are still not merged.
     ("宜蘭縣五結鄉七賢路10號", expected("宜蘭縣", "五結鄉", "七賢路", "10")),

@@ -24,7 +24,7 @@ def expected(county, town, road, door, village=None, neighborhood=None):
 
 
 def test_version():
-    assert NORMALIZATION_VERSION == "v2.9"
+    assert NORMALIZATION_VERSION == "v2.10"
 
 
 @pytest.mark.parametrize("address,want", [
