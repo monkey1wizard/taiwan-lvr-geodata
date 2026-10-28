@@ -50,3 +50,14 @@ c34 從第二版基線 `e17b-20261028` 準備第二輪第 1 批送查檔，並�
 - 真實資料：第二輪第 1 批已準備，狀態是 `prepared`，未送出。
 - 送出後的步驟同 C-1：`set-tgos-status --status submitted`，再 `import-tgos`，都用 run `c34-20261029`。
 - 重送清單未經擁有者決定，所以這一批沒有帶重送。今天只送這一批時，剩下 6,875 筆名額不用。要和重送合成同一批，須先取消這批再重新準備，取消後交換資料夾要刪除。
+
+## 10-29 取消與 c55
+
+第 1 批 3,125 個門牌鍵在 e17b 的 tgos-state 都已定位，證據是缺區補區，所以取消。查證腳本 `data/tmp/c34/county_split.py` `038e659c…`，結果 `county_split.txt` `3a00652e…`：e17b 合併後未定位 36,860 個，36,858 個已有查詢紀錄，2 個臺北市門牌只有已取消的查詢，送查文字算不回鍵。
+
+| 命令與工作目錄 | 預期 | 實際 | 結束代碼 | pass／fail／not-run | 證據位置與雜湊 |
+| --- | --- | --- | --- | --- | --- |
+| repo 根目錄：`set-tgos-status --batch tgos-fec1eef6ca7b --status cancelled --reason 選取缺陷：3,125 筆已由缺區補區定位 --run-id c34-20261029` | 批次取消，紀錄保留 | 快照 `tgos-state-b7fee12fb8e860ed830533ae`，批次 `cancelled`，`csv_sha256` 不變 | 0 | pass | `data/tmp/tgos-round2/cancel.log` |
+| 刪除 `data/tgos/20261029-fec1eef6` | 依 10-18 規則刪除從未送出的交換資料夾 | 已刪除。刪除前 `addresses.csv` `589ee46d…`、`manifest.json` `1dfe956f…` | 0 | pass | 本紀錄 |
+| `git archive` 修正前的 HEAD，放入 c55 測試 | 證明修正前的行為 | 3 個失敗：補區鍵仍 `unmatched`、`prepare-tgos` 沒有拋出無候選、匯入記 `succeeded` | 1 | pass | `data/tmp/c34/c55-before.log` |
+| 修正後的程式，只拿掉 run-full 計入補區那段 | 證明 run-full 那段必要 | run-full 的斷言失敗，記 `succeeded` | 1 | pass | `data/tmp/c34/c55-loop-before.log` |

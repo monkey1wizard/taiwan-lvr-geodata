@@ -256,12 +256,23 @@ def rebuild(paths: dict, report: dict, evidence: list[dict], pool: list[dict] | 
     return address_rows, unmatched, statuses, resolutions, counts
 
 
+def ledger_evidence(paths: dict, results: list[dict], queries: list[dict]) -> list[dict]:
+    """Every evidence row the ledger stands for: succeeded door-level results and district fills (c55).
+
+    ``paths`` are the artifact paths of the offline state; its address pool decides which fills count.
+    """
+    return evidence_from_results(results, queries) + district_fill_evidence(
+        results, queries, lambda: (row["building_key"] for row in rows(paths["address-pool"])))
+
+
 def current_address_rows(paths: dict, report: dict, results: list[dict], queries: list[dict]):
     """The address status rows of the offline state after every succeeded result of the ledger.
 
-    When the ledger adds no evidence the offline rows are the answer and are streamed from the state.
+    A key located by a district fill is located here too (c55), so prepare-tgos does not select it
+    and an import sees its coordinate. When the ledger adds no evidence the offline rows are the
+    answer and are streamed from the state.
     """
-    adopted = evidence_from_results(results, queries)
+    adopted = ledger_evidence(paths, results, queries)
     if not adopted:
         return rows(paths["address-result"])
     evidence = list(rows(paths["offline-row"])) + adopted

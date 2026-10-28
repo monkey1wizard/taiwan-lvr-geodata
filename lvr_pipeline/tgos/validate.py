@@ -42,7 +42,9 @@ from .batches import (
 from .resolution import (  # noqa: F401
     _rebuild_resolution,
     current_address_rows,
+    district_fill_evidence,
     evidence_from_results,
+    ledger_evidence,
     rebuild,
     tgos_evidence_row,
 )
@@ -364,7 +366,7 @@ def import_tgos(
     paths = _artifact_paths(inp.offline, inp.offline_manifest)
     report = inp.offline_report
     base = _open_base(index, report)
-    evidence = list(rows(paths["offline-row"])) + evidence_from_results(results, queries)
+    evidence = list(rows(paths["offline-row"])) + ledger_evidence(paths, results, queries)
     current = current_address_rows(paths, report, results, queries)
     apply_response(batches, queries, results, evidence, current, batch_id, response, base=base)
     _, _, statuses, resolutions, suspension_counts = rebuild(paths, report, evidence)
@@ -487,7 +489,10 @@ def build_tgos_state(offline: Path, work_dir: Path, plan: TgosPlan, *, index: Pa
             apply_response(
                 batches, queries, results, evidence, current, batch_id, file, base=base, expected_sha256=response_hash
             )
-            address_rows, unmatched, statuses, resolutions, suspension_counts = rebuild(paths, report, evidence, pool)
+            # c55: the next batch sees the keys located by the district fills so far; the fills are not
+            # kept in ``evidence``, _write_merged_state adds them once for the whole ledger.
+            fills = district_fill_evidence(results, queries, lambda: (row["building_key"] for row in pool))
+            address_rows, unmatched, statuses, resolutions, suspension_counts = rebuild(paths, report, evidence + fills, pool)
             current = address_rows
         replaced = {
             "address_rows": address_rows,
