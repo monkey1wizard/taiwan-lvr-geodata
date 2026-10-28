@@ -23,7 +23,7 @@ def fields(address):
 
 
 def test_version_is_bumped():
-    assert NORMALIZATION_VERSION == "v2.10"  # c50, c52
+    assert NORMALIZATION_VERSION == "v2.11"  # c51
 
 
 # Section 4 and 5.1: village and neighbourhood are sub-identifiers, never deleted.

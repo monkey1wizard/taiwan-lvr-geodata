@@ -16,7 +16,8 @@ KEY_VERSION = "v2"
 # v2.8 (B-1 follow-up): repeated county and town dropped.
 # v2.9 (e09): a repeated village name is dropped once; a place name read as a village before the door is locality_road.
 # v2.10 (c50, c52): a CJK lane or alley number after a road unit or digit is Arabic; a road written twice is kept once.
-NORMALIZATION_VERSION = "v2.10"
+# v2.11 (c51): a place name in _PLACE_NAMES that was split into a village and a road is locality_road.
+NORMALIZATION_VERSION = "v2.11"
 _COUNTIES = "|".join(sorted(_COUNTY_CODE, key=len, reverse=True))
 # Town names end in 市, 區, 鄉 or 鎮, never 里 (R04-12: 太麻里鄉 was rejected by the old 里 alternative).
 _COUNTY_RE = re.compile("^(" + _COUNTIES + ")")
@@ -57,6 +58,25 @@ _UNIT = re.compile("[路街道段巷弄衖衕]")
 # c50: a lane or alley number right after a road unit, lane, alley or digit (大勇路一巷, 90巷一弄); 清水一巷 is a name.
 _LANE_NUMBER = re.compile("(?<=[路街道段巷弄0-9])([〇零一二三四五六七八九十百]+)(?=[巷弄])")
 _DIGIT = {c: str(i) for i, c in enumerate("〇一二三四五六七八九")} | {"零": "0"}
+# c51 (owner decision 2026-10-28, option B): place names that start like a village (萬里加投, 建國新村35巷).
+# Taken from the 215 keys of the e02 pool that the address base writes with the name as locality_road.
+# A new name is added only by a new owner decision; scripts/check_c51_place_names.py lists candidates.
+_PLACE_NAMES = {
+    ("09020", "金城鎮"): ("富康一村",),
+    ("10002", "冬山鄉"): ("百世新村",),
+    ("10008", "埔里鎮"): ("南村一巷",),
+    ("10009", "斗南鎮"): ("中正新村",),
+    ("10010", "太保市"): ("合德新村",),
+    ("10013", "屏東市"): ("建國新村",),
+    ("10014", "太麻里鄉"): ("利里武街",),
+    ("10014", "東河鄉"): ("七里橋",),
+    ("10014", "達仁鄉"): ("啦里吧",),
+    ("65", "板橋區"): ("自強新村",),
+    ("65", "淡水區"): ("八里堆",),
+    ("65", "萬里區"): ("萬里加投",),
+    ("67", "佳里區"): ("佳里興",),
+    ("68", "中壢區"): ("華夏一村",),
+}
 
 
 def cjk_number(text: str) -> int | None:
@@ -255,6 +275,10 @@ def building_key(address: str) -> str | None:
     # e09 rule 2: a village token that is not a village of the town and is followed directly by the door is a place name.
     if village and not neighborhood and not locality_road and village not in town_villages(county_code, town):
         village, locality_road = None, village
+    # c51: a village token that is not a village of the town and starts a listed place name is part of the road.
+    if village and not neighborhood and locality_road and village not in town_villages(county_code, town) \
+            and (village + locality_road).startswith(_PLACE_NAMES.get((county_code, town), ())):
+        village, locality_road = None, village + locality_road
     if "號" in locality_road or "鄰" in locality_road or _UNPARSABLE_FLOOR_DOOR.search(locality_road):
         return None
     # A number not followed by a unit (測試路10一1號) is an unparsed door, not a place name.
