@@ -8,9 +8,9 @@
 
 ## 下載
 
-第一版公開資料已於 2026-10-17 在本機 `data/output/` 建立：基線 `r07-10-20261016b` 的離線定位輸出，3,551,724 列，只含離線定位成功的門牌，TGOS 回補屬第二版。CSV 已推送到 GitHub 的 `data/output/`，GeoParquet 在 GitHub release `v20261018`。檔案雜湊見 `data/output/catalog.json` 與[發布紀錄](docs/records/R08-3第一版發布.md)。2026-10-10 的 R07-4 全歷史執行曾完成舊輸出契約處理，但其輸出成品已移除。該次 V-09、V-10 pass 僅保留為歷史結果，不作目前接受或可沿用資料的依據。此處不判斷遠端是否仍有其他歷史 release。
+目前公開的是第二版，GitHub release [`v20261029`](https://github.com/monkey1wizard/taiwan-lvr-geodata/releases/tag/v20261029)，2026-10-29 發布。內容是內政部不動產成交案件實際資訊 2011-01 至 2026-10 的買賣、預售屋、租賃三類，每個有座標的門牌一列，共 4,076,309 列，涵蓋 4,072,620 筆交易。座標來自離線地址比對，離線定位不到的門牌以 TGOS 地址查詢補上；兩者都定位不到的門牌不在公開資料中。部分 TGOS 查詢尚未回傳，回傳後在之後的版本補上。
 
-第一版不完整。已發布 3,551,724 列。依地址池給門牌的鍵，基線有 3,931,858 個已離線定位的門牌，與已發布列數淨差 380,134。原因是輸出程式以地址成員原本的鍵對應定位結果，地址池改寫過鍵的門牌因此對不上：漏寫 380,135 個，其中補區 368,234、改名 10,310（例如員林鎮改為員林市）、其餘 1,591；另多寫 1 列地址池送候選查核、不應定位的門牌。除了這 1 列，已發布的各列內容正確。修正在提交 `7d969c2`，第二版會補齊並移除該列，第一版不重發。
+第二版補上第一版 `v20261018` 缺漏的 380,134 個門牌，比第一版多 524,585 列。版本差異見 release 說明，複製與核對見[發布紀錄](docs/records/E-3第二版發布.md)。第一版的說明與缺漏原因見[第一版發布紀錄](docs/records/R08-3第一版發布.md)。
 
 舊資料與舊驗收不構成目前可接受的資料基準。既有 normalized／converted 結果、地址池／index／state、aliases、TGOS 採用結果、review 裁定、衍生 cache、快照、維護包、公開輸出及統計都須隔離。舊 V 的 pass 只保留為當時紀錄。不得拿舊統計或舊輸出自證來源完整或結果正確。
 
@@ -21,11 +21,11 @@
 | GeoParquet | GitHub release 的 `taiwanlvr.parquet` | 程式與資料庫 |
 | CSV | `data/output/csv/YYYY/taiwanlvr_YYYYMM_<類別>.csv`，每月每類別一檔 | 試算表、BI、QGIS、Kepler.gl 與 AI |
 
-`data/output/catalog.json` 預定列出各檔案格式、年、月、類別、期間、筆數、大小、SHA-256 與路徑。完整契約見[輸出欄位](docs/輸出欄位.md)。上述目錄與欄位的產生、`catalog.json` 與格式間驗證已實作，全量驗收與發布尚未完成。
+`data/output/catalog.json` 列出各檔案格式、年、月、類別、期間、筆數、大小、SHA-256 與路徑，第二版的 SHA-256 是 `eb4829863f785a433c4632087738ec9193004dfe4c33966c8c7894da11a4d99c`。GeoParquet 的 SHA-256 是 `4598034749b0b50b7dec327a8cd576ecd99c285b2f7cccbadcd4bcf75b3fcc59`，也可在 release 頁面核對。完整契約見[輸出欄位](docs/輸出欄位.md)。
 
-多門牌交易的一個總價屬於整筆交易，不分攤或推算。輸出列以 `door_count` 大於 1 表示多門牌，以 `transaction_id` 找出同筆交易的點，加總時依 `transaction_id` 去重。這些新欄位尚未由程式產生。每種格式的使用方式與加總規則將隨新版資料交付。
+多門牌交易的一個總價屬於整筆交易，不分攤或推算。輸出列以 `door_count` 大於 1 表示多門牌，以 `transaction_id` 找出同筆交易的點，加總時依 `transaction_id` 去重。
 
-資料來源、顯名與限制見本節，不另設 NOTICE 檔。每版的變更內容寫在 GitHub release 說明。交易資料來自內政部不動產成交案件實際資訊資料供應系統，依政府資料開放授權條款第 1 版使用；門牌座標來自 `taiwan-address-data` 的固定提交。程式授權不代表第三方資料適用相同授權。
+資料來源、顯名與限制見本節，不另設 NOTICE 檔。每版的變更內容寫在 GitHub release 說明。交易資料來自內政部不動產成交案件實際資訊資料供應系統，依政府資料開放授權條款第 1 版使用；門牌座標來自 `taiwan-address-data` 的固定提交，以及內政部 TGOS 地址查詢的回傳。程式授權不代表第三方資料適用相同授權。
 
 ## 安裝與測試
 
@@ -128,9 +128,9 @@ uv run --locked --python 3.14.8 python -m lvr_pipeline build-review --help
 
 ## 常見問題
 
-### 為什麼沒有下載連結？
+### 去哪裡下載？
 
-本機檢查未找到新版可下載成品；舊輸出已移除，新版輸出程式已實作但尚未以真實資料執行和驗收。本次未核對遠端 release。
+GeoParquet 在 GitHub release [`v20261029`](https://github.com/monkey1wizard/taiwan-lvr-geodata/releases/tag/v20261029)。每月 CSV 在 repo 的 `data/output/csv/`。見本文件「下載」。
 
 ### `run-full` 成功代表新版資料已發布嗎？
 
