@@ -123,13 +123,20 @@ def _one_character_village(names: dict, query_village: str, response_village: st
 
 
 def _same_village(county: str, town: str, query_village: str, response_village: str) -> bool:
-    """Rule 1 and the county-reform extension; anything undecided is not the same village."""
+    """Rules 1 and 11 and the county-reform extension; anything undecided is not the same village."""
+    if same_village_code(county, town, query_village, response_village):
+        return True
+    names = _village_index().get((county, town), {})
+    return _one_character_village(names, _text(query_village), _text(response_village))
+
+
+def same_village_code(county: str, town: str, query_village: str, response_village: str) -> bool:
+    """Rule 1 and the county-reform extension only: same text, one village code, or an old-county village
+    whose code serial and name match the current one. Anything undecided is not the same village."""
     query_village, response_village = _text(query_village), _text(response_village)
     if query_village == response_village:
         return True
     names = _village_index().get((county, town), {})
-    if _one_character_village(names, query_village, response_village):
-        return True
     codes = [names.get(query_village, {}), names.get(response_village, {})]
     if any(len(rows) != 1 for rows in codes):
         return False

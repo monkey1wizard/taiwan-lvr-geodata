@@ -24,6 +24,7 @@ from .adopt import (
     BaseGroups,
     adoption_route,
     base_town,
+    same_village_code,
 )
 from .adopt import response_key as adoption_response_key
 from .batches import (
@@ -62,20 +63,32 @@ def _tgos_coordinate(x: str, y: str):
     return lng, lat
 
 
+def _distinct_villages(county: str, town: str, villages) -> int:
+    """c49: the number of villages once names that rule 1 or the county-reform rule read as one are merged."""
+    kept: list[str] = []
+    for name in sorted(set(villages)):
+        if not any(same_village_code(county, town, name, other) for other in kept):
+            kept.append(name)
+    return len(kept)
+
+
 def _layer_is_ambiguous(query_key: str, door_layers: dict) -> bool:
     """R09-2: the pool holds the same door under two villages (or neighbourhoods) the query leaves open.
 
-    Only pool keys compatible with every layer the query writes count.
+    Only pool keys compatible with every layer the query writes count. Village names that rule 1 or the
+    county-reform rule read as one village are one village (c49).
     """
     signature, village, neighborhood = door_parts(query_key)
+    value = json.loads(query_key[3:])
+    county, town = value["county"], value["town"]
     compatible = [
         (key_village, key_neighborhood)
         for key, key_village, key_neighborhood in door_layers.get(signature, ())
         if key != query_key
-        and (village is None or key_village is None or key_village == village)
+        and (village is None or key_village is None or same_village_code(county, town, village, key_village))
         and (neighborhood is None or key_neighborhood is None or key_neighborhood == neighborhood)
     ]
-    if village is None and len({v for v, _ in compatible if v is not None}) >= 2:
+    if village is None and _distinct_villages(county, town, (v for v, _ in compatible if v is not None)) >= 2:
         return True
     return neighborhood is None and len({n for _, n in compatible if n is not None}) >= 2
 

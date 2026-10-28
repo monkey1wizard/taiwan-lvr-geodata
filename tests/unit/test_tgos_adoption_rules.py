@@ -139,3 +139,36 @@ def test_one_character_village_takes_the_tgos_name(query, response):
 )
 def test_one_character_village_rejected(query, response):
     assert not adopted(query, response)
+
+
+# c49: the layer ambiguity check merges village names that rule 1 or the county-reform rule read as one.
+def _layers(*addresses):
+    from lvr_pipeline.addresses.identity import door_parts
+
+    layers = {}
+    for address in addresses:
+        key = building_key(address)
+        signature, village, neighborhood = door_parts(key)
+        layers.setdefault(signature, []).append((key, village, neighborhood))
+    return layers
+
+
+def test_old_and_new_names_of_one_village_are_not_ambiguous():
+    from lvr_pipeline.tgos.validate import _layer_is_ambiguous
+
+    layers = _layers("臺南市西港區慶安村新興街8之185號", "臺南市西港區慶安里新興街8之185號")
+    assert not _layer_is_ambiguous(building_key("臺南市西港區新興街8之185號"), layers)
+
+
+def test_two_villages_are_still_ambiguous():
+    from lvr_pipeline.tgos.validate import _layer_is_ambiguous
+
+    layers = _layers("臺南市永康區大橋里大橋一街30之2號", "臺南市永康區西橋里大橋一街30之2號")
+    assert _layer_is_ambiguous(building_key("臺南市永康區大橋一街30之2號"), layers)
+
+
+def test_one_village_with_two_neighbourhoods_is_still_ambiguous():
+    from lvr_pipeline.tgos.validate import _layer_is_ambiguous
+
+    layers = _layers("桃園市大園區埔心村22鄰埔心96之19號", "桃園市大園區埔心里29鄰埔心96之19號")
+    assert _layer_is_ambiguous(building_key("桃園市大園區埔心96之19號"), layers)
